@@ -1599,7 +1599,6 @@ void TMainForm::doContactMaintenance ()
 	return;
 }
 //---------------------------------------------------------------------------
-
 void __fastcall TMainForm::OptionsClick(TObject *Sender)
 {
 	static int tabsheet = 0;
@@ -1743,25 +1742,19 @@ void TMainForm::cleanupApp ()
 //---------------------------------------------------------------------------
 void TMainForm::playSound()
 {
-	try
+	string filename = T3Pathname() + SOUNDSFOLDER +  
+							IniOpt->getValue("sound_file") + ".wav";
+	if ( FileExists(filename.c_str()) )
 	{
-		SoundPlayer->FileName = T3Pathname().c_str() + SOUNDSFOLDER +
-				String(IniOpt->getValue("sound_file").c_str()) + ".wav";
-
+		SoundPlayer->FileName = filename.c_str(); 
 		SoundPlayer->Open();
 		SoundPlayer->Wait = true;
 		SoundPlayer->Play();
 
 		SoundPlayer->Close();
 	}
-	catch(...)
-	{
-		;	//sound cannot play if there's no hardware, etc., so do nothing
-			//unless we're in test mode:
-		if ((IniOpt->getValue("test_mode") == "1"))
-			ShowMessage("Unable to play sound.");
-	}
 
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -1815,7 +1808,6 @@ void TMainForm::setScrollPosition(HWND handle, short int pos)
 
 }
 //---------------------------------------------------------------------------
-
 void __fastcall TMainForm::InTransitClick(TObject *Sender)
 {
 	InTransitForm->Show();
