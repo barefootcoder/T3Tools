@@ -35,7 +35,7 @@ where pa.proj = ip.proj
 go
 
 select cpl.emp, cpl.pay_rate, cpl.category,
-		convert(numeric(5,2), sum(pa.hours)) "cat_hrs"
+		convert(numeric(7,2), sum(pa.hours)) "cat_hrs"
 into #cp_cathours
 from #cp_logs cpl, pay_amount pa
 where pa.log_source = cpl.log_source
@@ -43,7 +43,7 @@ and pa.log_id = cpl.log_id
 group by cpl.emp, cpl.pay_rate, cpl.category
 go
 
-select cpl.emp, cpl.pay_rate, convert(numeric(5,2), sum(pa.hours)) "ttl_hrs"
+select cpl.emp, cpl.pay_rate, convert(numeric(7,2), sum(pa.hours)) "ttl_hrs"
 into #cp_emphours
 from #cp_logs cpl, pay_amount pa
 where pa.log_source = cpl.log_source
@@ -51,7 +51,7 @@ and pa.log_id = cpl.log_id
 group by cpl.emp, cpl.pay_rate
 go
 
-select convert(numeric(5,2), sum(pa.hours)) "total_hrs"
+select convert(numeric(7,2), sum(pa.hours)) "total_hrs"
 into #cp_total_hours
 from #cp_logs cpl, pay_amount pa
 where pa.log_source = cpl.log_source
