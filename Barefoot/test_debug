@@ -1,0 +1,19 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;
+use Barefoot::test_debug;
+
+die("DEBUG not correct") unless DEBUG == 1;
+
+package test;
+BEGIN
+{
+	eval "use Barefoot::base; use Barefoot::debug;";
+
+	die("debug didn't catch that base loaded first")
+			unless $@ =~ /^DEBUG already defined/;
+}
+
+print "ALL TESTS PASSED\n";
