@@ -109,6 +109,8 @@ while ( <TMP> )
 			if $start_time > $curtimer->{last_time};
 	$cur_udata->{clients}->{$client} += $mins;
 }
+# get the last user
+$timerdata{$curuser} = $cur_udata if $curuser;
 close(TMP);
 
 
