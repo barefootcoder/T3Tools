@@ -1,0 +1,208 @@
+#! /bin/ksh
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=buddy
+destdb=TIMER
+file=admin
+start_date='1/1/1998'
+end_date='12/31/1998'
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	-- the proc will require a temp table built for it; it looks like this:
+	create table #emp_comm
+	(
+		id          numeric(4,0)    identity,   -- for the cursor
+		emp         char(3)         NOT NULL,   -- employee code
+		client      char(3)         NOT NULL,   -- client code
+		proj        char(3)         NOT NULL,   -- project code
+		date        datetime        NOT NULL,   -- date of work done
+		hours       numeric(6,2)    NOT NULL,   -- how many hours
+		payrate     money           NULL,       -- how much emp gets paid
+		paytype     char(1)         NULL,       -- employee or subcontr?
+		billrate    money           NULL,       -- billing rate per hour
+		amt_billed  money           NULL,       -- how much client billed total
+		salescomm   smallmoney      NULL,       -- sales commission (total)
+		refcomm     smallmoney      NULL,       -- referral commission (total)
+		amt_paid    money           NULL,       -- how much employee paid total
+		gross       money           NULL,       -- amt_billed - sales - ref
+		diff        money           NULL,       -- "simple" profit
+		empcomm     money           NULL        -- how much employee comm
+	)
+	go
+
+	insert #emp_comm
+		(emp, client, proj, date, hours)
+	select l.emp, l.client, l.proj, l.date, l.hours
+	from log l, project p, project_type pt
+	where l.client = p.client
+	and l.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and pt.requires_billing = 1
+	and l.date between "$start_date" and "$end_date"
+	go
+
+	-- now get billing amounts for these
+	billing_amounts
+	go
+
+	select
+		client, 
+		min(date) "period",
+		count(distinct emp) "emps",
+		convert(numeric(7,2), sum(hours)) "hours",
+			-- have to convert this monthly total into a weekly amount
+			-- (for the formulae)
+		convert(money, sum(amt_billed) * 12 / 52) "amt_billed"
+	into #monthly_billing
+	from #emp_comm
+	where client != '602'
+	group by client, 
+		convert(char(3), date, 107) + " " + convert(char(4), date, 111),
+		datepart(month, date),
+		datepart(year, date)
+	order by client, datepart(year, date), datepart(month, date)
+	go
+
+	update #monthly_billing
+	set period = dateadd(day, -(datepart(day, period) - 1), period)
+	go
+
+	-- group by client and month
+	select client, period,
+		convert(tinyint, emps) "emps", amt_billed,
+		convert(numeric(9,7),
+			$(round "amt_billed * log10(emps+1) / 500" 1 O) / 12
+		) "bookkeeper",
+		convert(numeric(9,7),
+			$(round "amt_billed / 1000" 1 O) / 12
+		) "accountant",
+		convert(numeric(4,2),
+			$(round "log10(emps+1)*2.5*26/12" .25 O)
+		) "invoicing",
+		convert(numeric(4,2),
+			$(round "log10(emps+1)*1.5*26/12" .25 O)
+		) "payroll",
+		convert(numeric(4,2),
+			$(round "log10(emps+1)*5*26/12" .25 O)
+		) "management"
+	into #monthly_totals
+	from #monthly_billing
+	go
+
+	-- no management overhead after June
+	update #monthly_totals
+	set management = 0
+	where period > "6/30/1998"
+	go
+
+	-- take a look at it so far
+	select client, emps,
+		convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		convert(numeric(6,2), amt_billed) "amt_billed", bookkeeper, accountant
+	from #monthly_totals
+	go
+	select client, emps,
+		convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		convert(numeric(6,2), amt_billed) "amt_billed",
+		invoicing, payroll, management
+	from #monthly_totals
+	go
+
+	-- now make the real table
+	$(overwrite_table admin_overhead "
+		period				datetime		NOT NULL,
+		bookkeeper_hours	numeric(4,2)	NOT NULL,
+		bookkeeper_amount	money			NOT NULL,
+		accountant_hours	numeric(4,2)	NOT NULL,
+		accountant_amount	money			NOT NULL,
+		invoicing_hours		numeric(4,2)	NOT NULL,
+		invoicing_amount	money			NOT NULL,
+		payroll_hours		numeric(4,2)	NOT NULL,
+		payroll_amount		money			NOT NULL,
+		management_hours	numeric(4,2)	NOT NULL,
+		management_amount	money			NOT NULL,
+	")
+
+	insert admin_overhead
+	select period, $(round "sum(bookkeeper)" .25 U), 0,
+			$(round "sum(accountant)" .25 U), 0,
+			sum(invoicing), 0, sum(payroll), 0, sum(management), 0
+	from #monthly_totals
+	group by period
+	go
+
+	-- get amounts
+	update admin_overhead
+	set bookkeeper_amount = bookkeeper_hours * 40
+	go
+	update admin_overhead
+	set accountant_amount = accountant_hours * 60
+	where period < "8/1/1998"
+	go
+	update admin_overhead
+	set accountant_amount = accountant_hours * 125
+	where period >= "8/1/1998"
+	go
+	update admin_overhead
+	set invoicing_amount = ao.invoicing_hours * pr.rate,
+			payroll_amount = ao.payroll_hours * pr.rate
+	from admin_overhead ao, pay_rate pr
+	where pr.emp = "119" -- Tim
+	and pr.client = "001" -- Barefoot
+	and pr.proj is NULL -- not WEB work
+	and ao.period between pr.start_date and pr.end_date
+	go
+	update admin_overhead
+	set management_amount = ao.management_hours * pr.rate
+	from admin_overhead ao, pay_rate pr
+	where pr.emp = "124" -- Patti
+	and pr.client is NULL -- not any special client
+	and ao.period between pr.start_date and pr.end_date
+	go
+
+	select convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		bookkeeper_hours "bkpr hrs",
+		bookkeeper_amount "bkpr amt"
+	from admin_overhead
+	compute sum(bookkeeper_hours), sum(bookkeeper_amount)
+	go
+
+	select convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		accountant_hours "acct hrs",
+		accountant_amount "acct amt"
+	from admin_overhead
+	compute sum(accountant_hours), sum(accountant_amount)
+	go
+
+	select convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		invoicing_hours "inv hrs",
+		invoicing_amount "inv amt"
+	from admin_overhead
+	compute sum(invoicing_hours), sum(invoicing_amount)
+	go
+
+	select convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		payroll_hours "payr hrs",
+		payroll_amount "payr amt"
+	from admin_overhead
+	compute sum(payroll_hours), sum(payroll_amount)
+	go
+
+	select convert(char(3), period, 107) + " "
+			+ convert(char(4), period, 111) "period",
+		management_hours "mgmt hrs",
+		management_amount "mgmt amt"
+	from admin_overhead
+	compute sum(management_hours), sum(management_amount)
+	go
+
+END

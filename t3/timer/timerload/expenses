@@ -1,0 +1,89 @@
+#! /bin/ksh
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+srcdb=TIMERLOAD
+destdb=TIMER
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	-- make expenses table
+	$(overwrite_table expense "
+		expense_type		char(10)		NOT NULL,
+		expense_name		char(30)		NOT NULL,
+		expense_amount		money			NOT NULL
+	")
+
+	grant update on expense to public
+	go
+
+	create unique index expense
+	on expense (expense_type, expense_name)
+	go
+
+	insert expense
+	values ("OVERHEAD", "Payroll Service", 107.88)
+	insert expense
+	values ("MONTHLY", "Employee Bonuses", 3676.76)
+	insert expense
+	values ("MONTHLY", "Misc. Charges", 2039.82)
+	insert expense
+	values ("OVERHEAD", "Health Insurance", 5209.95)
+	insert expense
+	values ("YEARLY", "Other Insurance", 2264)
+	insert expense
+	values ("YEARLY", "Hardware", 4185.46)
+	insert expense
+	values ("YEARLY", "Software", 3194.94)
+	insert expense
+	values ("MONTHLY", "Supplies", 3493.80)
+	insert expense
+	values ("YEARLY", "Books", 718.64)
+	insert expense
+	values ("YEARLY", "Advertising", 9388.25)
+	insert expense
+	values ("YEARLY", "Gifts", 641.98)
+	insert expense
+	values ("MONTHLY", "Telephone + Sprint", 8192.72)
+	insert expense
+	values ("MONTHLY", "Internet", 6792.66)
+	insert expense
+	values ("MONTHLY", "PO Box / Shipping", 879.27)
+	insert expense
+	values ("YEARLY", "Credit Cards", 55)
+	insert expense
+	values ("BASE", "Acct / Bkkpr / Lawyer / etc", 7843.05)
+	insert expense
+	values ("MONTHLY", "Meals / Entertainment", 8475.71)
+	insert expense
+	values ("MONTHLY", "Rent / Utilities", 5582.35)
+	insert expense
+	values ("TAXES", "Corporate Taxes", 0)
+	go
+
+	-- values that the gross profit report will update
+	insert expense
+	values ("OVERHEAD", "Admin Commissions", 0)
+	insert expense
+	values ("OVERHEAD", "BOPL Tax", 0)
+	insert expense
+	values ("OVERHEAD", "Admin Overhead", 0)
+	insert expense
+	values ("OVERHEAD", "Employee Overhead", 0)
+	go
+	insert expense
+	values ("YEARLY", "Vacation Time", 0)
+	go
+	insert expense
+	values ("PAYROLL", "Non-Billable Payroll", 0)
+	go
+	insert expense
+	select "YEARLY", e.expense_name, e.expense_amount
+	from expense e
+	where e.expense_type = "BASE"
+	and e.expense_name = "Acct / Bkkpr / Lawyer / etc"
+	go
+
+END

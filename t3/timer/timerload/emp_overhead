@@ -1,0 +1,219 @@
+#! /bin/ksh
+
+#	NOTICE!
+#	for this script to work properly, the admin_overhead script (q.v.)
+#	must be run first
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=buddy
+srcdb=TIMERLOAD
+destdb=TIMER
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	create table #payroll_overhead (
+		emp			char(3)			NOT NULL,
+		overhead	money			NOT NULL,
+	)
+	
+	insert #payroll_overhead
+	values ("130", 59.83)			-- Claudio
+	insert #payroll_overhead
+	values ("107", 23.54)			-- Chip
+	insert #payroll_overhead
+	values ("101", 3751.10)			-- Buddy
+	insert #payroll_overhead
+	values ("129", 1664.53)			-- Gene C
+	insert #payroll_overhead
+	values ("112", 4462.20)			-- Marcus
+	insert #payroll_overhead
+	values ("124", 3501.11)			-- Patti
+	insert #payroll_overhead
+	values ("127", 11.20)			-- Mary
+	insert #payroll_overhead
+	values ("133", 167.48)			-- Toddard
+	insert #payroll_overhead
+	values ("125", 1148.32)			-- Gregg
+	insert #payroll_overhead
+	values ("132", 65.02)			-- Chris
+	insert #payroll_overhead
+	values ("119", 1960.70)			-- Tim
+	insert #payroll_overhead
+	values ("109", 31.64)			-- Erik
+	go
+
+	-- the proc will require a temp table built for it; it looks like this:
+	create table #emp_comm
+	(
+		id          numeric(4,0)    identity,   -- for the cursor
+		emp         char(3)         NOT NULL,   -- employee code
+		client      char(3)         NOT NULL,   -- client code
+		proj        char(3)         NOT NULL,   -- project code
+		date        datetime        NOT NULL,   -- date of work done
+		hours       numeric(6,2)    NOT NULL,   -- how many hours
+		payrate     money           NULL,       -- how much emp gets paid
+		paytype     char(1)         NULL,       -- employee or subcontr?
+		billrate    money           NULL,       -- billing rate per hour
+		amt_billed  money           NULL,       -- how much client billed total
+		salescomm   smallmoney      NULL,       -- sales commission (total)
+		refcomm     smallmoney      NULL,       -- referral commission (total)
+		amt_paid    money           NULL,       -- how much employee paid total
+		gross       money           NULL,       -- amt_billed - sales - ref
+		diff        money           NULL,       -- "simple" profit
+		empcomm     money           NULL        -- how much employee comm
+	)
+	go
+
+	insert #emp_comm
+		(emp, client, proj, date, hours)
+	select l.emp, l.client, l.proj, l.date, l.hours
+	from log l
+	where l.date  between 'Jan 01 1998' and 'Dec 31 1998'
+	and l.client != '011'
+	go
+
+	emp_commission
+	go
+
+	$(overwrite_table emp_overhead "
+		emp					char(3)         NOT NULL,	-- employee code
+		hours				numeric(6,2)	NOT NULL,	-- Hours Worked 
+		total_paid			money			NOT NULL,	-- total dollars paid
+		billable_base		money			NOT NULL,	-- how much billable
+		amount_billable		money			NOT NULL,	-- how much billable
+		vacation_base		money			NOT NULL,	-- how much vacation
+		amount_vacation		money			NOT NULL,	-- how much vacation
+		overhead_base		money			NOT NULL,	-- how much adm overh.
+		amount_overhead		money			NOT NULL,	-- how much adm overh.
+		nonbillable_base	money			NOT NULL,	-- left over
+		amount_nonbillable	money			NOT NULL,	-- left over
+	")
+
+	print "getting totals"
+	go
+	insert emp_overhead
+	select ec.emp, convert(numeric(6,2), sum(ec.hours)),
+			convert(money, sum(ec.amt_paid)), 0, 0, 0, 0, 0, 0, 0, 0
+	from #emp_comm ec
+	where amt_paid > 0
+	group by ec.emp
+	go
+
+	-- have to add salaries by hand
+	update emp_overhead
+	set total_paid = total_paid + 750 * 12
+	where emp = "101"				-- Buddy
+	go
+
+	print "getting billable"
+	go
+	select ec.emp, convert(money, sum(ec.amt_paid)) "billable"
+	into #billable
+	from #emp_comm ec
+	where amt_billed > 0
+	group by ec.emp
+	update emp_overhead
+	set billable_base = b.billable
+	from emp_overhead eo, #billable b
+	where eo.emp = b.emp
+	go
+
+	print "getting vacation"
+	go
+	select ec.emp, convert(money, sum(ec.amt_paid)) "vacation"
+	into #vacation
+	from #emp_comm ec
+	where ec.proj = 'VAC'
+	and ec.client = '001'
+	group by ec.emp
+	update emp_overhead
+	set vacation_base = v.vacation
+	from emp_overhead eo, #vacation v
+	where eo.emp = v.emp
+	go
+
+	print "getting admin overhead"
+	go
+	select sum(ao.invoicing_amount) + sum(ao.payroll_amount) "overhead"
+	into #tim_overhead
+	from admin_overhead ao
+	update emp_overhead
+	set overhead_base = tov.overhead
+	from emp_overhead eo, #tim_overhead tov
+	where eo.emp = "119" -- Tim
+	go
+	select sum(ao.management_amount) "overhead"
+	into #patti_overhead
+	from admin_overhead ao
+	update emp_overhead
+	set overhead_base = pov.overhead
+	from emp_overhead eo, #patti_overhead pov
+	where eo.emp = "124" -- Patti
+	go
+
+	print "getting non-billable payroll"
+	go
+	update emp_overhead
+	set nonbillable_base = total_paid - billable_base - vacation_base
+			- overhead_base
+	go
+
+	print "accounting for payroll overhead"
+	go
+	update emp_overhead
+	set amount_billable = eo.billable_base
+			+ eo.billable_base / eo.total_paid * isnull(po.overhead, 0)
+	from emp_overhead eo, #payroll_overhead po
+	where eo.emp *= po.emp
+	go
+	update emp_overhead
+	set amount_vacation = eo.vacation_base
+			+ eo.vacation_base / eo.total_paid * isnull(po.overhead, 0)
+	from emp_overhead eo, #payroll_overhead po
+	where eo.emp *= po.emp
+	go
+	update emp_overhead
+	set amount_overhead = eo.overhead_base
+			+ eo.overhead_base / eo.total_paid * isnull(po.overhead, 0)
+	from emp_overhead eo, #payroll_overhead po
+	where eo.emp *= po.emp
+	go
+	update emp_overhead
+	set amount_nonbillable = eo.nonbillable_base
+			+ eo.nonbillable_base / eo.total_paid * isnull(po.overhead, 0)
+	from emp_overhead eo, #payroll_overhead po
+	where eo.emp *= po.emp
+	go
+
+	select e.name, hours,
+			convert(numeric(8,2), billable_base) "billable",
+			convert(numeric(8,2), vacation_base) "vacation",
+			convert(numeric(8,2), overhead_base) "overhead",
+			convert(numeric(8,2), nonbillable_base) "nonbillable"
+	from emp_overhead eo, employee e
+	where eo.emp = e.emp
+	order by eo.emp
+	go
+
+	select e.name, hours,
+			convert(numeric(8,2), amount_billable) "billable",
+			convert(numeric(8,2), amount_vacation) "vacation",
+			convert(numeric(8,2), amount_overhead) "overhead",
+			convert(numeric(8,2), amount_nonbillable) "nonbillable"
+	from emp_overhead eo, employee e
+	where eo.emp = e.emp
+	order by eo.emp
+	go
+
+	select e.name, convert(numeric(8,2), total_paid) "total_paid",
+			convert(numeric(7,2), po.overhead) "overhead",
+			convert(numeric(4,2), po.overhead / eo.total_paid * 100) "pctg"
+	from emp_overhead eo, employee e, #payroll_overhead po
+	where eo.emp = e.emp
+	and eo.emp = po.emp
+	-- compute avg(convert(numeric(4,2), po.overhead / eo.total_paid * 100))
+	go
+
+END
