@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.9  2000/11/13 20:30:39  tryan
+# Added requires_billing to pay_amount.
+# Added salary_amount table and calc_salary_pay sproc.
+#
 # Revision 1.8  2000/10/31 21:48:01  buddy
 # added phase to pay_amount
 # fixed calc_pay_amount to handle phases in pay_rate
@@ -1091,9 +1095,10 @@ run_query -S$server -U$user -D$destdb <<-END
 	from salary_amount csp, salary_bank sb
 	where csp.emp = sb.emp
 	and sb.end_date = 
-		( select max (end_date) 
-		  from salary_bank sb2
-		  where sb2.emp = sb.emp )
+        ( select max (end_date)
+          from salary_bank sb2
+          where sb2.emp = sb.emp
+          and sb2.end_date < @start_date )
 
 	--------------------------------------------------------------------------
 	-- 4. BEGIN: Employee earned *more* than regular weekly pay 
