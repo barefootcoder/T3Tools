@@ -181,6 +181,7 @@ object NewTimer: TNewTimer
     Font.Style = []
     ParentFont = False
     TabOrder = 0
+    OnKeyPress = TimerNameKeyPress
   end
   object TimerDate: TEdit
     Left = 8

@@ -1033,7 +1033,6 @@ void __fastcall TMainForm::mnuLogTimerClick(TObject *Sender)
 {
 	// logs a timer
 	TNewTimer* dlg = new TNewTimer(this, m_tmrmgr, "", "LOG");
-	dlg->TimerName->Text = "LOG_TIMER";
 	dlg->TimerName->Enabled = false;
 	dlg->Caption = T3Caption().c_str() + AnsiString(" - Log Timer");
 	dlg->ActiveControl = dlg->TimerClient;

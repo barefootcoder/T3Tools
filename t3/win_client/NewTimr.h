@@ -37,6 +37,7 @@ __published:	// IDE-managed Components
 	void __fastcall FormKeyDown(TObject *Sender, WORD &Key,
           TShiftState Shift);
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
+	void __fastcall TimerNameKeyPress(TObject *Sender, char &Key);
 
 private:	// User declarations
 

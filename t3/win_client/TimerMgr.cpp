@@ -203,6 +203,7 @@ bool TimerMgr::executeCommand (map<string, string>& attr,
 	// create a message and received messages container
 	T3Message msg("MESSAGE", attr, content);
 	string curcmd = msg.getAttribute("command");
+	string curname = msg.getAttribute("name");
 
 	T3MultiMap rcvmsgs;
 	string url = m_options["server_url"];
@@ -214,7 +215,8 @@ bool TimerMgr::executeCommand (map<string, string>& attr,
 		T3MultiMap::iterator it = rcvmsgs.begin();
 		for ( ; it != rcvmsgs.end(); ++it )
 		{
-			if ( it->second.getAttribute("command") == curcmd )
+			if ( it->second.getAttribute("command") == curcmd  &&
+				 it->second.getAttribute("name") == curname )
 			{
 				if ( it->second.getContent() == "OK" )
 				{

@@ -40,16 +40,31 @@ void __fastcall TNewTimer::FormClose(TObject *Sender, TCloseAction &Action)
 	bool closewin = true;
 	if ( ModalResult == mrOk )
 	{
+		string name = "";
+
 		// timer name can not be blank
 		if ( TimerName->Text.IsEmpty() )
 		{
-			Action = caNone;
-			ShowMessage("Please enter a timer name.");
-			TimerName->SetFocus();
-			return;
+			if ( TimerName->Enabled )
+			{
+				Action = caNone;
+				ShowMessage("Please enter a timer name.");
+				TimerName->SetFocus();
+				return;
+			}
+			else
+			{
+				// set a default name
+				name = "BUDDYS_EMPTY_TIMER_NAME";
+			}
+		}
+		else
+		{
+			// get the name
+			name = TimerName->Text.c_str();
 		}
 
-		Timer timer(TimerName->Text.c_str(), TimerClient->Text.c_str(),
+		Timer timer(name, TimerClient->Text.c_str(),
 					TimerProject->Text.c_str(), TimerPhase->Text.c_str());
 		timer.setHalfTime(chkHalfTime->Checked);
 		timer.setDescription(TimerNotes->Lines->Text.c_str());
@@ -71,7 +86,7 @@ void __fastcall TNewTimer::FormClose(TObject *Sender, TCloseAction &Action)
 		if ( !closewin )
 		{
 			string msg = "The server responded with\n\n" + 
-						  m_tmrmgr.getLastError() + 
+						  m_tmrmgr.getLastError() +
 						"\n\nWould you like to re-enter values?";
 			string cpt = T3Caption() + " - Timer Error";
 			int rc = Application->MessageBox(msg.c_str(), cpt.c_str(),
@@ -93,38 +108,18 @@ void __fastcall TNewTimer::FormClose(TObject *Sender, TCloseAction &Action)
 		Action = caNone;
 	}
 
-	return;	
+	return;
 }
 //---------------------------------------------------------------------------
-/*
-	if ( rc == mrOk && !NewTimerName.empty() )
+void __fastcall TNewTimer::TimerNameKeyPress(TObject *Sender, char &Key)
+{
+	if ( Key == ' ' )
 	{
-		if (TimersList->Items->IndexOf(NewTimerName.c_str()) > -1 )
-		{
-			string msg = "Timer " + NewTimerName + " already exists.\n\n" +
-						string("Would you like to start timer ") + 
-						NewTimerName + string ("?");
-			string cpt = T3Caption() + " - Timer Exists";
-			if ( Application->MessageBox(cpt.c_str(), msg.c_str(),
-										 MB_ICONQUESTION | MB_YESNO) == mrNo)
-			{
-				// user cancelled operation
-				return;
-			}
-		}
-		else
-		{
-			//create new timer, add to collection, add to display list
-			Timer new_timer(NewTimerName, client);
-			TimerCollection.insert(make_pair(NewTimerName, new_timer));
-
-		}
-
-		//select the timer, and start it up
-		//(this behavior can be omitted by simply hiding this code)
-						TimersList->Items->IndexOf(NewTimerName.c_str());
-		startTimer(halftime);
+		Beep();
+    	Key = 0;
 	}
-*/
+        
+	return;
+}
 //---------------------------------------------------------------------------
 
