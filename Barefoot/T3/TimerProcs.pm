@@ -827,7 +827,7 @@ sub calc_salary_bank
 					# exhausted, thus the addition of the two below
 					$overage = range::min($overage,
 									$max_debit_amount + $bank_before)
-							if $bank_before - $overage < 0;
+							if $bank_before > 0 and $bank_before - $overage < 0;
 					$overage = $bank_before - $undercap_threshhold
 							if $bank_before - $overage < $undercap_threshhold;
 					$_->{actual_pay} = $total_pay + $overage;
