@@ -43,14 +43,15 @@ my $opt = {};
 getopts("S:U:D:s:h", $opt);
 if (defined $opt->{h})
 {
-	print STDERR "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]";
-	print STDERR "   defaults are -S$server -U$user -D$destdb";
+	print STDERR "usage: $0 [-S server] [-U username] [-D dest_db] ",
+			"[-s data_store]\n";
+	print STDERR "   defaults are -S $server -U $user -D $destdb -s $dstore\n";
 	exit;
 }
 $server = $opt->{S} if defined $opt->{S};
 $user = $opt->{U} if defined $opt->{U};
 $destdb = $opt->{D} if defined $opt->{D};
-$dstore = $opt->{d} if defined $opt->{d};
+$dstore = $opt->{s} if defined $opt->{s};
 
 
 STDOUT->autoflush();
