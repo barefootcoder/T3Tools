@@ -5,6 +5,7 @@ use strict;
 use Barefoot::input qw(input);
 use Barefoot::T3;
 use Time::localtime;
+use CGI;
 
 T3::initialize($::ENV{HOME});
 
@@ -34,6 +35,7 @@ my @messages;
 		next unless ($message->{to} = shift @history_line) =~ /$to/;
 		$message->{date} = ctime(shift @history_line);
 		$message->{content} = shift @history_line;
+		$message->{content} = CGI::unescapeHTML($message->{content});
 
 		unshift @messages, $message;
 	}
