@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.7  2000/10/10 05:27:40  buddy
+# added phase-specific billing ratios
+#
 # Revision 1.6  2000/03/29 20:25:56  buddy
 # changed stored procedures to match new commission table structure
 # added new table (profit_client) to calc_profit
@@ -81,6 +84,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		emp					internal_id		NOT NULL,
 		client				internal_id		NOT NULL,
 		proj				internal_id		NOT NULL,
+		phase				internal_id		NULL,
 		date				datetime		NOT NULL,
 		hours				numeric(5,2)	NOT NULL,
 		requires_payment	bit				NOT NULL,
@@ -546,6 +550,17 @@ run_query -S$server -U$user -D$destdb <<-END
 		where pa.emp = pr.emp
 		and pr.client is NULL
 		and pr.proj is NULL
+		and pr.phase is NULL
+		and pa.date between pr.start_date and pr.end_date
+
+		-- get general employee/phase rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
+		and pr.client is NULL
+		and pr.proj is NULL
+		and pa.phase = pr.phase
 		and pa.date between pr.start_date and pr.end_date
 
 		-- get general employee/client rates
@@ -555,6 +570,17 @@ run_query -S$server -U$user -D$destdb <<-END
 		where pa.emp = pr.emp
 		and pa.client = pr.client
 		and pr.proj is NULL
+		and pr.phase is NULL
+		and pa.date between pr.start_date and pr.end_date
+
+		-- get general employee/client/phase rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
+		and pa.client = pr.client
+		and pr.proj is NULL
+		and pa.phase = pr.phase
 		and pa.date between pr.start_date and pr.end_date
 
 		-- get specific employee/client/project rates
@@ -564,6 +590,17 @@ run_query -S$server -U$user -D$destdb <<-END
 		where pa.emp = pr.emp
 		and pa.client = pr.client
 		and pa.proj = pr.proj
+		and pr.phase is NULL
+		and pa.date between pr.start_date and pr.end_date
+
+		-- get specific employee/client/project/phase rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
+		and pa.client = pr.client
+		and pa.proj = pr.proj
+		and pa.phase = pr.phase
 		and pa.date between pr.start_date and pr.end_date
 
 		-- now figure the actual total pay
