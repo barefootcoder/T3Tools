@@ -493,7 +493,6 @@ sub usage
 		"       -h:   half-time timing (while watching movies, etc)\n",
 		"       -u:   user name to use (default is current user)\n",
 		"       -C:   client number to use (default is user-specific)\n",
-		"    user must have an I:\\ drive directory\n",
 		"    clientnum must be a valid 3-digit timer code\n",
 		"    timername is ignored for -p\n",
 		"    newtimername is ignored for all but -n\n",
