@@ -348,6 +348,8 @@ sub rename                   # new name for a timer
 			die("That timer already exists");
         }
 
+		# change name attribute
+		$timerinfo->{timers}->{$oldname}->{name} = $newname;
 		# copy old to new
         $timerinfo->{timers}->{$newname} = $timerinfo->{timers}->{$oldname};
 		# delete new
