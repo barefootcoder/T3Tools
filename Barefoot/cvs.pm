@@ -30,6 +30,9 @@ use strict;
 use Carp;
 use FileHandle;
 
+use Barefoot::base;
+use Barefoot::exception;
+
 
 use constant WORKING_DIR => "/proj/" .
 		scalar(exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER});
@@ -113,7 +116,7 @@ sub _get_lockers
 
 			push @$lockers, $user;
 		}
-		close(ED);
+		close($ed);
 
 		$lockers_cache{$module} = $lockers;
 	}
@@ -174,6 +177,22 @@ sub check_general_errors
 {
 	# must either set CVSROOT in environment, or pass in via -d (or equivalent)
 	die("$me: CVS root directory must be set\n") unless $cvsroot;
+}
+
+
+sub exists
+{
+	# basically, we'll just try to get the lockers
+	# if it dies, the module doesn't exist
+	try
+	{
+		&_get_lockers;
+		return true;
+	}
+	catch
+	{
+		return false;
+	};
 }
 
 
@@ -260,6 +279,9 @@ sub project_group
 sub is_offsite
 {
 	my ($cvsroot) = @_;
+
+	# this function is depracated, so inform the user
+	carp("getLockers is a depracated function; report to sys admin");
 
 	if ( $cvsroot =~ /^\:pserver\:/ || $cvsroot =~ /^\:ext\:/ )
 	{
