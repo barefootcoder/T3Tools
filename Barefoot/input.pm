@@ -66,15 +66,30 @@ sub get_yn
 
 sub input
 {
-	my ($prompt, $default) = @_;
+	my ($prompt, $default, $opts) = @_;
 
 	local ($|) = 1;							# autoflush stdout
-	print $prompt if $prompt;
-	print " (", $default, ")" if defined($default);
-	print "  " if defined($prompt);
 
-	my $answer = <STDIN>;
-	chomp $answer;
+	my $answer = "";
+	INPUT:
+	{
+		print $prompt if $prompt;
+		print " (", $default, ")" if defined($default);
+		print "  " if defined($prompt);
+
+		$answer = <STDIN>;
+		chomp $answer;
+
+		if ($answer ne "" and exists $opts->{VALID})
+		{
+			unless ($opts->{VALID}->($answer))
+			{
+				print $opts->{VALID_ERR} if exists $opts->{VALID_ERR};
+				redo INPUT;
+			}
+		}
+	}
+
 	return ( $answer ne "" ) ? $answer : $default;
 }
 
@@ -99,7 +114,7 @@ sub menu_select
 		print "\n";
 
 		chomp $choice;
-		redo MENU if $choice < 1 or $choice > @choices;
+		redo MENU if not $choice or $choice < 1 or $choice > @choices;
 		return $choice - 1;
 	}
 }
