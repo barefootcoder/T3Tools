@@ -1,0 +1,22 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::debug;							# comment out for production
+
+use Barefoot::T3;
+
+
+T3::initialize($::ENV{HOME});
+
+if (@ARGV != 2)
+{
+	print STDERR "usage: $0 user \"message text\"\n";
+	exit 2;
+}
+
+my ($to, $text) = @ARGV;
+
+my $message = T3::build_message($T3::username, $to, "NO_REPLY", $text);
+
+T3::send_message($message);
