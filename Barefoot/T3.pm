@@ -30,18 +30,15 @@ use strict;
 use Carp;
 
 use CGI;
+use Barefoot::file;
 use Barefoot::html_menu;
 use Barefoot::config_file;
 
 use constant CONFIG_FILE => '/etc/t3.conf';
+use constant SERVER_FILE => '/etc/t3.servers';
 use constant DEFAULT_WORKGROUP => 'Barefoot';
 
-use constant INI_FILE => 't3client.ini';
-
-use constant SERVER_URL_DIRECTIVE => 'server_url';
-use constant USERNAME_DIRECTIVE => 'user_name';
-use constant CLIENT_TIMEOUT_DIRECTIVE => 'server_refresh_interval';
-use vars qw($server_url $username $client_timeout);
+use vars qw($server_url $username);
 
 use constant LOGON_MESSAGE		=> 'LOGON';
 use constant LOGOFF_MESSAGE		=> 'LOGOFF';
@@ -57,9 +54,13 @@ use constant DELIVERED_MESSAGE	=> 'NORMAL_DLVD';
 use constant READ_MESSAGE		=> 'NORMAL_READ';
 use constant RECEIVED_MESSAGE	=> 'NORMAL_RCVD';
 
-my $cfg_file = config_file->read(CONFIG_FILE);
-my $workgroup = defined($::ENV{T3_WORKGROUP})
+our $cfg_file = config_file->read(CONFIG_FILE);
+
+our $username = defined($::ENV{T3_USER})
+		? $::ENV{T3_USER} : $::ENV{USER};
+our $workgroup = defined($::ENV{T3_WORKGROUP})
 		? $::ENV{T3_WORKGROUP} : DEFAULT_WORKGROUP;
+our $server_url = workgroup_server($workgroup);
 
 1;
 
@@ -73,6 +74,7 @@ sub set_workgroup
 	my ($new_wg) = @_;
 
 	$workgroup = $new_wg;
+	$server_url = workgroup_server($workgroup);
 }
 
 sub get_workgroup
@@ -80,34 +82,33 @@ sub get_workgroup
 	return $workgroup;
 }
 
-sub initialize
+sub set_server
 {
-	my ($dir) = @_;
+	my ($new_server) = @_;
 
-	# get ini file parameters
-	my $ini_file = "$dir/" . INI_FILE;
-	open(INI, $ini_file) or croak("can't get initialization from $ini_file");
-	while ( <INI> )
+	$server_url = $new_server;
+}
+
+sub get_server
+{
+	return $server_url;
+}
+
+sub workgroup_server
+{
+	my ($find_wg) = @_;
+
+	my $wg_server;
+
+	open(SVR, SERVER_FILE) or croak("cannot open server file " . SERVER_FILE);
+    while ( <SVR> )
 	{
-		chomp;
-		s/\r$//;								# might be DOS format
-		s/;.*$//;								# get rid of comments
-		next if /^\s*$/;						# skip blank lines
-		my ($var, $val) = /^(.*?)=(.*)$/;
-		if ($var eq SERVER_URL_DIRECTIVE)
-		{
-			$server_url = $val;
-		}
-		elsif ($var eq USERNAME_DIRECTIVE)
-		{
-			$username = $val;
-		}
-		elsif ($var eq CLIENT_TIMEOUT_DIRECTIVE)
-		{
-			$client_timeout = $val;
-		}
+		my ($wgroup, $url) = /^(\w+)=(.*)$/;
+		$wg_server = $url and last if $wgroup eq $find_wg;
 	}
-	close(INI);
+	close (SVR);
+    
+	return $wg_server;
 }
 
 sub config_param
