@@ -69,6 +69,7 @@ for (1..1)
 			test_unknown_module();
 			test_bogus_output1();
 			test_bogus_output2();
+			test_bogus_output3();
 			test_request_module();
 			test_large_output_module();
 			test_timer_module();
@@ -284,6 +285,7 @@ sub test_unknown_module
 			unless get_last_log() =~ /: unknown request handler/;
 }
 
+
 sub test_bogus_output1
 {
 	save_log_size();
@@ -299,6 +301,23 @@ sub test_bogus_output2
 	die("didn't gracefully handle bogus output pipe")
 			unless get_last_log() =~ /: output pipe name invalid/;
 }
+
+sub test_bogus_output3
+{
+	save_log_size();
+	# going direct to _request_to_pipe means it won't make the output pipe
+	T3::Client::_request_to_pipe("request=test output=bogus");
+	die("didn't gracefully handle missing output pipe")
+			unless get_last_log() =~ /: client didn't create pipe/;
+	# check to see if the server made a (non-pipe) file itself
+	my $bogus_pipe = t3_pipename(T3::OUTPUT_FILE . "bogus");
+	if (-e $bogus_pipe)
+	{
+		unlink($bogus_pipe);
+		die("server tried to create pipe instead of ignoring it");
+	}
+}
+
 
 sub test_large_output_module
 {
