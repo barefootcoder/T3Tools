@@ -28,14 +28,18 @@ use Barefoot::DataStore;
 use Barefoot::input qw<get_yn>;
 
 
-my $server = "SYBASE_1";
+my $server = "lexx";
 my $user = "sa";
 my $destdb = "t3test";
 my $dstore = "t3test";
 
+my $data_device = "data1";
+my $idx_device = "idx1";
+my $log_device = "log1";
+
 # the following line needs to match the equivalent line in make_timer
 my $admin_users = "christy,wayne,buddy";
-my $non_admin_users = "guest,www,marcus";
+my $non_admin_users = "guest,apache,marcus,gcallah";
 my $schema_users = "t3,timer,talker,tracker,reporting";
 
 my $opt = {};
@@ -84,15 +88,16 @@ print RQ <<END;
 	;
 
 	create database $destdb
-		on data_2 = 100
-		log on data_1 = 35
+		on $data_device = 100,
+			$idx_device = 25
+		log on $log_device = 35
 	;
 	sp_dboption $destdb, 'trunc log on chkpt', true
 	;
 
 	use $destdb
 	;
-	sp_addsegment index_seg, $destdb, data_2
+	sp_addsegment index_seg, $destdb, $idx_device
 	;
 	checkpoint
 	;
