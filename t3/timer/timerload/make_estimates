@@ -1,0 +1,103 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+# $Log$
+# $Id$
+# $Revision$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+srcdb=TIMERLOAD
+destdb=TIMER
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	$(overwrite_table estimate "
+		client				char(3)			NOT NULL,
+		proj				char(3)			NOT NULL,
+		phase				char(3)			NOT NULL,
+		num_hours			int				NOT NULL,
+		low_range_amount	money			NOT NULL,
+		high_range_amount	money			NOT NULL,
+		maximum_amount		money			NOT NULL,
+		chguser				varchar(20)		NOT NULL,
+		chgdate				datetime		NOT NULL,
+	")
+
+	create unique index estimate
+	on estimate (client, proj, phase)
+	go
+
+	print "adding records for ILJ"
+	go
+
+	-- Phase I estimates
+	insert estimate
+	values ("509", "PH1", "DBD", 32, 4000, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "PH1", "DES", 48, 5616, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "PH1", "PRG", 136, 12104, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "PH1", "QAT", 80, 5600, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "PH1", "DOC", 48, 2880, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "PH1", "PM", 40, 5000, 0, 0, "$USER", getdate())
+	go
+	update estimate
+	set high_range_amount = low_range_amount * 1.2,
+		maximum_amount = low_range_amount * 1.8
+	where proj = "PH1"
+	go
+
+	-- new splits estimates
+	insert estimate
+	values ("509", "SPL", "ANA", 16, 1584, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "DES", 32, 3744, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "PRG", 80, 7120, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "DTP", 16, 800, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "QAT", 32, 2240, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "DOC", 8, 480, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "SPL", "PM", 24, 3000, 0, 0, "$USER", getdate())
+	go
+	update estimate
+	set high_range_amount = low_range_amount * 1.2,
+		maximum_amount = low_range_amount * 1.8
+	where proj = "SPL"
+	go
+
+	-- new splits estimates
+	insert estimate
+	values ("509", "REP", "DBD", 8, 1000, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "ANA", 16, 1584, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "DES", 64, 7488, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "PRG", 192, 17088, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "QAT", 48, 3360, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "SYS", 8, 560, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "DAT", 8, 560, 0, 0, "$USER", getdate())
+	insert estimate
+	values ("509", "REP", "PM", 40, 5000, 0, 0, "$USER", getdate())
+	go
+	update estimate
+	set high_range_amount = low_range_amount * 2,
+		maximum_amount = low_range_amount * 3
+	where proj = "REP"
+	go
+
+END
