@@ -1,64 +1,77 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Category Percentages for Internal Projects (by user)
 
-use TIMER
+print "Period from [start_date] to [end_date]"
+go
+
+$(build_pay_amount "
+	log.date between '[start_date]' and '[end_date]'
+	and exists
+	(
+		select 1
+		from project p
+		where log.client = p.client
+		and log.proj = p.proj
+		and p.proj_type in ('I','i')
+	)
+")
+
+exec calc_pay_amount
 go
 
 set nocount on
 go
 
-select distinct l.id, $(employee_name e) "emp_name", b.category
+update pay_amount
+set pay_rate = 0
+where requires_payment = 0
+go
+
+select distinct pa.log_source, pa.log_id, pa.emp, pa.pay_rate, ip.category
 into #cp_logs
-from log l, bproj b, client c, employee e
-where l.emp = e.emp
-and l.client = c.client
-and c.type = 'I'
-and l.proj = b.proj
-and l.date between "[start_date]" and "[end_date]"
--- exclude WEB hours
-and not (l.client = "001" and l.proj = "WEB")
+from pay_amount pa, int_project ip
+where pa.proj = ip.proj
 go
 
--- do WEB hours specially
-insert #cp_logs
-select distinct l.id, $(employee_name e) + " (Web Work)", b.category
-from log l, bproj b, client c, employee e
-where l.emp = e.emp
-and l.client = c.client
-and c.type = 'I'
-and l.proj = b.proj
-and l.date between "[start_date]" and "[end_date]"
-and (l.client = "001" and l.proj = "WEB")
-go
-
-select cpl.emp_name, cpl.category, convert(numeric(5,2),
-		sum(l.hours)) "cat_hrs"
+select cpl.emp, cpl.pay_rate, cpl.category,
+		convert(numeric(5,2), sum(pa.hours)) "cat_hrs"
 into #cp_cathours
-from #cp_logs cpl, log l
-where l.id = cpl.id
-group by cpl.emp_name, cpl.category
+from #cp_logs cpl, pay_amount pa
+where pa.log_source = cpl.log_source
+and pa.log_id = cpl.log_id
+group by cpl.emp, cpl.pay_rate, cpl.category
 go
 
-select cpl.emp_name, convert(numeric(5,2), sum(l.hours)) "ttl_hrs"
+select cpl.emp, cpl.pay_rate, convert(numeric(5,2), sum(pa.hours)) "ttl_hrs"
 into #cp_emphours
-from #cp_logs cpl, log l
-where l.id = cpl.id
-group by cpl.emp_name
+from #cp_logs cpl, pay_amount pa
+where pa.log_source = cpl.log_source
+and pa.log_id = cpl.log_id
+group by cpl.emp, cpl.pay_rate
 go
 
-select cpct.emp_name, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
-	convert(numeric(5,2), 0) "pct"
+select cpct.emp, cpct.pay_rate, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
+		convert(numeric(5,2), 0) "pct"
 into #cat_pcts
 from #cp_cathours cpct, #cp_emphours cpet
-where cpct.emp_name = cpet.emp_name
+where cpct.emp = cpet.emp
+and cpct.pay_rate = cpet.pay_rate
 go
 
 update #cat_pcts
 set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
 go
 
-select cp.emp_name, cp.category, cp.cat_hrs, cp.ttl_hrs,
-	str(cp.pct, 6, 2) + '%' "pct"
-from #cat_pcts cp
--- and lower(e.login) = lower("{user}")
+select $(employee_name e) "name", cp.pay_rate, cat.name "category",
+		cp.cat_hrs, cp.ttl_hrs, str(cp.pct, 6, 2) + '%' "pct"
+from #cat_pcts cp, employee e, category cat
+where cp.emp = e.emp
+and cp.category = cat.category
+order by cp.emp, cp.pay_rate, cat.name
+go
+
+select cat.name, sum(cp.cat_hrs) "ttl hrs"
+from #cat_pcts cp, category cat
+where cp.category = cat.category
+group by cat.name
 go
