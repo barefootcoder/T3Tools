@@ -603,7 +603,7 @@ sub print_parsable
 	my $user = $timerinfo->{user};
 	foreach my $timer (keys %{$timerinfo->{timers}})
 	{
-		print "$timer\n" and next if $timerinfo->{parse_fmt} eq 'TOTAL';
+		print "$timer\n" and next if $timerinfo->{parse_fmt} eq 't';
 
 		my $client = $timerinfo->{timers}->{$timer}->{client};
 		foreach my $part (reverse split(/,/,
@@ -622,8 +622,8 @@ sub print_parsable
 				next;
 			}
 
-			$part =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
-			print "$2:$3";				# if current, $3 will be blank field
+			my ($start, $end) = ($part =~ m{(?:(\d+)/)?(\d+)-(\d+)?});
+			print "$start:$end";		# if current, $end will be blank field
 
 			# not sure if half-time is needed, so we'll leave it out for now
 			# print " at half-time" if $1 == 2;
