@@ -1,5 +1,25 @@
 -- SORT GROUP: Database Lists
--- TITLE: List of Invoices
+-- TITLE: List of Payrolls
 
-print "List starts with "
+print "List starts with checks paid on [check_date]"
+print ""
+go
+
+select convert(char(10), period_start, 101) "Period from:",
+		convert(char(10), period_end, 101) "Period to:",
+		convert(char(10), payroll_amount, 1) "Amount:",
+		convert(char(10), overhead_amount, 1) "Overhead:",
+		convert(numeric(4,2), 100.0 * overhead_amount / payroll_amount)
+				"Ovhd %",
+		convert(char(10), check_date, 101) "Paid on:"
+from payroll
+where check_date >= '[check_date]'
+order by period_start
+go
+
+print ""
+select convert(numeric(4,2), avg(100.0 * overhead_amount / payroll_amount))
+		"Average Overhead %"
+from payroll
+where check_date >= '[check_date]'
 go
