@@ -1,0 +1,107 @@
+#! /usr/bin/perl -w
+
+# For CVS:
+# $Date$
+# $Id$
+# $Revision$
+
+# create aliases for T3 data store
+
+use strict;
+
+use Getopt::Std;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "sa";
+my $dstore = "t3test";
+
+my $opt = {};
+getopts("s:U:h", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-s data_store] [-U username]\n";
+	print STDERR "   defaults are -s $dstore -U $user\n";
+	exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$dstore = $opt->{s} if defined $opt->{s};
+
+# open up the data store
+my $t3;
+try
+{
+	$t3 = DataStore->open($dstore, $user);
+}
+catch
+{
+	print STDERR "\nThe T3 data store could not be opened for the following "
+			. "reason:\n";
+	print STDERR "  ==>  $_\n";
+	print STDERR "Please run the make_t3_data_store script.  You may\n";
+	print STDERR "have to run this script as root.\n\n";
+};
+
+
+# slightly cheating here, since DataStore has no interface (yet) for
+# getting existing aliases
+# (note this a copy, not a reference)
+my %existing =
+		exists $t3->{config}->{aliases} ? %{ $t3->{config}->{aliases} } : ();
+
+my %current = ();
+
+
+# make aliases for each schema
+
+make_aliases("t3");
+make_aliases("timer");
+make_aliases("reporting");
+
+
+######################
+# SUBS               #
+######################
+
+
+sub make_aliases
+{
+	my ($schema) = @_;
+
+	# first, get all table names for this schema
+	my $res = $t3->do("
+
+			select o.name
+			from sysobjects o, sysusers u
+			where o.uid = u.uid
+			and o.type = 'U'
+			and u.name = '$schema'
+
+	");
+	die("can't get table names for schema $schema") unless defined $res;
+
+	while ($res->next_row())
+	{
+		my $table_name = $res->col('name');
+
+		if (exists $current{$table_name})
+		{
+			print STDERR "$0: tried to make two aliases $table_name\n";
+			exit 1;
+		}
+		elsif (exists $existing{$table_name})
+		{
+			print "note: alias for $table_name was already extant\n";
+			$current{$table_name} = $existing{$table_name};
+		}
+		else
+		{
+			$t3->configure_alias($table_name, "$schema.$table_name");
+			$current{$table_name} = "$schema.$table_name";
+		}
+	}
+
+	$t3->commit_configs();
+}
