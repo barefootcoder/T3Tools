@@ -2,9 +2,8 @@
 
 use strict;
 
+use Barefoot::T3;
 use Barefoot::input qw(input);
-
-use T3;
 
 my $user = $ARGV[0];
 $user = input("user to log off?") unless defined($user);
