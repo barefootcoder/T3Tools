@@ -2,6 +2,9 @@
 
 # $Header$
 # $Log$
+# Revision 1.3  1999/02/18 06:11:19  buddy
+# now calls correct version of sqlcgi.pl
+#
 # Revision 1.2  1999/02/18 05:59:44  buddy
 # generalized vars into a hash
 # consolidated text inputs into one form
@@ -20,11 +23,28 @@ $cgi = new CGI;
 $cookie_array = [];
 $debug_string = "";
 $vars = {
-	user		=>	"",
-	client		=>	"",
-	start_date	=>	"",
-	end_date	=>	"",
+	user		=>	{
+						value	=>	"",
+						size	=>	30,
+					},
+	client		=>	{
+						value	=>	"",
+						size	=>	3,
+					},
+	start_date	=>	{
+						value	=>	"",
+						size	=>	10,
+					},
+	end_date	=>	{
+						value	=>	"",
+						size	=>	10,
+					},
+	invoice		=>	{
+						value	=>	"",
+						size	=>	7,
+					},
 };
+@admin_users = ('tweber', 'christy', 'buddy');
 
 $title = 'TIMER Reports';
 $basepath = "/home/httpd/sybase/timer_reports";
@@ -32,7 +52,7 @@ $basepath = "/home/httpd/sybase/timer_reports";
 							debug("env has cookies $ENV{HTTP_COOKIE}");
 foreach $var (keys %$vars)
 {
-	$vars->{$var} = $cgi->cookie($var);
+	$vars->{$var}->{value} = $cgi->cookie($var);
 							debug("$var is $var->{$var} from cookie");
 }
 
@@ -51,22 +71,51 @@ print $cgi->center($cgi->h1($title)), "\n";
 text_form();
 print "<HR>\n";
 
+my %report_groups;
+
 debug($cgi->a({-href=>"test.cgi"}, "test"));
 for $file ( < $basepath/* > )
 {
 	$basefile = $file;
 	$basefile =~ s?^$basepath/??;
+	my ($group);
 
 	open(FILE, $file) or next;
 	while ( <FILE> )
 	{
+
+		if ( /--\s*SORT GROUP:\s*(.*)\s*/ )
+		{
+			$group = $1;
+			if (not exists $report_groups{$group})
+			{
+				$report_groups{$group} = ();
+			}
+		}
+
 		if ( /--\s*TITLE:\s*(.*)\s*/ )
 		{
 										debug("report is $1");
-			print $cgi->a({-href=>"sqlcgi.pl?$basefile"}, $1),
-					"<BR>\n";
+			#print $cgi->a({-href=>"sqlcgi.pl?$basefile"}, $1), "<BR>\n";
+			my $report = {};
+			$report->{file} = $basefile;
+			$report->{title} = $1;
+			push @{$report_groups{$group}}, $report;
 			last;
 		}
+	}
+}
+
+foreach my $group (keys %report_groups)
+{
+	next if ($group eq "Administrative Updates"
+			and not grep { $_ eq $ENV{REMOTE_USER} } @admin_users);
+	print "<P>", $cgi->h3($group);
+	foreach my $report (sort {$a->{title} cmp $b->{title}}
+			@{$report_groups{$group}})
+	{
+		print $cgi->a({-href=>"sqlcgi.pl?$report->{file}"},
+				$report->{title}), "<BR>\n";
 	}
 }
 
@@ -87,7 +136,7 @@ sub param_to_cookie
 				-path=>"/cgi-bin/",
 				-domain=>".barefoot.net",
 			);
-		$vars->{$name} = $value;
+		$vars->{$name}->{value} = $value;
 	}
 }
 
@@ -97,17 +146,17 @@ sub text_form
 	foreach $var (keys %$vars)
 	{
 		$name = $var;
-		$size = 30;
-		print "$name:";
+		$size = $vars->{$var}->{size};
+		print "<NOBR>$name:";
 		html_spaces(2);
 		print $cgi->textfield(
 				-name=>$var,
-				-default=>$vars->{$var},
+				-default=>$vars->{$var}->{value},
 				-size=>$size,
 				-maxlength=>$size
 		);
 		html_spaces(5);
-		print "\n";
+		print "</NOBR>\n";
 	}
 	print "\n<BR>", $cgi->submit('Set Variables');
 	print "</P>\n";
