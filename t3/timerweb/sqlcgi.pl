@@ -12,7 +12,7 @@ my $debug_user;
 
 my $cgi = new CGI;
 my $script = "/tmp/sqlcgi$$.ksh";
-my $basepath = DEBUG ? "/export/usr/$debug_user/proj/t3/timerweb/reports/"
+my $basepath = DEBUG ? "/proj/$debug_user/t3/timerweb/reports/"
 		: "/home/httpd/sybase/timer_reports/";
 my $lib = "/usr/local/bin/kshlib";
 my $db = DEBUG ? "timertest" : "timer";
