@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.9  2001/01/10 17:10:03  tryan
+# Removed dates from salary_bank table, added payroll_id to same.
+#
 # Revision 1.8  2001/01/09 19:13:49  tryan
 # Added code for creating insurance_rate, insurance_contribution
 #
@@ -628,7 +631,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	create unique index start
-	on payroll (period_start)
+	on payroll (period_start, check_date)
 	on index_seg
 	go
 
@@ -681,7 +684,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		proj				internal_id		NOT NULL,
 		phase				internal_id		NULL,
 		cliproj				external_id		NULL,
-		date				datetime		NOT NULL,
+		log_date			datetime		NOT NULL,
 		hours				numeric(5,2)	NOT NULL,
 		comments			comments_text	NULL,
 		invoice_id			unique_id		NULL,
@@ -720,7 +723,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		log_id				unique_id		IDENTITY,
 		client				internal_id		NOT NULL,
 		proj				internal_id		NULL,
-		date				datetime		NOT NULL,
+		log_date			datetime		NOT NULL,
 		amount_billed		money			NOT NULL,
 		amount_paid			money			NOT NULL,
 		comments			comments_text	NULL,
@@ -737,7 +740,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	create index cliproj
-	on materials_log (client, proj, date)
+	on materials_log (client, proj, log_date)
 	on index_seg
 	go
 
@@ -756,7 +759,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		proj				internal_id		NOT NULL,
 		num_students		tinyint			NOT NULL,
 		num_breaks			tinyint			NULL,
-		date				datetime		NOT NULL,
+		log_date			datetime		NOT NULL,
 		start_time			datetime		NOT NULL,
 		end_time			datetime		NOT NULL,
 		comments			comments_text	NULL,
@@ -773,7 +776,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	create unique index cliproj
-	on class_log (client, proj, date)
+	on class_log (client, proj, log_date)
 	on index_seg
 	go
 
