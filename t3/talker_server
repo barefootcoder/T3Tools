@@ -13,6 +13,8 @@
 
 use strict;
 
+use Barefoot::debug;							# comment out for production
+
 use CGI;
 use Barefoot::file;
 
@@ -20,6 +22,7 @@ use Barefoot::file;
 use constant MERROR =>
 		'<MESSAGE from="" to="" status="ERROR">ERROR_TEXT</MESSAGE>';
 use constant TALKERPATH => "./talker/";		# where message box files are found
+use constant HISTORY_FILE => TALKERPATH . "history";
 
 # functions:
 sub qualifyString;
@@ -32,29 +35,24 @@ sub addToRoll;
 # ---------------------------------------------------------------------------
 # main()
 
-my $HitID = "";				#  to store argument sent by browser
-my $reply = "";				#  to store the data to be sent to browser
 my $cgi = new CGI;			#  for CGI operations
 
 my $pquery = $::ENV{QUERY_STRING};
 
-if ($pquery)
-{
-	$HitID = $pquery;
-}
-else
+if (!$pquery)
 {
 	# THIS NEXT LINE IS FOR TEST ONLY, TO GET ARG FROM KEYBOARD
-	# $HitID = <STDIN>;
+	# $pquery = <STDIN>;
 	# IN RELEASE VERSION, ONLY THE NEXT LINE SHOULD BE EXPOSED:
 	exit;     			  		  # nothing to do
 }
 
-$reply = qualifyString($HitID);	# Decodes string and pre-tests if valid
+my $message = qualifyString($pquery);	# Decodes string and pre-tests if valid
 
+my $reply;
 eval
 {
-	$reply = processMessage($reply);
+	$reply = processMessage($message);
 };
 $reply = MERROR and chomp($@) and $reply =~ s/ERROR_TEXT/$@/ if $@;
 
@@ -67,32 +65,33 @@ print $cgi->header(), $reply;
 
 sub qualifyString
 {
-	my ($message) = @_;
+	my ($xml_string) = @_;
 
 	# also decodes space encoding
 	# (full CGI decoding may be needed later)
 
-	my $attr = getAttrs($message);
+	my $attr = getAttrs($xml_string);
 	$attr->{time} = time();
-	$message = buildMessage($attr);
+	buildMessage($attr);
 
 	# always true -- validation not implemented in this version
-	return 1 ? $message : MERROR;
+	return 1 ? $attr : MERROR;
 }
 # ---------------------------------------------------------------------------
 
 sub processMessage
 {
-	my ($message) = @_;
+	my ($attr) = @_;
 
-	my $attr = getAttrs($message);
+	my $message = $attr->{_FULL_};
 
 	# save the received messages
 	if ($attr->{status} eq "NORMAL")
 	{
 		addToBox($attr->{to}, $message);
+		addToHistory($attr);
 	}
-	else         # assuming either "IMON" or "IMOFF" -- no others implemented
+	else         # assuming IMON, IMOFF, or IMBUSY -- no others implemented
 	{
 		addToRoll($attr->{from}, $attr->{status}, $attr->{_DATA_}, $message);
 		addToBox($attr->{from});	# dummy to force box creation if new user
@@ -123,6 +122,7 @@ sub getAttrs
 	$attr->{$1} = $2 while $open_tag =~ m/(\w+)="(.*?)"/g;
 
 	($attr->{_DATA_}) = $element =~ /<.*?>(.*?)<\/.*>/;
+	$attr->{_FULL_} = $element;
 
 	return $attr;
 }
@@ -134,6 +134,8 @@ sub buildMessage
 
 	# get the data out of the attr so it won't show up in the attlist
 	my $data = delete $attr->{_DATA_};
+	# also get rid of the former full message, since we will replace it
+	delete $attr->{_FULL_};
 
 	my $message = "<MESSAGE";
 	foreach my $attname (keys %$attr)
@@ -142,19 +144,34 @@ sub buildMessage
 	}
 	$message .= ">$data</MESSAGE>\r\n";
 
-	return $message;
+	$attr->{_FULL_} = $message;
 }
 # ---------------------------------------------------------------------------
 
 sub addToBox
 {
-	my ($user, $message) = @_;
+	my ($users, $message) = @_;
 
-	# append only (automatically creates if does not exist)
+	if ($users eq 'ALL')
+	{
+		opendir(TDIR, TALKERPATH) or die("can't open talker directory");
+		foreach my $box (readdir(TDIR))
+		{
+			file::append_lock(TALKERPATH . $box, $message) if $box =~ /\.box$/;
+		}
+		closedir(TDIR);
+	}
+	else
+	{
+		foreach my $user (split(',', $users))
+		{
+			# append only (automatically creates if does not exist)
 
-	my $path = TALKERPATH . $user . ".box";
+			my $path = TALKERPATH . $user . ".box";
 
-	file::append_lock($path, $message);
+			file::append_lock($path, $message);
+		}
+	}
 }
 # ---------------------------------------------------------------------------
 
@@ -185,3 +202,12 @@ sub addToRoll
 }
 # ---------------------------------------------------------------------------
 
+sub addToHistory
+{
+	my ($attr) = @_;
+
+	file::fastio_append_record(HISTORY_FILE,
+			undef,								# placeholder for message ID
+			$attr->{from}, $attr->{to}, $attr->{time}, $attr->{_DATA_});
+}
+# ---------------------------------------------------------------------------
