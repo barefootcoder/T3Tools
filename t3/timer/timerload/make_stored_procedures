@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.10  2000/11/14 17:03:39  tryan
+# Altered proc calc_salary_pay to use latest salary_bank record
+# occurring before start_date variable, rather than max (end_date).
+#
 # Revision 1.9  2000/11/13 20:30:39  tryan
 # Added requires_billing to pay_amount.
 # Added salary_amount table and calc_salary_pay sproc.
@@ -1003,7 +1007,8 @@ run_query -S$server -U$user -D$destdb <<-END
 	--           (aka: total_pay >= amount_per_period )
 	-- 4A. Calc overage amount (period threshold) 
 	-- 4B. Calc overcap amount (surplus in the bank)
-	-- 4C. Calc actual pay (regular pay + weekly overage + amount over cap ).
+	-- 4C. Calc actual pay (regular pay + 
+	--     weekly overage + amount over cap ).
 
 	-- 5. Do pay calculations for employees earned *less* than 
 	--      regular weekly pay (i.e. amount_per_period).
@@ -1018,7 +1023,8 @@ run_query -S$server -U$user -D$destdb <<-END
 	--     (max out to undercap_threshold_amt limit).
 	-- 5D. Set the actual pay.
 
-	-- 6. Calc bank adjust in salary_amount (earned - paid = amount to bank).
+	-- 6. Calc bank adjust in salary_amount 
+	--      (earned - paid = amount to bank).
 
 	-- 7. Calc bank_after (new bank balance)
 
@@ -1032,158 +1038,164 @@ run_query -S$server -U$user -D$destdb <<-END
 
 	as
 
-	-- 0. Clear out salary_amount
-	delete from salary_amount
+		-- 0. Clear out salary_amount
+		delete from salary_amount
 
-	-- 1. Set up the draw limits for salary/draw employees.
-	insert salary_amount (
-		emp, 
-		bank_before, 
-		total_pay, 
-		amount_per_period, 
-		max_debit_amt, 
-		max_overage_amt, 
-		overcap_threshold_amt, 
-		undercap_threshold_amt, 
-		overage_amt, 
-		overcap_amt, 
-		bank_adjust, 
-		bank_after, 
-		actual_pay,
-		start_date,
-		end_date,
-		create_date,
-		create_user)
-	select distinct  
-		sd.emp, 
-		0,                                           -- bank_before
-		0,                                           -- total_pay
-		sd.amount_per_period,                        -- amount_per_period
-		sd.amount_per_period * sd.max_debit,         -- max_debit_amt
-		sd.amount_per_period * sd.max_overage,       -- max_overage_amt
-		sd.amount_per_period * sd.periods_cap,       -- overcap_threshold_amt
-		sd.amount_per_period * sd.periods_cap * -1,  -- undercap_threshold_amt
-		0, 
-		0, 
-		0, 
-		0, 
-		0,
-		@start_date,
-		@end_date,
-		getdate(),
-		suser_name()
-	from pay_amount pa, salary_draw sd
-	where pa.emp =* sd.emp 
-	and @start_date between sd.start_date and sd.end_date
+		-- 1. Set up the draw limits for salary/draw employees.
+		insert salary_amount (
+			emp, 
+			bank_before, 
+			total_pay, 
+			amount_per_period, 
+			max_debit_amt, 
+			max_overage_amt, 
+			overcap_threshold_amt, 
+			undercap_threshold_amt, 
+			overage_amt, 
+			overcap_amt, 
+			bank_adjust, 
+			bank_after, 
+			actual_pay,
+			start_date,
+			end_date,
+			create_date,
+			create_user)
+		select distinct  
+			sd.emp, 
+			0,                                         -- bank_before
+			0,                                         -- total_pay
+			sd.amount_per_period,                      -- amount_per_period
+			sd.amount_per_period * sd.max_debit,       -- max_debit_amt
+			sd.amount_per_period * sd.max_overage,     -- max_overage_amt
+			sd.amount_per_period * sd.periods_cap,     -- overcap_threshold_amt
+			sd.amount_per_period * sd.periods_cap * -1, -- undercap_threshold_amt
+			0, 
+			0, 
+			0, 
+			0, 
+			0,
+			@start_date,
+			@end_date,
+			getdate(),
+			suser_name()
+		from pay_amount pa, salary_draw sd
+		where pa.emp =* sd.emp 
+		and @start_date between sd.start_date and sd.end_date
 
-	-- 2. START: Set the total pay for this period. 
-	select pa.emp, sum ( pa.total_pay ) total_pay
-	into #total_pay
-	from salary_amount csp, pay_amount pa
-	where csp.emp = pa.emp
-	group by pa.emp
+		-- 2. START: Set the total pay for this period. 
+		select pa.emp, sum ( pa.total_pay ) "total_pay"
+		into #total_pay
+		from salary_amount csp, pay_amount pa
+		where csp.emp = pa.emp
+		group by pa.emp
 
-	update salary_amount
-	set total_pay = tp.total_pay
-	from #total_pay tp, salary_amount sa
-	where tp.emp = sa.emp
-	-- 2. END:Set the total pay for this period. 
+		update salary_amount
+		set total_pay = tp.total_pay
+		from #total_pay tp, salary_amount sa
+		where tp.emp = sa.emp
+		-- 2. END:Set the total pay for this period. 
 
-	-- 3. Set the previous bank balance.
-	update salary_amount
-	set bank_before = sb.bank_amount 
-	from salary_amount csp, salary_bank sb
-	where csp.emp = sb.emp
-	and sb.end_date = 
-        ( select max (end_date)
-          from salary_bank sb2
-          where sb2.emp = sb.emp
-          and sb2.end_date < @start_date )
+		-- 3. Set the previous bank balance.
+		update salary_amount
+		set bank_before = sb.bank_amount 
+		from salary_amount csp, salary_bank sb
+		where csp.emp = sb.emp
+		and sb.end_date = 
+			( select max (end_date)
+			  from salary_bank sb2
+			  where sb2.emp = sb.emp
+			  and sb2.end_date < @start_date )
 
-	--------------------------------------------------------------------------
-	-- 4. BEGIN: Employee earned *more* than regular weekly pay 
-	--           (i.e. amount_per_period).
-	--           (aka: total_pay >= amount_per_period )
+		----------------------------------------------------------------
+		-- 4. BEGIN: Employee earned *more* than regular weekly pay 
+		--           (i.e. amount_per_period).
+		--           (aka: total_pay >= amount_per_period )
 
-	-- 4A. Calc overage amount (period threshold) 
-	update salary_amount
-	set overage_amt = total_pay - max_overage_amt  
-	where total_pay >= amount_per_period 
-	and total_pay - max_overage_amt > 0
+		-- 4A. Calc overage amount (period threshold) 
+		update salary_amount
+		set overage_amt = total_pay - max_overage_amt  
+		where total_pay >= amount_per_period 
+		and total_pay - max_overage_amt > 0
 
-	-- 4B. Calc overcap amount (surplus in the bank)
-	update salary_amount
-	set overcap_amt = total_pay - amount_per_period - overage_amt + bank_before - overcap_threshold_amt
-	where total_pay >= amount_per_period 
-	and total_pay - amount_per_period - overage_amt + bank_before - overcap_threshold_amt > 0
+		-- 4B. Calc overcap amount (surplus in the bank)
+		update salary_amount
+		set overcap_amt = total_pay - amount_per_period 
+						  - overage_amt + bank_before 
+						  - overcap_threshold_amt
+		where total_pay >= amount_per_period 
+		and total_pay - amount_per_period - overage_amt 
+			  + bank_before - overcap_threshold_amt > 0
 
-	-- 4C. Calc actual pay (regular pay + weekly overage + amount over cap ).
-	update salary_amount
-	set actual_pay = amount_per_period + overage_amt + overcap_amt
-	where total_pay >= amount_per_period 
+		-- 4C. Calc actual pay (regular pay + 
+		--           weekly overage + amount over cap ).
+		update salary_amount
+		set actual_pay = amount_per_period 
+						  + overage_amt 
+						  + overcap_amt
+		where total_pay >= amount_per_period 
 
-	-- END: Employee earned more than regular weekly pay 
-	--      (i.e. amount_per_period).
-	------------------------------------------------------------------------
+		-- END: Employee earned more than regular weekly pay 
+		--      (i.e. amount_per_period).
+		--------------------------------------------------------------
 
-	------------------------------------------------------------------------
-	-- 5. BEGIN: Employee earned *less* than regular weekly pay 
-	--        (i.e. amount_per_period).
+		--------------------------------------------------------------
+		-- 5. BEGIN: Employee earned *less* than regular weekly pay 
+		--        (i.e. amount_per_period).
 
-	/*
-	-- 5A. Calc the raw deficit
-	-- 5B. Adjust raw deficit if there is not
-	--     enough in the bank to cover it and the deficit
-	--     is more than the max_debit limit.
-	-- (make the deficit amount the max_debit limit).
-	-- 5C. Adjust raw deficit if paying it would run 
-	--     the bank past the undercap_threshold_amt
-	--     (max out to undercap_threshold_amt limit).
-	-- 5D. Set the actual pay.
-	*/
+		/*
+		-- 5A. Calc the raw deficit
+		-- 5B. Adjust raw deficit if there is not
+		--     enough in the bank to cover it and the deficit
+		--     is more than the max_debit limit.
+		-- (make the deficit amount the max_debit limit).
+		-- 5C. Adjust raw deficit if paying it would run 
+		--     the bank past the undercap_threshold_amt
+		--     (max out to undercap_threshold_amt limit).
+		-- 5D. Set the actual pay.
+		*/
 
-	-- 5A. Calc the raw deficit
-	update salary_amount
-	set overage_amt = amount_per_period - total_pay
-	where total_pay < amount_per_period 
+		-- 5A. Calc the raw deficit
+		update salary_amount
+		set overage_amt = amount_per_period - total_pay
+		where total_pay < amount_per_period 
 
-	-- 5B. Adjust raw deficit if there is not
-	--     enough in the bank to cover it and the deficit
-	--     is more than the max_debit limit.
-	-- (make the deficit amount the max_debit limit).
-	update salary_amount
-	set overage_amt = max_debit_amt 
-	where total_pay < amount_per_period 
-	and  bank_before - overage_amt < 0
-	and overage_amt > max_debit_amt
+		-- 5B. Adjust raw deficit if there is not
+		--     enough in the bank to cover it and the deficit
+		--     is more than the max_debit limit.
+		-- (make the deficit amount the max_debit limit).
+		update salary_amount
+		set overage_amt = max_debit_amt 
+		where total_pay < amount_per_period 
+		and  bank_before - overage_amt < 0
+		and overage_amt > max_debit_amt
 
-	-- 5C. Adjust raw deficit if paying it would run 
-	--     the bank past the undercap_threshold_amt
-	--     (max out to undercap_threshold_amt limit).
-	update salary_amount
-	set overage_amt = bank_before - undercap_threshold_amt
-	where total_pay < amount_per_period 
-	and bank_before - overage_amt < undercap_threshold_amt
+		-- 5C. Adjust raw deficit if paying it would run 
+		--     the bank past the undercap_threshold_amt
+		--     (max out to undercap_threshold_amt limit).
+		update salary_amount
+		set overage_amt = bank_before - undercap_threshold_amt
+		where total_pay < amount_per_period 
+		and bank_before - overage_amt < undercap_threshold_amt
 
-	-- 5D. Set the actual pay.
-	update salary_amount
-	set actual_pay = total_pay + overage_amt 
-	where total_pay < amount_per_period 
+		-- 5D. Set the actual pay.
+		update salary_amount
+		set actual_pay = total_pay + overage_amt 
+		where total_pay < amount_per_period 
 
-	-- END: Employee earned *less* than regular weekly pay 
-	--      (i.e. amount_per_period).
-	------------------------------------------------------------------------
+		-- END: Employee earned *less* than regular weekly pay 
+		--      (i.e. amount_per_period).
+		--------------------------------------------------------------
 
-	------------------------------------------------------------------------
-	-- <<<<< Generic Calculations regardless of earnings.>>>>>
-	-- 6. Calc bank adjust (earned - paid = amount to bank).
-	update salary_amount
-	set bank_adjust = total_pay - actual_pay
+		--------------------------------------------------------------
+		-- <<<<< Generic Calculations regardless of earnings.>>>>>
+		-- 6. Calc bank adjust (earned - paid = amount to bank).
+		update salary_amount
+		set bank_adjust = total_pay - actual_pay
 
-	-- 7. Calc bank_after (new bank)
-	update salary_amount
-	set bank_after = bank_before + bank_adjust
-	------------------------------------------------------------------------
+		-- 7. Calc bank_after (new bank)
+		update salary_amount
+		set bank_after = bank_before + bank_adjust
+		--------------------------------------------------------------
 
 	go
 	print "Granting rights on proc calc_salary_pay"
