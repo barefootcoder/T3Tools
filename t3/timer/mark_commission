@@ -1,0 +1,189 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Interpolation	multi_log_query	=>	\&generate_multi_log_query,
+					money			=>	'commify';
+
+use Barefoot::date;
+use Barefoot::string;
+use Barefoot::timerdata;
+use Barefoot::input qw(get_yn input);
+
+sub generate_multi_log_query;
+
+my %comm_types =
+(
+	'S' => "sales_comm_amount",
+	'R' => "referral_comm_amount",
+	'E' => "employee_comm_amount",
+	'A' => "admin_comm_amount",
+);
+
+
+################
+#    main()    #
+################
+
+my $prompt = "Which type of commission? (";
+foreach my $ctype (keys %comm_types)
+{
+	$prompt .= "," unless string::right($prompt, 1) eq "(";
+	$prompt .= $ctype;
+}
+$prompt .= ")";
+my $ctype;
+CTYPE: {
+	$ctype = input($prompt);
+	$ctype = string::upper($ctype);
+	redo CTYPE unless exists $comm_types{$ctype};
+}
+print "\n";
+
+my $rows = timerdata::query_results("
+		select pay_type, pay_to, name, amount
+		from $comm_types{$ctype}
+	");
+die("couldn't access timer database") unless defined($rows);
+
+my $num_rows = @$rows;
+my %comm;
+foreach my $row (@$rows)
+{
+	my $key = $row->[0] . $row->[1];
+	my $amount = $row->[3];
+	$amount =~ s/,//g;
+	if (exists $comm{$key})
+	{
+		$comm{$key}->{amount} += $amount;
+	}
+	else
+	{
+		my $new_comm = {};
+		$new_comm->{name} = $row->[2];
+		$new_comm->{amount} = $amount;
+		$comm{$key} = $new_comm;
+	}
+}
+
+my $total_amount = 0;
+my $comm_for = "";
+for my $key (sort keys %comm)
+{
+	$comm_for .= "," unless $comm_for eq "";
+	$comm_for .= $key;
+	$total_amount += $comm{$key}->{amount};
+
+	print "$key: $comm{$key}->{name}  \$ $money{$comm{$key}->{amount}}\n";
+}
+
+print "\nCommission for $comm_for totalling \$ $money{$total_amount}\n";
+exit 1 unless get_yn("Is this right?");
+
+my $start_date = input("\nStarting date for period:");
+die("illegal date") unless date::isValid($start_date);
+my $end_date = input("Ending date for period:");
+die("illegal date") unless date::isValid($end_date);
+
+my $insert_query = "
+
+	insert commission
+		(comm_type, pay_type, pay_to, period_start, period_end, amount,
+				create_user, create_date)
+	select '$ctype', ca.pay_type, ca.pay_to, '$start_date', '$end_date',
+			sum(ca.amount), '$::ENV{USER}', getdate()
+	from $comm_types{$ctype} ca
+	group by ca.pay_type, ca.pay_to
+	go
+
+	/* commissions that apply to a single log */
+	insert log_commission
+		(log_source, log_id, commission_id)
+	select pi.log_source, pi.log_id, com.commission_id
+	from commission com, $comm_types{$ctype} ca, profit_item pi
+	where com.comm_type = '$ctype'
+	and com.pay_type = ca.pay_type
+	and com.pay_to = ca.pay_to
+	and com.period_start = '$start_date'
+	and isnull(ca.profit_id, pi.profit_id) = pi.profit_id
+	and pi.log_id is not NULL
+	go
+
+	/* commissions that apply to more than one time_log */
+	$multi_log_query{time_log}
+	$multi_log_query{class_log}
+
+	select sum(com.amount)
+	from commission com
+	where com.comm_type = '$ctype'
+	and com.period_start between '$start_date' and '$end_date'
+	and com.period_end between '$start_date' and '$end_date'
+	go
+
+";
+
+timerdata::set_user($::ENV{USER});
+my $results = timerdata::run_query("
+	begin tran
+	go
+
+	$insert_query
+
+	rollback tran
+	go
+");
+
+# check results
+my $results_rows = join("\n", ('\((\d+) rows? affected\)') x 4);
+$results =~ /^\((\d+) rows? affected\).*-+\s*\n\s+([\d,.]+)/s;
+my $num_rows = $1;
+my $sum = $2; $sum =~ s/,//g;
+$total_amount = sprintf("%.2f", $total_amount);
+die("mark failed <<$results>>")
+		unless $num_rows == keys(%comm) and $sum == $total_amount;
+
+print "\nInitial attempt successful for period $start_date - $end_date,\n";
+print "    totalling \$ $money{$total_amount}, affecting $num_rows rows\n";
+exit 1 unless get_yn("Proceed?");
+
+my $second_results = timerdata::run_query("
+	begin tran
+	go
+
+	$insert_query
+
+	commit tran
+	go
+");
+die("theoretically impossible error occurred <<$results>>")
+		unless $second_results eq $results;
+print "\nmark was successful\n";
+
+
+################
+#    subs      #
+################
+
+sub generate_multi_log_query
+{
+	my ($log_table) = @_;
+
+	return "
+		insert log_commission
+			(log_source, log_id, commission_id)
+		select log.log_source, log.log_id, com.commission_id
+		from commission com, $comm_types{$ctype} ca, profit_item pi,
+				$log_table log
+		where com.comm_type = '$ctype'
+		and com.pay_type = ca.pay_type
+		and com.pay_to = ca.pay_to
+		and com.period_start = '$start_date'
+		and ca.profit_id = pi.profit_id
+		and pi.log_id is NULL
+		and pi.log_source like '${log_table}%'
+		and pi.client = log.client
+		and pi.proj = log.proj
+		and log.date between pi.start_date and pi.end_date
+		go
+	";
+}
