@@ -911,8 +911,8 @@ create_table("timer",
 		[ "wuser_id",		"unique_id",		"NOT NULL" ],
 		[ "timer_name",		"varchar(30)",		"NOT NULL" ],
 		[ "client_id",		"internal_id",		"NOT NULL" ],
-		[ "proj",			"internal_id",		"NULL" ],
-		[ "phase",			"internal_id",		"NULL" ],
+		[ "proj_id",		"internal_id",		"NULL" ],
+		[ "phase_id",		"internal_id",		"NULL" ],
 	],
 	[
 		{
