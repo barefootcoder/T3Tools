@@ -1,27 +1,38 @@
--- SORT GROUP: Database Lists
--- TITLE: Billing Rate History (all clients)
+# SORT GROUP: Database Lists
+# TITLE: Billing Rate History (by client)
 
-select p.client "C", c.name "client", p.proj "P", p.name "project",
-		convert(numeric(6,2), br.rate) "rate",
-		convert(numeric(4,0), fixed_price_days) "days(FP)",
-		convert(char(10), br.start_date, 101) "start date",
-		convert(char(10), br.end_date, 101) "end date"
-from project p, client c, bill_rate br
-where p.client = c.client
-and p.client = br.client
-and p.proj = br.proj
-and br.start_date <= "[end_date]"
-and br.end_date >= "[start_date]"
-order by p.client, p.proj
-go
+	select p.client_id "C", c.name "client", p.proj_id "P", p.name "project",
+			br.rate "rate", fixed_price_days "days(FP)",
+			br.start_date "start date", br.end_date "end date"
+	from {@project} p, {@client} c, {@bill_rate} br
+	where p.client_id = c.client_id
+	and p.client_id = br.client_id
+	and p.proj_id = br.proj_id
+{if client}
+	and c.client_id = {client}
+{endif}
+	and br.start_date <= {end_date}
+	and br.end_date >= {start_date}
+	order by p.client_id, p.proj_id
+->suppress_empty
+->format
+	H=>%default
+	B->@<< @<x30  @<< @<x30  @###.## @###  @<x20 @<x20
+;
 
-select c.client "C", c.name "client", rr.resrc "R", rr.resource_name "resource",
-		convert(numeric(6,2), rr.rate) "rate",
-		convert(char(10), rr.start_date, 101) "start date",
-		convert(char(10), rr.end_date, 101) "end date"
-from client c, resource_rate rr
-where c.client = rr.client
-and rr.start_date <= "[end_date]"
-and rr.end_date >= "[start_date]"
-order by c.client, rr.resource_name
-go
+	select c.client_id "C", c.name "client",
+			rr.resource_id "R", rr.resource_name "resource", rr.rate "rate",
+			rr.start_date "start date", rr.end_date "end date"
+	from {@client} c, {@resource_rate} rr
+	where c.client_id = rr.client_id
+{if client}
+	and c.client_id = {client}
+{endif}
+	and rr.start_date <= {end_date}
+	and rr.end_date >= {start_date}
+	order by c.client_id, rr.resource_name
+->suppress_empty
+->format
+	H=>%default
+	B->@<< @<x30  @<< @<x30  @###.##  @<x20 @<x20
+;
