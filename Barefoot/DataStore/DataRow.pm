@@ -195,6 +195,14 @@ sub num_cols
 }
 
 
+sub colnames
+{
+	my $this = shift;
+
+	return @{ $$this->{impl}->[KEYS] };
+}
+
+
 sub col
 {
 	my ($this, $col_id) = @_;
