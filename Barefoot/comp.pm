@@ -16,6 +16,9 @@ package comp;
 
 use strict;
 
+print STDERR "Barefoot::comp: this module is depracated; "
+		. "use Barefoot::range instead\n";
+
 1;
 
 
