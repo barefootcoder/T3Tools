@@ -1,0 +1,13 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::T3;
+
+T3::initialize($::ENV{HOME});
+foreach (T3::send_message(T3::build_message("", "", T3::TALKER_MESSAGE)))
+{
+	my $attr = T3::parse_message($_);
+	print "$attr->{from}\n" if $attr->{status} eq T3::LOGON_MESSAGE
+			or $attr->{status} eq T3::BUSY_MESSAGE;
+}
