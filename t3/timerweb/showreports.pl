@@ -2,6 +2,9 @@
 
 # $Header$
 # $Log$
+# Revision 1.5  1999/05/26 19:09:02  buddy
+# added check_date variable to allow marking payrolls as done
+#
 # Revision 1.4  1999/05/13 14:35:43  buddy
 # divided reports into groups
 # sorted reports within groups
@@ -31,29 +34,47 @@ $cgi = new CGI;
 $cookie_array = [];
 $debug_string = "";
 $vars = {
-	user		=>	{
-						value	=>	"",
-						size	=>	30,
-					},
-	client		=>	{
-						value	=>	"",
-						size	=>	3,
-					},
 	start_date	=>	{
+						sort	=>	1,
 						value	=>	"",
 						size	=>	10,
+						admin	=>	0,
 					},
 	end_date	=>	{
+						sort	=>	2,
 						value	=>	"",
 						size	=>	10,
+						admin	=>	0,
+					},
+	user		=>	{
+						sort	=>	3,
+						value	=>	"",
+						size	=>	30,
+						admin	=>	0,
+					},
+	client		=>	{
+						sort	=>	4,
+						value	=>	"",
+						size	=>	3,
+						admin	=>	0,
+					},
+	proj		=>	{
+						sort	=>	5,
+						value	=>	"",
+						size	=>	3,
+						admin	=>	0,
 					},
 	invoice		=>	{
+						sort	=>	6,
 						value	=>	"",
 						size	=>	7,
+						admin	=>	1,
 					},
 	check_date	=>	{
+						sort	=>	7,
 						value	=>	"",
 						size	=>	10,
+						admin	=>	1,
 					},
 };
 @admin_users = ('tweber', 'christy', 'buddy');
@@ -121,7 +142,7 @@ for $file ( < $basepath/* > )
 foreach my $group (keys %report_groups)
 {
 	next if ($group eq "Administrative Updates"
-			and not grep { $_ eq $ENV{REMOTE_USER} } @admin_users);
+			and not is_admin_user());
 	print "<P>", $cgi->h3($group);
 	foreach my $report (sort {$a->{title} cmp $b->{title}}
 			@{$report_groups{$group}})
@@ -155,8 +176,9 @@ sub param_to_cookie
 sub text_form
 {
 	print $cgi->startform(), "<P>\n";
-	foreach $var (keys %$vars)
+	foreach $var (sort {$vars->{$a} <=> $vars->{$b}} keys %$vars)
 	{
+		next if $vars->{$var}->{admin} and not is_admin_user();
 		$name = $var;
 		$size = $vars->{$var}->{size};
 		print "<NOBR>$name:";
@@ -183,6 +205,11 @@ sub html_spaces
 	{
 		print "&nbsp;";
 	}
+}
+
+sub is_admin_user
+{
+	return grep { $_ eq $ENV{REMOTE_USER} } @admin_users;
 }
 
 sub debug
