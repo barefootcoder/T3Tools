@@ -41,11 +41,11 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 #################################
 
 use constant TodoListHeader =>
-"   Todo:       Description:                              CLI PRJ  Due by:\n" .
-"   ==========  ========================================  === ===  ========";
+"   Todo:            Description:                         CLI PRJ  Due by:\n" .
+"   ===============  ===================================  === ===  ========";
 
 use constant TodoList =>
-'   @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
+'   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
 
 use constant TodoTask =>
 	'
@@ -90,18 +90,23 @@ tie %menu_list, 'Tie::IxHash',
 	"Add a task"			=>		\&add_todo,
 	"Show task details"		=>		\&todo_details,
 	"Edit a task"			=>		\&edit_todo,
+	"Postpone a task"		=>		\&push_date,
 	"Cancel a task"			=>		\&cancel_todo,
-	"Complete a task"		=>		\&complete_todo,
+	"Done with a task"		=>		\&complete_todo,
 	"Refresh task list"		=>		\&refresh_list,
 	"Quit program"			=>		sub { exit },
 );
 
 # this is a primitive way to get this, but it works
 my ($screen_rows) = split(' ', `stty size`);
+# the menu will get printed in three columns on an 80-column screen
+# sometime in the future, we should try to do this a bit more dynamically,
+# but for now this is good enough
+my $menu_size = range::round(scalar(keys %menu_list) / 3, range::ROUND_UP);
 # now figure maximum number of tasks we can put in our list:
 # save 2 rows for list header, 1 for separator between list and menu,
-# the number of menu items, and 2 for the prompt after the menu
-our $max_task_list = $screen_rows - 2 - 1 - scalar(keys %menu_list) - 2;
+# the number of menu lines, and 2 for the prompt after the menu
+our $max_task_list = $screen_rows - 2 - 1 - $menu_size - 2;
 
 
 #################################
@@ -159,6 +164,17 @@ sub edit_todo
 	input_todo($todo_list[$index]);
 
 	sync_lists();
+	writefile();
+}
+
+
+sub push_date
+{
+	my $index = get_existing_todo("postpone");
+	return unless defined $index;
+
+	$todo_list[$index]->{due} = input_date($todo_list[$index]->{due});
+
 	writefile();
 }
 
@@ -377,26 +393,7 @@ sub input_todo
 	my ($todo) = @_;
 
 	$todo->{descr} = input("Brief description of the task:", $todo->{descr});
-	$todo->{due} = input(
-			"When task is due:",
-			$todo->{due} ? swrite('@m/#d/@y', $todo->{due}) : date::today(), 
-			{
-				VALID		=>	\&valid_date_input,
-				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
-			}
-	);
-	# turn due date into a number
-	if ($todo->{due} =~ /^\+(\d+)$/)
-	{
-		# interpret as number of days from today
-		$todo->{due} = date::incDays(date::today(), $1);
-	}
-	elsif ($todo->{due} =~ /^[A-Za-z]{3}$/)
-	{
-		# interpret as a 3-char abbrev for day of week (in the future)
-		$todo->{due} = date::mdy(parsedate($todo->{due}, PREFER_FUTURE => 1));
-	}
-	$todo->{due} = str2time($todo->{due});
+	$todo->{due} = input_date($todo->{due});
 
 	# need to save results in object, not parminfo
 	my $opts = { SAVE_IN_OBJECT => 1 };
@@ -405,54 +402,34 @@ sub input_todo
 }
 
 
-BEGIN
+sub input_date
 {
-	# this ought to go in date.pm, but I'm too lazy right now ...
-	my @DoW = qw< sun mon tue wed thu fri sat >;
-	our %DoW = map { ($DoW[$_] => $_) } (0..$#DoW);
+	my ($old_date) = @_;
 
-	sub valid_date_input
+	my $new_date = input(
+			"When task is due:",
+			$old_date ? swrite('@m/#d/@y', $old_date) : date::today(), 
+			{
+				CONVERT		=>	\&parse_date_spec,
+				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
+			}
+	);
+
+	return $new_date;
+}
+
+
+sub parse_date_spec
+{
+	# this style needs a little help (but just a little)
+	if ($_[0] =~ /^\+(\d+)$/)
 	{
-		# valid day of week abbreviation
-		return true if exists $DoW{ lc $_[0] };
-
-		# '+' and number of days offset
-		return true if $_[0] =~ /^\+\d+$/;
-
-		# allow just month/date
-		# supply year such that resulting date is always in the future
-		# after adjusting our parameter, it will be verified by isValid below
-		if (my ($month, $day) = $_[0] =~ m@^(\d+)[/.-](\d+)$@)
-		{
-			my ($this_month, $this_date, $this_year)
-					= split('/', date::today());
-			if ($month == $this_month)
-			{
-				if ($day < $this_date)
-				{
-					$_[0] = "$month/$day/" . ($this_year + 1);
-				}
-				else			# must be $day >= $this_date
-				{
-					$_[0] = "$month/$day/$this_year";
-				}
-			}
-			elsif ($month < $this_month)
-			{
-				$_[0] = "$month/$day/" . ($this_year + 1);
-			}
-			else				# must be $month > $this_month
-			{
-				$_[0] = "$month/$day/$this_year";
-			}
-		}
-
-		# valid date is okay, obviously
-		return true if date::isValid($_[0]);
-
-		# no hits so far, must be bogus
-		return false;
+		# interpret as number of days from today
+		$_[0] .= " days";
 	}
+
+	# let parsedate do all the hard work
+	return parsedate($_[0], PREFER_FUTURE => 1);
 }
 
 
