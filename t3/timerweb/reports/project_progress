@@ -1,2 +1,60 @@
 # SORT GROUP: Management Reports
 # TITLE: Progress on Project
+
+
+	select p.name
+	from {~timer}.project p
+	where p.client_id = {client}
+	and p.proj_id = {proj}
+->format
+	B=>Hours worked but not billed for project: %1
+;
+
+
+&proc build_profit_item
+
+	log.client_id = {client}
+	and log.proj_id = {proj}
+	and log.invoice_id is NULL
+
+;
+
+
+	select pe.first_name "employee", tl.log_date "date worked",
+			tl.tracking_code "tracking", tl.hours, pi.total_cost "cost",
+			pi.units, pi.total_price "price"
+	from {~reporting}.profit_item pi, {~timer}.time_log tl,
+			{~timer}.employee e, {~t3}.person pe
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and tl.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	order by tl.log_date
+->format
+	H=>                                   |   WORKED:    |  |   BILLED:    |
+	H=>%default
+	B->@<x10 @<x11 @<x10   @##.## @###.##    @##.## @###.##
+;
+
+	select pe.first_name "employee", sum(tl.hours) "hours",
+			sum(pi.total_cost) "cost", sum(pi.units) "units",
+			sum(pi.total_price) "price",
+			{*running_hours = $total_hrs += %hours},
+			{*running_units = $total_units += %units}
+	from {~reporting}.profit_item pi, {~timer}.time_log tl,
+			{~timer}.employee e, {~t3}.person pe
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and tl.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	group by pe.first_name
+->format
+	H=>            |   WORKED:    |  |   BILLED:    |
+	H=>%default
+	B->@<x10   @##.## @###.##    @##.## @###.##
+;
+
+&print
+             ======            ======
+             {total_hrs}             {total_units}
+;
