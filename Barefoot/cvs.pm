@@ -133,8 +133,9 @@ sub _make_cvs_command
 
 	my $quiet = $opts->{VERBOSE} ? "" : "-q";
 	my $local = $opts->{RECURSE} ? "" : "-l";
+	my $err_redirect = $opts->{IGNORE_ERRORS} ? "2>/dev/null" : "";
 
-	return "cvs -r $quiet -d $cvsroot $command $local @_ ";
+	return "cvs -r $quiet -d $cvsroot $command $local @_ $err_redirect ";
 }
 
 
@@ -182,17 +183,22 @@ sub check_general_errors
 
 sub exists
 {
-	# basically, we'll just try to get the lockers
-	# if it dies, the module doesn't exist
-	try
+	my ($module) = @_;
+
+	my $ed = execute_and_get_output("status", $module,
+			{ IGNORE_ERRORS => true} );
+	while ( <$ed> )
 	{
-		&_get_lockers;
-		return true;
+		if ( /Status: (.*)$/ )
+		{
+			close($ed);
+			return $1 ne "Unknown";
+		}
 	}
-	catch
-	{
-		return false;
-	};
+	close($ed);
+
+	# this should really never happen
+	die("can't get status from cvs status");
 }
 
 
