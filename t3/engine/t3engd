@@ -3,6 +3,7 @@
 use strict;
 
 use Barefoot::debug;						# comment out for production
+#use Barefoot::debug_verbose;				# comment out for production
 
 use Fcntl;
 use FileHandle;
@@ -48,43 +49,44 @@ while (1)
 	}
 	else
 	{
-		# pass off to appropriate module
-		$request =~ s/module=(\w+)//;
-		if ($1)
-		{
-			T3::debug("module is $1");
-			if (T3::exists_module($1))
-			{
-				my $module = $1;
-				unless ($request =~ s/output=(\d+)//)
-				{
-					log_error("output pipe name invalid or missing");
-					next;
-				}
+		# parse request string and test for errors
+		my $req = parse_request_string($request);
+		next unless $req;			# indicates error in parsing
 
-				T3::debug("pipe name is $1");
-				my $pipe = open_output_pipe($1);
-				if ($pipe)
-				{
-					my $oldfh = select($pipe);
-					$| = 1;
-					T3::execute_module($module);
-					select($oldfh);
-					$pipe->close();
-				}
-				else
-				{
-					log_error("can't build output pipe [$1]");
-				}
-			}
-			else
+		my $module = $req->{module};
+		T3::debug("module is module");
+		unless ($req->{output})
+		{
+			log_error("output pipe name invalid or missing");
+			next;
+		}
+
+		T3::debug("pipe name is $req->{output}");
+		my $pipe = open_output_pipe($req->{output});
+		if ($pipe)
+		{
+			my $oldfh = select($pipe);
+			$| = 1;
+
+			my @input_lines;
+			if ($req->{lines})
 			{
-				log_error("unknown module [$1]");
+				T3::debug("now reading $req->{lines} lines of input");
+				for (1..$req->{lines})
+				{
+					my $line = <PIPE>;
+					next unless $line;
+					push @input_lines, $line;
+				}
 			}
+
+			T3::execute_module($module, @input_lines);
+			select($oldfh);
+			$pipe->close() unless exists $req->{combine_next};
 		}
 		else
 		{
-			log_error("malformed request [$request]");
+			log_error("can't build output pipe [$req->{output}]");
 		}
 	}
 }
@@ -96,8 +98,9 @@ die("popped out of infinite loop");
 
 sub setup_modules
 {
-	my $mod_dir = DEBUG ? './modules'
+	my $mod_dir = DEBUG ? T3::TEST_MODULES_DIR
 			: T3::config_param("SERVER", "ModulesDir");
+	T3::debug("modules directory is $mod_dir");
 	die("modules directory parameter not set in config file") unless $mod_dir;
 	die("modules directory $mod_dir is not accessible") unless -d $mod_dir;
 
@@ -150,19 +153,38 @@ sub open_request_pipe
 	T3::debug("got pipe open");
 }
 
-sub shutdown_server
+sub parse_request_string
 {
-	unlink(T3::REQUEST_FILE) or log_error("couldn't remove input pipe");
-	log_error("shutting down");
-	exit 0;
+	my $req = {};
+	foreach (split(' ', $_[0]))
+	{
+		if ( /(\w+)=(.*)/ )
+		{
+			T3::debug(2, "parse request: setting $1 to $2");
+			$req->{$1} = $2;
+		}
+		else
+		{
+			log_error("malformed request [$_[0]]");
+			return undef;
+		}
+	}
+
+	# check for basic errors
+	log_error("missing module name [$_[0]]") and return undef
+			unless exists $req->{module};
+	log_error("unknown module [$req->{module}]") and return undef
+			unless T3::exists_module($req->{module});
+
+	return $req;
 }
 
 sub open_output_pipe
 {
 	my ($id) = @_;
 
-	T3::debug("pipe id is $id\n");
-	if (not $id or $id ne ($id + 0))
+	T3::debug("pipe id is $id");
+	if (not $id)
 	{
 		log_error("output pipe name invalid");
 		return undef;
@@ -171,4 +193,11 @@ sub open_output_pipe
 	my $pipe_file = T3::OUTPUT_FILE . $id;
 	create_pipe($pipe_file);
 	return new FileHandle(">$pipe_file");
+}
+
+sub shutdown_server
+{
+	unlink(T3::REQUEST_FILE) or log_error("couldn't remove input pipe");
+	log_error("shutting down");
+	exit 0;
 }
