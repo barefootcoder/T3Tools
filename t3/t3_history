@@ -9,19 +9,25 @@ use CGI;
 
 T3::initialize($::ENV{HOME});
 
+use constant MAX_MESSAGES => 200;
+
 my $from = input("Show messages from (leave blank for all):");
 $from = '.*?' unless $from;
 my $to = input("Show messages to (leave blank for all):");
 $to = '.*?' unless $to;
+my $content = input("Show messages with string (leave blank for all):");
+$content = '.*?' unless $content;
 
 $| = 1;
 my $history = (T3::config_param('TalkerDir')) . "/history";
 open(LOG, $history) or die("can't open server log");
 
 my @messages;
+my $num = 0;
 
 {
 	local $/ = "\cD";
+
 	while ( <LOG> )
 	{
 		chomp;
@@ -30,12 +36,18 @@ my @messages;
 		# print "inside\n";
 		my $message = {};
 
-		shift @history_line;
-		next unless ($message->{from} = shift @history_line) =~ /$from/;
-		next unless ($message->{to} = shift @history_line) =~ /$to/;
+		$message->{id} = shift @history_line;
+		next unless ($message->{from} = shift @history_line) =~ m/$from/;
+		next unless ($message->{to} = shift @history_line) =~ m/$to/;
 		$message->{date} = ctime(shift @history_line);
 		$message->{content} = shift @history_line;
 		$message->{content} = CGI::unescapeHTML($message->{content});
+		next unless $message->{content} =~ m/$content/;
+
+		if (++$num > MAX_MESSAGES)
+		{
+			pop @messages;
+		}
 
 		unshift @messages, $message;
 	}
@@ -71,7 +83,10 @@ sub list_messages
 	foreach my $msg (@messages)
 	{
 		print LESS ++$count, ": ", message_info($msg), "\n";
+		print LESS "Maximum of " . MAX_MESSAGES . " records reached.\n" and last
+			if $count >= MAX_MESSAGES;
 	}
+
 	close(LESS);
 }
 
