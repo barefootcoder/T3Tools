@@ -176,7 +176,7 @@ void __fastcall TOptionsForm::SoundOffClick(TObject *Sender)
 
 void TOptionsForm::readWavFilenames()
 {
-	String filespec = T3Pathname().c_str() + String("\\*.wav");
+	String filespec = T3Pathname().c_str() + SOUNDSFOLDER + String("*.wav");
 	MessageSound->Clear();
 
 	try

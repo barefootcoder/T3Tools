@@ -13,7 +13,7 @@
 
 //---------------------------------------------------------------------------
 
-const String SOUNDSFOLDER = "sounds";
+const String SOUNDSFOLDER = "sounds\\";
 
 //---------------------------------------------------------------------------
 class TOptionsForm : public TForm
@@ -82,6 +82,8 @@ __published:	// IDE-managed Components
 	TUpDown *UpDown1;
 	TLabel *Label24;
 	TCheckBox *chkTestMode;
+	TCheckBox *chkFloatTimerTop;
+	TBevel *Bevel1;
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall SetMessageFontClick(TObject *Sender);
 	void __fastcall FormShow(TObject *Sender);

@@ -50,7 +50,7 @@ object OptionsForm: TOptionsForm
     Top = 29
     Width = 450
     Height = 358
-    ActivePage = TalkerOptions
+    ActivePage = TimerPreferences
     Align = alClient
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
@@ -480,6 +480,12 @@ object OptionsForm: TOptionsForm
         Font.Style = []
         ParentFont = False
       end
+      object Bevel1: TBevel
+        Left = 4
+        Top = 220
+        Width = 429
+        Height = 2
+      end
       object txtTimerPingInterval: TEdit
         Left = 304
         Top = 20
@@ -508,6 +514,21 @@ object OptionsForm: TOptionsForm
         Position = 10
         TabOrder = 1
         Wrap = True
+      end
+      object chkFloatTimerTop: TCheckBox
+        Left = 24
+        Top = 236
+        Width = 377
+        Height = 17
+        Caption = 'Float active timer to top of list.'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        TabOrder = 2
+        Visible = False
       end
     end
     object TalkerAdvanced: TTabSheet
