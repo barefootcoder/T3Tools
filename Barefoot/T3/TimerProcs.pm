@@ -120,151 +120,150 @@ sub build_pay_amount
 
 			print STDERR "about to do delete\n" if DEBUG >= 5;
 		# clear out the old data
-	_do_or_error($ds, "
+	_do_or_error($ds, '
 
-		delete from {~reporting}.pay_amount
-	");
+		delete from {@pay_amount}
+	');
 
 			print STDERR "about to do insert\n" if DEBUG >= 5;
 		# put in the new data
-	_do_or_error($ds, "
+	_do_or_error($ds, '
 
-		insert into {~reporting}.pay_amount
+		insert into {@pay_amount}
 			(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 				pay_date, hours, requires_payment, requires_billing)
 		select log.log_source, log.log_id, log.emp_id, log.client_id,
 				log.proj_id, log.phase_id, log.log_date, log.hours,
 				pt.requires_payment, pt.requires_billing
-		from {~timer}.time_log log, {~timer}.project p,
-				{~timer}.project_type pt
+		from {@time_log} log, {@project} p, {@project_type} pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and log.log_date between p.start_date and p.end_date
-		and p.project_type = pt.project_type
-		$where_clause
-	");
+		and p.project_type = pt.project_type '
+		. $where_clause
+	);
 
 			print STDERR "about to get gen rates\n" if DEBUG >= 5;
 		# get general employee rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pr.client_id is NULL
 			and pr.proj_id is NULL
 			and pr.phase_id is NULL
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to get phase rates\n" if DEBUG >= 5;
 		# get general employee/phase rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pr.client_id is NULL
 			and pr.proj_id is NULL
 			and pa.phase_id = pr.phase_id
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to get client rates\n" if DEBUG >= 5;
 		# get general employee/client rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pr.proj_id is NULL
 			and pr.phase_id is NULL
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to get client/phase rates\n" if DEBUG >= 5;
 		# get general employee/client/phase rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pr.proj_id is NULL
 			and pa.phase_id = pr.phase_id
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to get client/proj rates\n" if DEBUG >= 5;
 		# get specific employee/client/project rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pa.proj_id = pr.proj_id
 			and pr.phase_id is NULL
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to get client/proj/phase rates\n" if DEBUG >= 5;
 		# get specific employee/client/project/phase rates
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{~reporting}.pay_amount", "pa",
+			'{@pay_amount}', 'pa',
 		# set
-			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
-		"
-			from {~timer}.pay_rate pr
+			[ 'pay_rate = pr.rate', 'pay_rate_type = pr.rate_type' ],
+		'
+			from {@pay_rate} pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pa.proj_id = pr.proj_id
 			and pa.phase_id = pr.phase_id
 			and pa.pay_date between pr.start_date and pr.end_date
-	");
+	');
 
 			print STDERR "about to set zero rates\n" if DEBUG >= 5;
 		# if it doesn't require payment, change rate to 0
-	_do_or_error($ds, "
+	_do_or_error($ds, '
 
-		update {~reporting}.pay_amount
+		update {@pay_amount}
 		set pay_rate = 0
 		where requires_payment = 0
-	");
+	');
 
 			print STDERR "about to set total pay\n" if DEBUG >= 5;
 		# now figure the actual total pay
-	my $data = $ds->load_table("select * from {~reporting}.pay_amount")
+	my $data = $ds->load_table('select * from {@pay_amount}')
 			or _fatal($ds);
-	foreach (@$data)
+	$data->foreach_row(sub
 	{
 		$_->{total_pay} = range::round($_->{pay_rate} * $_->{hours},
 				range::ROUND_UP, .01);
 		print STDERR "  total_pay: $_->{total_pay}\n" if DEBUG >= 5;
-	}
+	});
 			print STDERR "calling replace_table\n" if DEBUG >= 5;
 	$ds->replace_table("{~reporting}.pay_amount", $data) or _fatal($ds);
 
@@ -728,60 +727,63 @@ sub calc_salary_bank
 	my ($ds, $where_clause) = @_;
 
 		# get the salary data
-	my $data = $ds->load_table("
+	my $data = $ds->load_table('
 
 		select sd.emp_id, sd.amount_per_period, sd.max_debit,
 				sd.max_overage, sd.periods_cap
-		from {~timer}.salary_draw sd
-		where $where_clause
+		from {@salary_draw} sd
+		where ' . $where_clause
 
-	") or _fatal($ds);
+	) or _fatal($ds);
 
 		# we'll also need total pay data
-	my $pay_data = $ds->load_table("
+	my $pay_data = $ds->load_table('
 
 		select pa.emp_id, sum(pa.total_pay) as total_pay
-		from {~reporting}.pay_amount pa
+		from {@pay_amount} pa
 		group by pa.emp_id
 
-	") or _fatal($ds);
+	') or _fatal($ds);
 
 		# turn our total pay data into a hash
 	my $total_pay = {};
-	DataStore::foreach_row($pay_data, sub
-			{
-				$total_pay->{$_->{emp_id}} = $_->{total_pay};
-			}
-	);
+	$pay_data->foreach_row(sub
+	{
+		$total_pay->{$_->{emp_id}} = $_->{total_pay};
+	});
 
 		# we also need to know how much is in the salary bank at the moment
-	my $bank_data = $ds->load_table("
+	my $bank_data = $ds->load_table('
 
 		select sb.emp_id, sb.bank_amount
-		from {~timer}.salary_bank sb, {~timer}.payroll pay
+		from {@salary_bank} sb, {@payroll} pay
 		where sb.payroll_id = pay.payroll_id
 		and pay.period_end =
 		(
 			select max(pay2.period_end)
-			from {~timer}.salary_bank sb2, {~timer}.payroll pay2
+			from {@salary_bank} sb2, {@payroll} pay2
 			where sb.emp_id = sb2.emp_id
 			and sb2.payroll_id = pay2.payroll_id
 			and pay2.period_end < {start_date}
 		)
 
-	") or _fatal($ds);
-	DataStore::dump_set($bank_data) if DEBUG >= 5;
+	') or _fatal($ds);
+	$bank_data->dump_set() if DEBUG >= 5;
 
 		# turn our bank before amount data into a hash
 	my $bank_before = {};
-	DataStore::foreach_row($bank_data, sub
-			{
-				$bank_before->{$_->{emp_id}} = $_->{bank_amount};
-			}
-	);
+	foreach (@$bank_data)
+	{
+		$bank_before->{$_->{emp_id}} = $_->{bank_amount};
+	}
 
 		# calculate the actual amounts
-	DataStore::foreach_row($data, sub
+	$data->alter_dataset({
+			add_columns		=>	[ qw<actual_pay total_pay bank_before>,
+									qw<bank_after bank_adjustment> ],
+			remove_columns	=>	[ qw<amount_per_period max_debit max_overage>,
+									qw<periods_cap> ],
+			foreach_row		=>	sub
 			{
 				my $salary_amt = $_->{amount_per_period};
 				my $max_debit_amount = $salary_amt * $_->{max_debit};
@@ -834,16 +836,10 @@ sub calc_salary_bank
 				$_->{bank_adjustment} = $total_pay - $_->{actual_pay};
 				$_->{bank_after} = $bank_before + $_->{bank_adjustment};
 			}
-	);
-
-	# get rid of columns not used in final table
-	DataStore::remove_column($data, 'amount_per_period');
-	DataStore::remove_column($data, 'max_debit');
-	DataStore::remove_column($data, 'max_overage');
-	DataStore::remove_column($data, 'periods_cap');
+	});
 
 	# finally, put it in the table
-	$ds->replace_table("{~reporting}.salary_amount", $data)
+	$ds->replace_table('{@salary_amount}', $data)
 			or _fatal($ds);
 
 	# no output necessary
@@ -872,13 +868,12 @@ sub calc_insurance_contribution
 	my ($ds) = @_;
 
 		 # first get insurance records for fixed amounts
-	my $fixed_data = $ds->load_table("
+	my $fixed_data = $ds->load_data('
 
 		select pa.emp_id, tl.payroll_id,
 				ir.fixed_amount as company_contribution,
 				sum(pa.hours) as total_hours
-		from {~reporting}.pay_amount pa, {~timer}.insurance_rate ir,
-				{~timer}.time_log tl
+		from {@pay_amount} pa, {@insurance_rate} ir, {@time_log} tl
 		where ir.emp_id = pa.emp_id
 		and pa.pay_date between ir.start_date and ir.end_date
 		and pa.log_source = tl.log_source
@@ -886,19 +881,21 @@ sub calc_insurance_contribution
 		and ir.fixed_amount is not NULL
 		group by pa.emp_id, tl.payroll_id, ir.fixed_amount
 
-	") or _fatal($ds);
+	') or _fatal($ds);
 	print STDERR "got ", scalar(@$fixed_data),
 			" rows for insurance fixed amt\n" if DEBUG >= 2;
 
 	# use group function to insure there is only one contribution
 	# we'll also set applicable hours to NULL
-	$fixed_data = DataStore::group($fixed_data,
+	$fixed_data = $fixed_data->group(
+
 			group_by	=>	[ qw<emp_id payroll_id> ],
+			new_columns	=>	[ qw<emp_id payroll_id total_hours>,
+								qw<applicable_hours company_contribution> ],
 			constant	=>	[ qw<company_contribution total_hours> ],
-			calculate	=>	sub
+			on_new_group=>	sub
 							{
-								my (undef, $dst) = @_;
-								$dst->{applicable_hours} = undef;
+								$_->{applicable_hours} = undef;
 							},
 	);
 	return "calc_insurance_contribution: can't have more than one fixed "
@@ -906,34 +903,42 @@ sub calc_insurance_contribution
 
 
 		 # now get insurance records for calculated amounts
-	my $calc_data = $ds->load_table("
+	my $calc_data = $ds->load_data('
 
 		select pa.emp_id, tl.payroll_id, ir.nonbill_hrs_limit,
 				ir.multiplier, pa.pay_date, pa.hours,
 				pa.requires_billing, pa.requires_payment
-		from {~reporting}.pay_amount pa, {~timer}.insurance_rate ir,
-				{~timer}.time_log tl
+		from {@pay_amount} pa, {@insurance_rate} ir, {@time_log} tl
 		where ir.emp_id = pa.emp_id
 		and pa.pay_date between ir.start_date and ir.end_date
 		and pa.log_source = tl.log_source
 		and pa.log_id = tl.log_id
 
-	") or _fatal($ds);
+	') or _fatal($ds);
 	print STDERR "got ", scalar(@$calc_data), " rows for insurance calcs\n"
 			if DEBUG >= 2;
 
 	# calculation step 1: get week numbers for each date
-	DataStore::foreach_row($calc_data, sub
-			{
-				$_->{week_num} = date::period_num($_->{pay_date}, 7);
-			}
-	);
+	$calc_data->add_column(week_num => sub
+	{
+		date::period_num($_->{pay_date}, 7);
+	});
 	DataStore::dump_set($calc_data) if DEBUG >= 5;
 
 	# calculation step 2: group data by weeks, totalling hours
-	$calc_data = DataStore::group($calc_data,
+	$calc_data = $calc_data->group(
+
 			group_by	=>	[ qw<emp_id payroll_id week_num> ],
+			new_columns	=>	[ qw<emp_id payroll_id week_num multiplier>,
+								qw<nonbill_hrs_limit applicable_hours>,
+								qw<bill_hours nonbill_hours total_hours> ],
 			constant	=>	[ qw<nonbill_hrs_limit multiplier> ],
+			on_new_group=>	sub
+							{
+								$_->{bill_hours} = 0;
+								$_->{nonbill_hours} = 0;
+								$_->{total_hours} = 0;
+							},
 			calculate	=>	sub
 							{
 								my ($src, $dst) = @_;
@@ -956,20 +961,24 @@ sub calc_insurance_contribution
 			. "or limit per employee/payroll/week\n" unless $calc_data;
 
 	# calculation step 3: calculate applicable hours per week
-	DataStore::foreach_row($calc_data, sub
-			{
-				$_->{bill_hours} = 0 unless defined $_->{bill_hours};
-				$_->{nonbill_hours} = 0 unless defined $_->{nonbill_hours};
-				$_->{applicable_hours} = $_->{bill_hours}
-						+ range::min($_->{nonbill_hours},
-							$_->{nonbill_hrs_limit});
-			}
-	);
+	foreach (@$calc_data)
+	{
+		$_->{applicable_hours} = $_->{bill_hours}
+				+ range::min($_->{nonbill_hours}, $_->{nonbill_hrs_limit});
+	}
 
 	# calculation step 4: group again, combining weeks
-	$calc_data = DataStore::group($calc_data,
+	$calc_data = $calc_data->group(
 			group_by	=>	[ qw<emp_id payroll_id> ],
+			new_columns	=>	[ qw<emp_id payroll_id total_hours>,
+								qw<applicable_hours company_contribution>,
+								qw<multiplier nonbill_hrs_limit> ],
 			constant	=>	[ qw<nonbill_hrs_limit multiplier> ],
+			on_new_group=>	sub
+							{
+								$_->{applicable_hours} = 0;
+								$_->{total_hours} = 0;
+							},
 			calculate	=>	sub
 							{
 								my ($src, $dst) = @_;
@@ -983,24 +992,21 @@ sub calc_insurance_contribution
 			unless $calc_data;
 
 	# calculation step 5: calculate contribution
-	DataStore::foreach_row($calc_data, sub
+	$calc_data->alter_dataset({
+			remove_columns	=>	[ qw<multiplier nonbill_hrs_limit> ],
+			foreach_row		=>	sub
 			{
 				my $units = range::round($_->{applicable_hours} / 10,
 						range::ROUND_DOWN);
 				$_->{company_contribution} = $units * $_->{multiplier};
 			}
-	);
-
-	# calculation step 6: remove unnecessary columns
-	DataStore::remove_column($calc_data, 'nonbill_hrs_limit');
-	DataStore::remove_column($calc_data, 'multiplier');
+	});
 
 
-	# now put the fixed data and the calculated data together
-	my $new_data = [ @$fixed_data, @$calc_data ];
-
-	# and put it in the table
-	$ds->replace_table("{~reporting}.insurance_amount", $new_data,
+	# put both data sets in the table
+	$ds->replace_table('{@insurance_amount}', $fixed_data,
+			DataStore::EMPTY_SET_OKAY) or _fatal($ds);
+	$ds->append_table('{@insurance_amount}', $calc_data,
 			DataStore::EMPTY_SET_OKAY) or _fatal($ds);
 
 	# no output necessary
