@@ -176,26 +176,32 @@ void __fastcall TOptionsForm::SoundOffClick(TObject *Sender)
 
 void TOptionsForm::readWavFilenames()
 {
-	String filespec = T3Pathname().c_str() + SOUNDSFOLDER + String("*.wav");
 	MessageSound->Clear();
+	string filespec = T3Pathname() + SOUNDSFOLDER + string("*.wav");
 
-	try
+	WIN32_FIND_DATA fileinfo;
+	HANDLE hFiles = ::FindFirstFile(filespec.c_str(), &fileinfo); 
+	if ( hFiles != INVALID_HANDLE_VALUE )
 	{
-		struct _finddata_t fileinfo;
-		long handle = _findfirst(filespec.c_str(), &fileinfo);
-		do
+		string name = fileinfo.cFileName;
+		while ( !name.empty() ) 
 		{
-			String filename = fileinfo.name;
-			filename.Delete(filename.Pos("."), 4);
-			MessageSound->Items->Add(filename);
+			int pos = name.rfind(".");
+			if ( pos > -1 )
+				name.erase(pos);
+
+			MessageSound->Items->Add(name.c_str());
+
+			if ( ::FindNextFile(hFiles, &fileinfo) )
+				name = fileinfo.cFileName;
+			else
+				name = "";
 		}
-		while (!_findnext(handle, &fileinfo));
-	}
-	catch(...)
-	{
-		ShowMessage("Unable to locate or read sound files.");
+
+		::FindClose(hFiles);
 	}
 
+	return;
 }
 //---------------------------------------------------------------------------
 

@@ -845,7 +845,7 @@ object OptionsForm: TOptionsForm
       Top = 6
       Width = 158
       Height = 14
-      Caption = 'Development Release version 17'
+      Caption = 'Development Release version 17a'
       Font.Charset = ANSI_CHARSET
       Font.Color = clNavy
       Font.Height = -11

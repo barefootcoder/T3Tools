@@ -13,7 +13,7 @@
 
 //---------------------------------------------------------------------------
 
-const String SOUNDSFOLDER = "sounds\\";
+const string SOUNDSFOLDER = "sounds\\";
 
 //---------------------------------------------------------------------------
 class TOptionsForm : public TForm
