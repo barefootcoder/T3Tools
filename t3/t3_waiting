@@ -1,4 +1,4 @@
-#! /usr/bin/ksh
+#! /usr/bin/perl
 
 # For RCS:
 # $Date$
@@ -6,15 +6,22 @@
 # $Id$
 # $Revision$
 
-readonly T3_BOX_DIR=/home/httpd/cgi-bin/t3/talker
-cd $T3_BOX_DIR
+use strict;
 
-echo "The following people have waiting messages ..."
-for box in *.box
-do
-	if [ -s $box ]
-	then
-		line=$(wc -l $box)
-		echo ${line%.box}
-	fi
-done
+# use Barefoot::debug;							# comment out for production
+
+use Barefoot::T3;
+
+
+chdir(T3::config_param('TalkerDir'));
+
+print "The following people have waiting messages ...\n";
+foreach my $box ( <*.box> )
+{
+	if ( -s $box )
+	{
+		my $line = `wc -l $box`;
+		$line =~ s/\.box$//;
+		print $line;
+	}
+}
