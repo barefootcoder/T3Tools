@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  1999/01/04 19:46:09  buddy
+# Initial revision
+#
 # $Id$
 # $Revision$
 
@@ -12,3 +15,541 @@ server=SYBASE_1
 user=$USER
 srcdb=TIMERLOAD
 destdb=TIMER
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	-- make the project type table
+	$(overwrite_table project_type "
+		proj_type				char(1)				NOT NULL,
+		requires_phase			bit					NOT NULL,
+		requires_cliproj		bit					NOT NULL,
+		requires_comments		bit					NOT NULL,
+		requires_billing		bit					NOT NULL,
+		requires_payment		bit					NOT NULL,
+		bill_by_employee		bit					NOT NULL,
+	")
+
+	-- and fill it up
+	insert project_type
+	values ('I', 0, 0, 1, 0, 1, 0)	-- internal, payable
+	insert project_type
+	values ('i', 0, 0, 1, 0, 0, 0)	-- internal, non-payable
+	insert project_type
+	values ('D', 1, 0, 1, 1, 1, 0)	-- standard development project
+	insert project_type
+	values ('R', 1, 0, 1, 1, 1, 1)	-- development billed by resource
+	insert project_type
+	values ('C', 0, 0, 0, 1, 1, 0)	-- standard consulting project
+	insert project_type
+	values ('T', 0, 1, 0, 1, 1, 0)	-- consulting, tracking client projects
+	insert project_type
+	values ('N', 0, 0, 1, 1, 1, 0)	-- network (i.e., occasional) consulting
+	go
+
+
+	-- make the table of rates for specific resources (i.e., employees)
+	$(overwrite_table resource_rate "
+		client					char(3)				NOT NULL,
+		resrc					char(3)				NOT NULL,
+		resource_name			varchar(30)			NOT NULL,
+		rate					money				NOT NULL,
+		start_date				datetime			NOT NULL,
+		end_date				datetime			NOT NULL,
+	")
+
+	create unique index resource
+	on resource_rate (client, resrc)
+	go
+
+	-- and fill it up
+	-- (these are all ILJ rates)
+	insert resource_rate						-- Buddy
+	values ('509', 'SRD', 'Sr. Developer/Project Manager', 125,
+			'9/15/1998', $END_OF_TIME)
+	insert resource_rate						-- Gregg
+	values ('509', 'SAT', 'System Administrator/Tester', 70,
+			'9/15/1998', $END_OF_TIME)
+	insert resource_rate						-- Gene S.
+	values ('509', 'WID', 'Windows Interface Developer', 105,
+			'9/15/1998', $END_OF_TIME)
+	insert resource_rate						-- Marcus
+	values ('509', 'AD1', 'Application Developer (1)', 85,
+			'10/19/1998', $END_OF_TIME)
+	insert resource_rate						-- Claudio, Joanne, Phaedo
+	values ('509', 'DBA', 'Database Architect/DBA', 125,
+			'11/1/1998', $END_OF_TIME)
+	insert resource_rate						-- Christy
+	values ('509', 'TW', 'Technical Writer/Report Writer', 60,
+			'12/1/1998', $END_OF_TIME)
+	insert resource_rate						-- Keith
+	values ('509', 'JUI', 'Jr. User Interface Designer', 60,
+			'12/1/1998', $END_OF_TIME)
+	insert resource_rate						-- Tim
+	values ('509', 'WEB', 'Web Designer', 50,
+			'2/15/1999', $END_OF_TIME)
+	insert resource_rate						-- Jim
+	values ('509', 'AD2', 'Application Developer (2)', 75,
+			'2/16/1999', $END_OF_TIME)
+	insert resource_rate						-- Mike and Chip
+	values ('509', 'JRD', 'Junior Developer', 45,
+			'6/14/99', $END_OF_TIME)
+	go
+
+
+	-- make the linking table between resources and employees
+	$(overwrite_table resource_employee "
+		resrc					char(3)				NOT NULL,
+		emp						char(3)				NOT NULL,
+		start_date				datetime			NOT NULL,
+		end_date				datetime			NOT NULL,
+	")
+
+	create unique index resemp
+	on resource_employee (resrc, emp)
+	go
+	create unique index empres
+	on resource_employee (emp, resrc)
+	go
+
+	-- and fill it up
+	insert resource_employee
+	values ('SRD', '101', '9/15/98', $END_OF_TIME)			-- Buddy
+	insert resource_employee
+	values ('SAT', '125', '9/15/98', $END_OF_TIME)			-- Gregg
+	insert resource_employee
+	values ('WID', '126', '9/15/98', $END_OF_TIME)			-- Gene S.
+	insert resource_employee
+	values ('AD1', '112', '10/19/98', $END_OF_TIME)			-- Marcus
+	insert resource_employee
+	values ('DBA', '130', '11/1/98', $END_OF_TIME)			-- Claudio
+	insert resource_employee
+	values ('TW', '134', '12/1/98', $END_OF_TIME)			-- Christy
+	insert resource_employee
+	values ('JUI', '135', '12/1/98', $END_OF_TIME)			-- Keith
+	insert resource_employee
+	values ('WEB', '119', '2/15/99', $END_OF_TIME)			-- Tim
+	insert resource_employee
+	values ('AD2', '131', '2/16/99', $END_OF_TIME)			-- Jim
+	insert resource_employee
+	values ('DBA', '120', '5/13/99', $END_OF_TIME)			-- Joanne
+	insert resource_employee
+	values ('SAT', '133', '5/6/99', $END_OF_TIME)			-- Todd
+	insert resource_employee
+	values ('SAT', '136', '5/18/99', '6/13/99')				-- Mike
+	insert resource_employee
+	values ('DBA', '137', '5/11/99', $END_OF_TIME)			-- Paul K. (Phaedo)
+	insert resource_employee
+	values ('SAT', '138', '5/19/99', $END_OF_TIME)			-- Bubble (Phaedo)
+	insert resource_employee
+	values ('JRD', '136', '6/14/99', $END_OF_TIME)			-- Mike
+	insert resource_employee
+	values ('JRD', '107', '6/14/99', $END_OF_TIME)			-- Chip
+	insert resource_employee
+	values ('SRD', '139', '7/13/99', $END_OF_TIME)			-- Wayne
+	go
+
+
+	-- make a table with the admin commission rates in it
+	$(overwrite_table admin_commission "
+		name					varchar(35)			NOT NULL,
+		priority				tinyint				NOT NULL,
+		amount					numeric(3,2)		NOT NULL,
+		start_date				datetime			NOT NULL,
+		end_date				datetime			NOT NULL,
+	")
+
+	-- and fill it up
+	insert admin_commission
+	values ('Bookkeeper Commission', 1, .2, $BAREFOOT_EPOCH, '12/31/1998')
+	insert admin_commission
+	values ('Dispatcher Commission', 2, .5, $BAREFOOT_EPOCH, '12/31/1998')
+	insert admin_commission
+	values ('Coordinator Commission', 3, 1.3, $BAREFOOT_EPOCH, '12/31/1998')
+	insert admin_commission
+	values ('CEO Commission', 4, 4, $BAREFOOT_EPOCH, '12/31/1998')
+	go
+	insert admin_commission
+	values ('Bookkeeper Commission', 1, .5, '1/1/1999', $END_OF_TIME)
+	insert admin_commission
+	values ('Dispatcher Commission', 2, 1.5, '1/1/1999', $END_OF_TIME)
+	insert admin_commission
+	values ('Coordinator Commission', 3, 0, '1/1/1999', '3/31/1999')
+	insert admin_commission
+	values ('Technical Administrator Commission', 4, .5,
+		'1/1/1999', $END_OF_TIME)
+	insert admin_commission
+	values ('Executive Commission', 5, 4, '1/1/1999', $END_OF_TIME)
+	go
+	insert admin_commission
+	values ('Coordinator Commission', 3, 2.5, '4/1/1999', $END_OF_TIME)
+	go
+
+
+	-- stored procedures for figuring billing / commission information
+
+	-- the procs will require a temp table built for them; it looks like this:
+	create table #emp_comm
+	(
+		id          numeric(6,0)    identity,   -- for the cursor
+		emp         char(3)         NOT NULL,   -- employee code
+		client      char(3)         NOT NULL,   -- client code
+		proj        char(3)         NOT NULL,   -- project code
+		date        datetime        NOT NULL,   -- date of work done
+		hours       numeric(6,2)    NOT NULL,   -- how many hours
+		payrate     money           NULL,       -- how much emp gets paid
+		paytype     char(1)         NULL,       -- employee or subcontr?
+		billrate    money           NULL,       -- billing rate per hour
+		bill_hours	numeric(6,2)	NULL,		-- hours adj for billing ratio
+		amt_billed  money           NULL,       -- how much client billed total
+		salescomm   smallmoney      NULL,       -- sales commission (total)
+		refcomm     smallmoney      NULL,       -- referral commission (total)
+		amt_paid    money           NULL,       -- how much employee paid total
+		gross       money           NULL,       -- amt_billed - sales - ref
+		diff        money           NULL,       -- 'simple' profit
+		empcomm     money           NULL        -- how much employee comm
+	)
+	go
+
+	-- stored procedure to calculate how much to bill
+	drop procedure billing_amounts
+	go
+
+	create procedure billing_amounts
+	as
+		-- things that don't get billed have no billing amounts
+		update #emp_comm
+		set amt_billed = 0, empcomm = 0
+		from #emp_comm ec, project p, project_type pt
+		where ec.client = p.client
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.requires_billing = 0
+
+		-- now figure out standard billing rates
+		update #emp_comm
+		set billrate = br.rate, salescomm = 0
+		from #emp_comm ec, bill_rate br, project p, project_type pt
+		where ec.amt_billed is NULL
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.requires_billing = 1
+		and pt.bill_by_employee = 0
+		and ec.client = br.client
+		and ec.proj = br.proj
+		and br.fixed_price_days is NULL
+		and ec.date between br.start_date and br.end_date
+
+		-- and likewise for resource billing rates
+		update #emp_comm
+		set billrate = rr.rate, salescomm = 0
+		from #emp_comm ec, resource_rate rr, resource_employee re,
+				project p, project_type pt
+		where ec.amt_billed is NULL
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.requires_billing = 1
+		and pt.bill_by_employee = 1
+		and ec.emp = re.emp
+		and re.resrc = rr.resrc
+		and ec.client = rr.client
+		and ec.date between rr.start_date and rr.end_date
+		and ec.date between re.start_date and re.end_date
+
+		-- now figure bill hours (including billing ratios)
+		-- first general client billing ratios
+		update #emp_comm
+		set bill_hours = $(round 'ec.hours / br.ratio' .25 U)
+		from #emp_comm ec, billing_ratio br
+		where ec.billrate > 0
+		and ec.emp = br.emp
+		and ec.client = br.client
+		and br.proj is NULL
+		and ec.date between br.start_date and br.end_date
+		-- now project specific billing ratios
+		update #emp_comm
+		set bill_hours = $(round 'ec.hours / br.ratio' .25 U)
+		from #emp_comm ec, billing_ratio br
+		where ec.billrate > 0
+		and ec.emp = br.emp
+		and ec.client = br.client
+		and ec.proj = br.proj
+		and ec.date between br.start_date and br.end_date
+		-- finally, entries with no billing ratios
+		update #emp_comm
+		set bill_hours = ec.hours
+		from #emp_comm ec
+		where ec.billrate is not NULL
+		and ec.bill_hours is NULL
+
+		-- now billing amount is real easy
+		update #emp_comm
+		set amt_billed = bill_hours * billrate
+		where bill_hours > 0
+
+		-- now get fixed price billing rates, which are (predictably)
+		-- more difficult to figure
+		-- first figure out which fixed price rates we have to worry about
+		select distinct ec.client, ec.proj, br.rate, br.fixed_price_days,
+				$(period_num ec.date br.fixed_price_days) 'period_num',
+				$(period_day br.start_date br.fixed_price_days) 'start_day',
+				convert(datetime, NULL) 'period_start',
+				convert(datetime, NULL) 'period_end',
+				convert(numeric(5,2), NULL) 'number_hours'
+		into #fixed_price_periods
+		from #emp_comm ec, bill_rate br
+		where ec.amt_billed is NULL
+		and ec.client = br.client
+		and ec.proj = br.proj
+		and br.fixed_price_days is not NULL
+		and ec.date between br.start_date and br.end_date
+		-- do we have any winners?
+		if exists (select 1 from #fixed_price_periods)
+		begin
+			-- we'll need to know the date range we care about
+			declare @min_date datetime, @max_date datetime
+			select @min_date = min(ec.date)
+			from #emp_comm ec
+			select @max_date = max(ec.date)
+			from #emp_comm ec
+			-- get start dates for each period
+			update #fixed_price_periods
+			set period_start = $(period_start period_num fixed_price_days)
+			-- and end dates
+			update #fixed_price_periods
+			set period_end = dateadd(day, fixed_price_days - 1, period_start)
+			-- handle partial first period
+			update #fixed_price_periods
+			set period_start = @min_date,
+				rate = rate / fixed_price_days * 
+						(datediff(day, @min_date, period_end) + 1)
+			where period_start < @min_date
+			-- likewise for partial last period
+			update #fixed_price_periods
+			set period_end = @max_date,
+				rate = rate / fixed_price_days * 
+						(datediff(day, period_start, @max_date) + 1)
+			where period_end > @max_date
+			-- have to index it for the cursor
+			create unique index fixed_price
+			on #fixed_price_periods (client, proj, period_start)
+			-- make a cursor to go through the table
+			declare fixed_price cursor
+			for
+				select client, proj, rate, fixed_price_days,
+				period_start, period_end
+				from #fixed_price_periods
+			for update of number_hours
+			-- vars to hold the cursor columns
+			declare @client char(3), @proj char(3), @rate money, @days int,
+					@period_start datetime, @period_end datetime
+			-- open the cursor
+			open fixed_price
+			-- get the first row
+			fetch fixed_price
+			into @client, @proj, @rate, @days, @period_start, @period_end
+			-- loop through
+			while (@@sqlstatus = 0)
+			begin
+				-- figure out how many hours for this row
+				declare @hours numeric(5,2)
+				select @hours = (
+					select sum(hours) 
+					from #emp_comm
+					where client = @client
+					and proj = @proj
+					and date between @period_start and @period_end
+				)
+				-- and put it in
+				update #fixed_price_periods
+				set number_hours = @hours
+				where current of fixed_price
+				-- get the next row
+				fetch fixed_price
+				into @client, @proj, @rate, @days, @period_start, @period_end
+			end
+			-- close the cursor
+			close fixed_price
+			-- debugging
+			-- select * from #fixed_price_periods
+			-- now update the original table
+			update #emp_comm
+			set amt_billed =
+					convert(money, fpp.rate / fpp.number_hours * ec.hours)
+			from #emp_comm ec, #fixed_price_periods fpp
+			where ec.client = fpp.client
+			and ec.proj = fpp.proj
+			and ec.date between fpp.period_start and fpp.period_end
+		end
+
+		-- set salescomms and refcomms to 0 initially
+		update #emp_comm
+		set salescomm = 0, refcomm = 0
+		where amt_billed is not null
+
+		-- we'll use a cursor to figure the sales comms
+		-- declare it
+		declare salescomm_cursor cursor
+		for
+			select client, proj, date, amt_billed
+			from #emp_comm
+		for update of salescomm
+		-- declare vars we need for the cursor
+		-- (we declared @client and @proj up above)
+		declare @date datetime, @amt_billed money, @salescomm smallmoney
+		-- open it
+		open salescomm_cursor
+		-- get the first row
+		fetch salescomm_cursor
+		into @client, @proj, @date, @amt_billed
+		-- start the loop
+		while (@@sqlstatus = 0)
+		begin
+			if @amt_billed > 0
+			begin
+				-- general client sales commissions
+				select @salescomm = (
+					select sum(@amt_billed * sc.commission_pct / 100.0)
+					from sales_commission sc
+					where sc.client = @client
+					and sc.proj is NULL
+					and @date between sc.start_date and sc.end_date
+				)
+				-- update the salescomm
+				if @salescomm > 0
+				begin
+					update #emp_comm
+					set salescomm = @salescomm
+					where current of salescomm_cursor
+				end
+				-- project specific sales commissions
+				select @salescomm = sum(@amt_billed * sc.commission_pct / 100.0)
+				from sales_commission sc
+				where sc.client = @client
+				and sc.proj = @proj
+				and @date between sc.start_date and sc.end_date
+				-- update the salescomm
+				if @salescomm > 0
+				begin
+					update #emp_comm
+					set salescomm = @salescomm
+					where current of salescomm_cursor
+				end
+			end
+			-- get the next row
+			fetch salescomm_cursor
+			into @client, @proj, @date, @amt_billed
+		end
+		-- close it
+		close salescomm_cursor
+	go
+
+	grant execute on billing_amounts to public
+	go
+
+	-- stored procedure to figure employee commission: this one
+	-- calls billing_amounts (the other proc)
+	drop procedure emp_commission
+	go
+
+	create procedure emp_commission
+	as
+		-- things that don't get paid have no employee comm
+		update #emp_comm
+		set payrate = 0, amt_paid = 0, empcomm = 0
+		from #emp_comm ec, project p, project_type pt
+		where ec.client = p.client
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.requires_payment = 0
+		-- blank employee is special signal that this came from
+		-- 'other profits' (and gets no employee comm)
+		update #emp_comm
+		set payrate = 0, empcomm = 0
+		from #emp_comm ec
+		where ec.emp = ''
+
+		-- now figure out pay rates
+		-- general employee rates
+		update #emp_comm
+		set payrate = pr.rate, paytype = pr.rate_type
+		from #emp_comm ec, pay_rate pr
+		where ec.emp = pr.emp
+		and pr.client is NULL
+		and pr.proj is NULL
+		and ec.date between pr.start_date and pr.end_date
+		-- client specific employee rates
+		update #emp_comm
+		set payrate = pr.rate, paytype = pr.rate_type
+		from #emp_comm ec, pay_rate pr
+		--where ec.payrate is NULL
+		where ec.emp = pr.emp
+		and ec.client = pr.client
+		and pr.proj is NULL
+		and ec.date between pr.start_date and pr.end_date
+		-- client and project specific employee rates
+		update #emp_comm
+		set payrate = pr.rate, paytype = pr.rate_type
+		from #emp_comm ec, pay_rate pr
+		--where ec.payrate is NULL
+		where ec.emp = pr.emp
+		and ec.client = pr.client
+		and ec.proj = pr.proj
+		and ec.date between pr.start_date and pr.end_date
+
+		-- but subcontractors don't get employee comm
+		update #emp_comm
+		set empcomm = 0
+		where paytype = 'S'
+
+		-- figuring billing amounts is sort of tricky, so
+		-- it has its own stored procedure
+		execute billing_amounts
+
+		-- referral commissions aren't so tough
+		update #emp_comm
+		set refcomm = rc.commission * ec.hours
+		from #emp_comm ec, referral_commission rc
+		where ec.emp = rc.emp
+		and ec.date between rc.start_date and rc.end_date
+		 
+		-- figure amount paid (simple multiplication)
+		update #emp_comm
+		set amt_paid = payrate * hours
+		where payrate > 0
+
+		-- get gross take (simple subtraction)
+		update #emp_comm
+		set gross = amt_billed - salescomm - refcomm
+		where empcomm is NULL
+
+		-- get diff (also simple subtraction)
+		update #emp_comm
+		set diff = amt_billed - salescomm - refcomm - amt_paid
+		--where empcomm is NULL
+
+		-- employee commission before magic date 9/7/98 is easy
+		update #emp_comm
+		set empcomm = diff * .04
+		where empcomm is NULL
+		and date < '9/7/98' 
+		 
+		-- after that, it gets bitchier:
+		declare @rate_factor numeric(5,2), @breakeven_factor numeric(5,2),
+				@flare_factor numeric(5,2)
+		select @rate_factor = 12.0
+		select @breakeven_factor = 3.0
+		select @flare_factor = 20.0
+		update #emp_comm
+		set empcomm = convert(money, 
+		 		diff * diff / (
+					(amt_billed / @rate_factor) -
+							(diff - gross / @breakeven_factor) / @flare_factor
+				) / 100.0
+			)
+		where empcomm is NULL
+	go
+
+	grant execute on emp_commission to public
+	go
+
+END
