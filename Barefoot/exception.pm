@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -73,7 +73,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000 Barefoot Software.
+# licensing agreement.  Copyright (c) 2000-2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -89,6 +89,8 @@ use vars qw(@EXPORT $__FILE__ $__LINE__ $__CATCH__);
 
 use Carp;
 
+use Barefoot::base;
+
 
 sub try(&@);
 sub catch(&);
@@ -97,12 +99,10 @@ sub timeout(&$);
 
 $__CATCH__ = 0;
 
-1;
 
-
-#
+###########################
 # Subroutines:
-#
+###########################
 
 
 sub try (&@)
@@ -136,6 +136,7 @@ sub rethrow ()
 	die("$_ at $__FILE__ line $__LINE__\n");
 }
 
+
 sub timeout (&$)
 {
 	my ($code, $seconds) = @_;
@@ -152,7 +153,7 @@ sub timeout (&$)
 		}
 		catch
 		{
-			# print STDERR "exception is >>$_<<\n";
+			print STDERR "$0 ($$): exception is >>$_<<\n" if DEBUG >= 4;
 			if ( /^timeout$/ )
 			{
 				$timed_out = 1;
@@ -167,3 +168,10 @@ sub timeout (&$)
 		&$code;
 	}
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
