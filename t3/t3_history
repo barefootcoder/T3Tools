@@ -3,31 +3,42 @@
 use strict;
 
 use Barefoot::input qw(input);
+use Barefoot::T3;
+use Time::localtime;
 
+T3::initialize($::ENV{HOME});
 
 my $from = input("Show messages from (leave blank for all):");
 $from = '.*?' unless $from;
 my $to = input("Show messages to (leave blank for all):");
 $to = '.*?' unless $to;
 
+$| = 1;
+my $history = (T3::config_param('TalkerDir')) . "/history";
+open(LOG, $history) or die("can't open server log");
+
 my @messages;
-open(LOG, "/var/log/httpd/access_log") or die("can't open server log");
-while ( <LOG> )
+
 {
-	if ( /talker_server/ and /status="NORMAL"/ )
+	local $/ = "\cD";
+	while ( <LOG> )
 	{
-		my $message = {};
+		chomp;
+
+		my @history_line = split("\cC");
 		# print "inside\n";
-		next unless ($message->{from}) = /from="($from)"/;
-		# print "from matched\n";
-		next unless ($message->{to}) = /to="($to)"/;
-		# print "to matched\n";
-		($message->{date}, $message->{time}) = /\[(.*?):(.*?) .*?\]/;
-		($message->{content}) = />(.*?)<\/MESSAGE>/;
+		my $message = {};
+
+		shift @history_line;
+		next unless ($message->{from} = shift @history_line) =~ /$from/;
+		next unless ($message->{to} = shift @history_line) =~ /$to/;
+		$message->{date} = ctime(shift @history_line);
+		$message->{content} = shift @history_line;
+
 		unshift @messages, $message;
 	}
+	close(LOG);
 }
-close(LOG);
 
 list_messages();
 
@@ -48,13 +59,13 @@ sub message_info
 {
 	my ($msg) = @_;
 	return "From $msg->{from}, to $msg->{to}, "
-			. "received $msg->{date} $msg->{time}";
+			. "received $msg->{date}";
 }
 
 sub list_messages
 {
 	my $count = 0;
-	open(LESS, "|less") or die("can't open pipe");
+	open(LESS, "|less +Gg") or die("can't open pipe");
 	foreach my $msg (@messages)
 	{
 		print LESS ++$count, ": ", message_info($msg), "\n";
