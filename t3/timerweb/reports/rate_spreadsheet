@@ -2,7 +2,13 @@
 -- TITLE: Billing/Pay Rate Spreadsheet
 
 print "Current billing and pay rates"
+print "as of the current date"							?!end_date
+print "as of [end_date]"								??end_date
 go
+
+declare @as_of datetime
+select @as_of = getdate()								?!end_date
+select @as_of = '[end_date]'							??end_date
 
 select e.emp "E", $(employee_name e) "employee", c.client "C",
 		c.name "client", p.name "project",
@@ -14,7 +20,7 @@ from employee e, client c, project p, client_employee ce,
 		bill_rate br, pay_rate pr, billing_ratio brat
 where ce.emp = e.emp
 and ce.client = c.client
-and getdate() between ce.start_date and ce.end_date
+and @as_of between ce.start_date and ce.end_date
 and e.emp = pr.emp
 and isnull(pr.client, c.client) = p.client
 and
@@ -30,21 +36,21 @@ and
 			where pr2.emp = e.emp
 			and pr2.client = c.client
 			and pr2.proj = p.proj
-			and getdate() between pr2.start_date and pr2.end_date
+			and @as_of between pr2.start_date and pr2.end_date
 		)
 	)
 )
-and getdate() between pr.start_date and pr.end_date
+and @as_of between pr.start_date and pr.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
 and p.proj_type != 'R'
 and c.client = br.client
 and br.proj = p.proj
-and getdate() between br.start_date and br.end_date
+and @as_of between br.start_date and br.end_date
 and brat.emp =* e.emp
 and brat.client =* p.client
 and (brat.proj =* p.proj or brat.proj is null)
-and getdate() between brat.start_date and brat.end_date
+and @as_of between brat.start_date and brat.end_date
 union
 select e.emp "E", $(employee_name e) "employee", c.client "C",
 		c.name "client", p.name "project",
@@ -56,7 +62,7 @@ from employee e, client c, project p, client_employee ce,
 		resource_rate rr, resource_employee re, pay_rate pr, billing_ratio brat
 where ce.emp = e.emp
 and ce.client = c.client
-and getdate() between ce.start_date and ce.end_date
+and @as_of between ce.start_date and ce.end_date
 and e.emp = pr.emp
 and isnull(pr.client, c.client) = c.client
 and
@@ -72,23 +78,23 @@ and
 			where pr2.emp = e.emp
 			and pr2.client = c.client
 			and pr2.proj = p.proj
-			and getdate() between pr2.start_date and pr2.end_date
+			and @as_of between pr2.start_date and pr2.end_date
 		)
 	)
 )
-and getdate() between pr.start_date and pr.end_date
+and @as_of between pr.start_date and pr.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
 and p.proj_type = 'R'
 and c.client = rr.client
-and getdate() between rr.start_date and rr.end_date
+and @as_of between rr.start_date and rr.end_date
 and rr.client = re.client
 and rr.resrc = re.resrc
 and re.emp = e.emp
-and getdate() between re.start_date and re.end_date
+and @as_of between re.start_date and re.end_date
 and brat.emp =* e.emp
 and brat.client =* p.client
 and (brat.proj =* p.proj or brat.proj is null)
-and getdate() between brat.start_date and brat.end_date
+and @as_of between brat.start_date and brat.end_date
 order by e.emp, c.client
 go
