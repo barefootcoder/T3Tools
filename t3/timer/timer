@@ -1043,11 +1043,11 @@ sub calc_date
 	my ($line) = @_;
 
 	my $seconds;
-	if ($line =~ /(\d+),$/)		# ends in a comma, must be paused
+	if ($line and $line =~ /(\d+),$/)	# ends in a comma, must be paused
 	{
 		$seconds = $1;
 	}
-	else						# must be current
+	else								# current or no time given
 	{
 		$seconds = time;
 	}
@@ -1065,7 +1065,8 @@ sub log_to_sybase
 {
 	my ($timerinfo, $log_timer) = @_;
 	# a shortcut
-	my $timer = $timerinfo->{timers}->{$log_timer};
+	my $timer = defined($log_timer)
+			? $timerinfo->{timers}->{$log_timer} : undef;
 
 	my ($emp, $client, $rounding, $to_nearest, $date, $hours, $proj, $phase,
 			$cliproj, $comments);
@@ -1126,8 +1127,8 @@ sub log_to_sybase
 	HOURS: {
 		($rounding, $to_nearest) = timerdata::client_rounding($client);
 		$hours = input("Hours:",
-				range::round(calc_time($timer->{time}) / 60,
-						$rounding, $to_nearest));
+				$timer ? range::round(calc_time($timer->{time}) / 60,
+						$rounding, $to_nearest) : 0);
 		print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
 				unless $hours == range::round($hours,
 					range::ROUND_OFF, $to_nearest);
@@ -1174,6 +1175,7 @@ sub log_to_sybase
 	}
 
 	COMMENTS: {
+		$comments = "";
 		last unless $comments_needed;
 		print "\nEnter comments below (maximum 255 chars):\n";
 		print "  (255 chars is a little over 3 lines if your screen is 80\n";
@@ -1270,7 +1272,9 @@ sub db_post_timer
 			print STDERR $result and
 			return 0 unless $result eq "(1 row affected)";
 		}
-		$timer->{posted} = 1;
+		# note that timers that are still timing (easy to tell because their
+		# time chunks string ends in a dash) are never considered posted
+		$timer->{posted} = 1 unless substr($timer->{time}, -1) eq '-';
 	}
 
 	return 1;
