@@ -1,0 +1,50 @@
+#! /usr/bin/perl
+
+use strict;
+
+*User =
+	\'For user  @<<<<<<<<<<<<<<  :              at current rate of work:';
+*Header1 =
+	\'                                worked     will reach  will reach';
+*Header2 =
+	\'Client:                         so far:      by Fri:     by Sun:';
+*Client_Hours =
+	\'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   @##.##       @##.##      @##.##';
+
+
+my $today = (localtime(time))[6] - 1;	# - 1 assumes running after midnight
+my $days_so_far = $today > 0 ? $today : $today + 7;
+# today == 0 means Sun, thus 7 days; today == -1 means Sat, thus 6 days
+
+
+foreach my $dir ( </export/usr/*> )
+{
+	if (-d $dir and -s "$dir/timer.\$\$\$")
+	{
+		my ($user) = $dir =~ m@/export/usr/(.*)@;
+		print "\n\n";
+		writeln($::User, $user);
+		print "$::Header1\n$::Header2\n";
+		open(TIMER, "perl /usr/local/timer/timer -tu $user|") or
+				(print STDERR "couldn't run timer -tu for user $user\n"
+				and next);
+		while ( <TIMER> )
+		{
+			last if /^====/;
+			my $client = substr($_, 4, 30);
+			my $hours = substr($_, 43, 6) + 0;
+			my $daily = $hours / $days_so_far;
+			writeln($::Client_Hours, $client, $hours, $daily * 5, $daily * 7);
+		}
+		close(TIMER);
+	}
+}
+
+sub writeln
+{
+	my ($format, @vars) = @_;
+	$format .= "\n";
+	$^A = "";
+	formline($format, @vars);
+	print $^A;
+}
