@@ -62,6 +62,11 @@ select br.*
 from bill_rate br, project p, project_type pt
 where br.client = p.client
 and br.proj = p.proj
+and
+(
+	p.start_date between br.start_date and br.end_date
+	or p.end_date between br.start_date and br.end_date
+)
 and p.proj_type = pt.proj_type
 and pt.resource_billing = 1
 go
