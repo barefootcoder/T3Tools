@@ -1,0 +1,136 @@
+-- SORT GROUP: Commission Reports
+-- TITLE: Projected Commissions
+
+print 'Period from [start_date] to [end_date]'
+print ''
+print ''
+go
+
+$(build_profit_item "
+	log.date between '[start_date]' and '[end_date]'
+")
+
+calc_profit
+go
+calc_admin_commission
+go
+
+set nocount on
+go
+
+-- sales commission report
+print '<H3>Sales Commission</H3>'
+go
+select sca.name "salesman", sca.client "C", convert(char(20), c.name) "client",
+		sca.proj, sum(sca.amount) "total sales comm"
+from sales_comm_amount sca, profit_item pi, client c
+where sca.profit_id = pi.profit_id
+and sca.client = c.client
+group by sca.name, sca.client, c.name, sca.proj
+order by sca.name, sca.client, sca.proj
+compute sum(sum(sca.amount))
+go
+
+-- referral commission report
+print '<H3>Referral Commission</H3>'
+go
+select substring(rca.name, 1, 20) "pay to",
+		substring($(employee_name e), 1, 20) "employee",
+		substring(c.name, 1, 20) "client",
+		sum(rca.amount) "total referral comm"
+from profit_item pi, referral_comm_amount rca, employee e, client c
+where pi.profit_id = rca.profit_id
+and rca.emp = e.emp
+and pi.client = c.client
+group by rca.name, $(employee_name e), c.name
+order by rca.name, $(employee_name e), c.name
+compute sum(sum(rca.amount))
+go
+
+-- employee commission report
+print '<H3>Employee Commission</H3>'
+go
+select eca.pay_to "E", convert(char(15), $(employee_name e)) "employee",
+		pi.client "C", convert(char(20), c.name) "client",
+		convert(numeric(6,2), sum(tlp.hours)) "ttl hrs",
+		sum(eca.amount) "total emp comm"
+from profit_item pi, employee_comm_amount eca, time_log_profit tlp,
+		employee e, client c
+where pi.profit_id = eca.profit_id
+and pi.log_source *= tlp.log_source
+and pi.log_id *= tlp.log_id
+and eca.pay_to = e.emp
+and pi.client = c.client
+group by eca.pay_to, $(employee_name e), pi.client, c.name
+order by eca.pay_to, pi.client
+compute sum(sum(eca.amount))
+go
+
+-- admin commission report
+print '<H3>Administrative Commission</H3>'
+go
+select act.name "commission", convert(char(20), aca.name) "paid to",
+		aca.commission_percent "percentage",
+		aca.amount "amount"
+from admin_comm_amount aca, admin_commission_type act
+where aca.admin_comm = act.admin_comm
+order by act.sort_order, aca.comm_start_date
+compute sum(aca.amount)
+go
+
+-- totals
+print '<H3>Total Amounts</H3>'
+go
+
+-- first, get employee overhead for the last six payrolls
+set rowcount 6
+select pay.overhead_amount / pay.payroll_amount "overhead_pct"
+into #overhead_percent
+from payroll pay
+where pay.overhead_amount is not NULL
+order by period_start desc
+set rowcount 0
+go
+
+-- now fill up the temp table with the commission totals
+select convert(varchar(15), 'Sales') "comm_type",
+		convert(money, sum(sca.amount)) "total_amt",
+		convert(numeric(4,4), NULL) "overhead_pct",
+		convert(money, NULL) "with_overhead"
+into #total_projected_comms
+from sales_comm_amount sca
+go
+
+insert #total_projected_comms
+	(comm_type, total_amt)
+select 'Referral', sum(rca.amount)
+from referral_comm_amount rca
+go
+
+insert #total_projected_comms
+	(comm_type, total_amt)
+select 'Employee', sum(eca.amount)
+from employee_comm_amount eca
+go
+
+insert #total_projected_comms
+	(comm_type, total_amt)
+select 'Administrative', sum(aca.amount)
+from admin_comm_amount aca
+go
+
+-- figure the employee overhead
+update #total_projected_comms
+set overhead_pct = avg(op.overhead_pct)
+from #overhead_percent op
+go
+
+update #total_projected_comms
+set with_overhead = total_amt * (1.0 + overhead_pct)
+go
+
+select comm_type "commission", total_amt "comm amount",
+		overhead_pct * 100.0 "emp overhead", with_overhead "total amount"
+from #total_projected_comms
+compute sum(with_overhead)
+go
