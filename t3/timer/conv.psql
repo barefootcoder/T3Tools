@@ -1,0 +1,36 @@
+#! /usr/bin/perl
+
+# Header: $Header$
+# Log: $Log$
+
+$curfile = "";
+while ( <> )
+{
+	if ($ARGV ne $curfile)
+	{
+		$outfile = "\L$ARGV\E";
+		$table = $outfile;
+		$table =~ s/\..*$//;
+		open(OUT, ">$outfile") or die("can't open outfile");
+		print OUT "delete from $table;\n";
+		$curfile = $ARGV;
+		print "converting $curfile to $outfile for table $table\n";
+	}
+	chomp;
+	next if /^\cZ\cM*$/;
+	@fields = split(/(".*?")|,/);
+	@fields = grep { !/^\cM*$/ } @fields;
+	{
+		local $, = "|";
+		local $\ = "\n";
+		print @fields;
+	}
+	print OUT "insert into $table values (";
+	foreach $field (@fields)
+	{
+		$delim = $field eq $fields[$#fields] ? "" : ",";
+		$field =~ s/(^")|("$)/'/g;
+		print OUT $field, $delim;
+	}
+	print OUT ");\n";
+}
