@@ -331,7 +331,7 @@ create_table("billing_ratio",
 		[ "ratio",			"numeric(4,3)",		"NOT NULL" ],
 		[ "start_date",		"date",				"NOT NULL" ],
 		[ "end_date",		"date",				"NOT NULL" ],
-		# [ "priority",		"int",				"NOT NULL" ],
+		[ "priority",		"int",				"NULL" ],
 	],
 	[
 		{
