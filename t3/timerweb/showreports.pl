@@ -1,48 +1,9 @@
 #! /usr/bin/perl
 
-# $Header$
-# $Log$
-# Revision 1.8  1999/12/19 22:57:48  buddy
-# fixed sorting of variables
-# invoice and check_date are no longer administrative-only
-# removed Tim from list of administrative users
-#
-# Revision 1.7  1999/06/03 16:12:36  buddy
-# added inv_paydate variable
-# made reports grouped into two columns
-#
-# Revision 1.6  1999/05/27 20:41:20  buddy
-# added proj to variables
-# set sort order for variables
-# added check for certain variables if not admin user
-#
-# Revision 1.5  1999/05/26 19:09:02  buddy
-# added check_date variable to allow marking payrolls as done
-#
-# Revision 1.4  1999/05/13 14:35:43  buddy
-# divided reports into groups
-# sorted reports within groups
-# made special group (Administrative Updates) only accessible by certain users
-#     (list is currently hard-coded)
-# added invoice num to variables
-# added size to variable so all fields aren't the same (huge) width
-#
-# Revision 1.3  1999/02/18 06:11:19  buddy
-# now calls correct version of sqlcgi.pl
-#
-# Revision 1.2  1999/02/18 05:59:44  buddy
-# generalized vars into a hash
-# consolidated text inputs into one form
-# fixed web base path
-#
-# Revision 1.1  1998/12/31 20:02:13  buddy
-# Initial revision
-#
-# Revision 1.1  1998/12/31 20:00:43  buddy
-# Initial revision
-#
-
 use CGI;
+use Barefoot::string;
+
+use constant DEBUG => 0;
 
 $cgi = new CGI;
 $cookie_array = [];
@@ -75,6 +36,7 @@ $vars = {
 	proj		=>	{
 						sort	=>	5,
 						value	=>	"",
+						options	=>	'upper',
 						size	=>	3,
 						admin	=>	0,
 					},
@@ -100,7 +62,8 @@ $vars = {
 @admin_users = ('christy', 'buddy');
 
 $title = 'TIMER Reports';
-$basepath = "/home/httpd/sybase/timer_reports";
+$basepath = DEBUG ? "/home/buddy/proj/timerweb/reports"
+		: "/home/httpd/sybase/timer_reports";
 
 							debug("env has cookies $ENV{HTTP_COOKIE}");
 foreach $var (keys %$vars)
@@ -131,12 +94,11 @@ for $file ( < $basepath/* > )
 {
 	$basefile = $file;
 	$basefile =~ s?^$basepath/??;
-	my ($group);
+	my ($group, $alt_params);
 
 	open(FILE, $file) or next;
 	while ( <FILE> )
 	{
-
 		if ( /--\s*SORT GROUP:\s*(.*)\s*/ )
 		{
 			$group = $1;
@@ -149,12 +111,17 @@ for $file ( < $basepath/* > )
 		if ( /--\s*TITLE:\s*(.*)\s*/ )
 		{
 										debug("report is $1");
-			#print $cgi->a({-href=>"sqlcgi.pl?$basefile"}, $1), "<BR>\n";
 			my $report = {};
 			$report->{file} = $basefile;
 			$report->{title} = $1;
+			$report->{params} = $alt_params;
 			push @{$report_groups{$group}}, $report;
-			last;
+		}
+
+		if ( /--\s*ALSO RUN WITH:\s*(.*)\s*/ )
+		{
+			$alt_params = $1;
+										debug("alt report for $file");
 		}
 	}
 }
@@ -168,13 +135,21 @@ foreach my $group (keys %report_groups)
 	foreach my $report (sort {$a->{title} cmp $b->{title}}
 			@{$report_groups{$group}})
 	{
-		print $cgi->a({-href=>"sqlcgi.pl?$report->{file}"},
-				$report->{title}), "<BR>\n";
+		if ($report->{params})
+		{
+			print $cgi->a({-href=>"sqlcgi.pl?file=$report->{file}&"
+					. "$report->{params}"}, $report->{title}), "<BR>\n";
+		}
+		else
+		{
+			print $cgi->a({-href=>"sqlcgi.pl?$report->{file}"},
+					$report->{title}), "<BR>\n";
+		}
 	}
 }
 print "</multicol>\n";
 
-# print $debug_string;
+print $debug_string if DEBUG;
 print $cgi->end_html();
 
 sub param_to_cookie
@@ -182,6 +157,9 @@ sub param_to_cookie
 	my ($name) = @_;
 
 	$value = $cgi->param($name);
+	$value = string::upper($value)
+			if exists $vars->{$name}->{options}
+			and $vars->{$name}->{options} =~ /(^|,)upper(,|$)/;
 	if (defined $value)
 	{
 										debug("making cookie for $name");
