@@ -6,7 +6,8 @@ use strict;
 
 use Barefoot::T3;
 
-T3::initialize($::ENV{HOME});
+T3::initialize("/export/usr/$::ENV{USER}");
+
 foreach (T3::send_message(T3::build_message(T3::INFO_MESSAGE)))
 {
 	my $attr = T3::parse_message($_);
