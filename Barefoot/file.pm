@@ -63,7 +63,11 @@ sub open_lock
 		my $give_up = time() + $timeout;
 		while (time() < $give_up)
 		{
-			$got_lock = 1 and last if flock($fh, LOCK_EX | LOCK_NB);
+			if (flock($fh, LOCK_EX | LOCK_NB))
+			{
+				$got_lock = 1;
+				last;
+			}
 			sleep 1;
 		}
 	}
