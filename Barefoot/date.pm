@@ -141,14 +141,19 @@ package date;
 
 sub _date_parse
 {
-	my ($date) = @_;
+	my ($date, $raw_time_okay) = @_;
 	croak("call to date routine with no date given") unless $date;
 	my ($mon, $day, $year);
 
 	# don't really care if this fails
 	$date =~ s/ 12:00AM$//;
 
-	if ($date =~ /^(\d\d\d\d)(\d\d)(\d\d)$/)
+	if ($date =~ /^\d{9,10}$/)
+	{
+		# raw epoch seconds value; just pass it through if those are okay
+		return $raw_time_okay ? $date : undef;
+	}
+	elsif ($date =~ /^(\d\d\d\d)(\d\d)(\d\d)$/)
 	{
 		$mon = $2 - 1;
 		$day = $3;
@@ -235,7 +240,7 @@ sub incDays
 {
 	my ($date, $inc) = @_;
 
-	my $secs = _date_parse($date);
+	my $secs = _date_parse($date, true);
 	print STDERR "seconds before increment: $secs\n" if DEBUG >= 3;
 	$secs += ($inc * 24 * 60 * 60);		# increment seconds by that many days
 	print STDERR "seconds after increment:  $secs\n" if DEBUG >= 3;
@@ -257,10 +262,10 @@ sub dayDiff
 {
 	my ($old_date, $new_date) = @_;
 
-	my $old_secs = _date_parse($old_date);
+	my $old_secs = _date_parse($old_date, true);
 	# sortableString() is a shortcut for getting today's date
 	# (probably not a very efficient one)
-	my $new_secs = defined($new_date) ? _date_parse($new_date)
+	my $new_secs = defined($new_date) ? _date_parse($new_date, true)
 			: _date_parse(sortableString());
 	return undef unless defined($old_secs) and defined($new_secs);
 
