@@ -2,11 +2,11 @@
 -- TITLE: Complete Billing Ratio History
 
 select br.ratio, br.emp "E", $(employee_name e) "employee",
-		br.client "C", c.name "client", proj,
+		br.client "C", c.name "client", proj, phase,
 		convert(char(10), br.start_date, 101),
 		convert(char(10), br.end_date, 101)
 from billing_ratio br, employee e, client c
 where br.emp = e.emp
 and br.client = c.client
-order by br.emp, br.client, br.proj, convert(char(8), br.start_date, 112)
+order by br.emp, br.client, br.proj, br.phase, convert(char(8), br.start_date, 112)
 go
