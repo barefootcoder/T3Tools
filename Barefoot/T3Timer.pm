@@ -743,7 +743,7 @@ sub valid_projects
 sub proj_requirements
 {
 	my ($client, $proj, $date) = @_;
-	print STDERR "client: $client, proj: $proj\n";
+	# print STDERR "client: $client, proj: $proj\n";
 
 	my $res = $t3->do("
 			select pt.requires_phase, pt.requires_tracking,
