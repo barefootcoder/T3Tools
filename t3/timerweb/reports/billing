@@ -57,11 +57,16 @@ set nocount on
 go
 
 select c.name "Client",
+		p.name,												??proj
 		convert(char(10), min(pi.start_date), 101) "From",
 		convert(char(10), max(pi.end_date), 101) "To"
 from profit_item pi, client c
+		, project p											??proj
 where pi.client = c.client
+and pi.client = p.client									??proj
+and pi.proj = p.proj										??proj
 group by c.name
+		, p.name											??proj
 go
 
 if exists
@@ -110,6 +115,23 @@ if exists
 	and tlp.resource_billing = 1
 	and tlp.class_billing = 0
 	and tlp.emp = re.emp
+	and
+	(
+		tlp.phase = re.phase
+		or
+		(
+			re.phase is NULL
+			and not exists
+			(
+				select 1
+				from resource_employee re2
+				where tlp.client = re2.client
+				and tlp.emp = re2.emp
+				and tlp.phase = re2.phase
+				and tlp.date between re2.start_date and re2.end_date
+			)
+		)
+	)
 	and tlp.client = re.client
 	and tlp.date between re.start_date and re.end_date
 	and re.resrc = rr.resrc
