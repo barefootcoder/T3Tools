@@ -2,6 +2,9 @@
 
 # $Header$
 # $Log$
+# Revision 1.6  1999/09/15 17:04:52  buddy
+# changed script to remove annoying "return status = 0" messages from reports
+#
 # Revision 1.5  1999/06/03 16:13:09  buddy
 # added "not" conditional tags (?!)
 #
@@ -21,21 +24,25 @@
 # Initial revision
 #
 
+use strict;
+
 use CGI;
 $| = 1;
 
-$cgi = new CGI;
-$script = "/tmp/sqlcgi$$.ksh";
-$basepath = "/home/httpd/sybase/timer_reports/";
-$title = "";
-$debug_string = "";
+my $cgi = new CGI;
+my $script = "/tmp/sqlcgi$$.ksh";
+my $basepath = "/home/httpd/sybase/timer_reports/";
+my $lib = "/usr/local/bin/kshlib";
+my $db = "timer";
+my $title = "";
+my $debug_string = "";
 
 set_environment();
 print $cgi->header();
 
 if ($ARGV[0])
 {
-	$file=$basepath . $ARGV[0];
+	my $file=$basepath . $ARGV[0];
 
 	if (create_script($file, $script))
 	{
@@ -66,10 +73,10 @@ sub set_environment
 	$ENV{HOME} = "/home/www" if !$ENV{HOME};
 
 	# get cookie values and stick them in the environment
-	@cookies = $cgi->cookie();
-	foreach $name (@cookies)
+	my @cookies = $cgi->cookie();
+	foreach my $name (@cookies)
 	{
-		$value = $cgi->cookie($name);
+		my $value = $cgi->cookie($name);
 		# print "setting environment value for $name to $value<BR>\n";
 		$ENV{$name} = $value;
 	}
@@ -77,15 +84,20 @@ sub set_environment
 
 sub create_script
 {
+	my ($file, $script) = @_;
+
 	open(FILE, $file) or die("can't get file");
 	open(SCRIPT, ">$script") or die("can't make script");
 
 	print SCRIPT <<END;
 #! /bin/ksh
 
-. /usr/local/bin/kshlib
+. $lib
 
 run_query -Uguest -SSYBASE_1 <<-SCRIPT_END | remove_sp_returns
+
+	use $db
+	go
 
 END
 
@@ -125,7 +137,7 @@ END
 		# if "var" is not defined (but see conditional tokens, above)
 		while (/\[(.*?)\]/)
 		{
-			$var = $1;
+			my $var = $1;
 			if (!$ENV{$var})
 			{
 				error("$var variable not set");
