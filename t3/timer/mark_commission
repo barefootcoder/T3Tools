@@ -99,7 +99,7 @@ my $insert_query = "
 	/* commissions that apply to a single log */
 	insert log_commission
 		(log_source, log_id, commission_id)
-	select pi.log_source, pi.log_id, com.commission_id
+	select distinct pi.log_source, pi.log_id, com.commission_id
 	from commission com, $comm_types{$ctype} ca, profit_item pi
 	where com.comm_type = '$ctype'
 	and com.pay_type = ca.pay_type
@@ -135,9 +135,9 @@ my $results = timerdata::run_query("
 
 # check results
 my $results_rows = join("\n", ('\((\d+) rows? affected\)') x 4);
-$results =~ /^\((\d+) rows? affected\).*-+\s*\n\s+([\d,.]+)/s;
+$results =~ /^$results_rows\s+-+\s*\n\s+([\d,.]+)/s;
 my $num_rows = $1;
-my $sum = $2; $sum =~ s/,//g;
+my $sum = $5; $sum =~ s/,//g;
 $total_amount = sprintf("%.2f", $total_amount);
 die("mark failed <<$results>>")
 		unless $num_rows == keys(%comm) and $sum == $total_amount;
@@ -171,7 +171,7 @@ sub generate_multi_log_query
 	return "
 		insert log_commission
 			(log_source, log_id, commission_id)
-		select log.log_source, log.log_id, com.commission_id
+		select distinct log.log_source, log.log_id, com.commission_id
 		from commission com, $comm_types{$ctype} ca, profit_item pi,
 				$log_table log
 		where com.comm_type = '$ctype'
