@@ -31,7 +31,7 @@ and cm.end_date >= "[start_date]"
 
 and payment_id is null
 
-and c.pay_to *= cm.emp
+and c.pay_to *= cm.pay_to
 and cm.pay_type = "E"
 and c.comm_type *= cm.comm_type
 
