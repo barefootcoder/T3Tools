@@ -114,8 +114,8 @@ sub try (&@)
 	if ($@)
 	{
 		# print "in try: $@";
-		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/;
-		die("incorrect 'die' format") unless $3;
+		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/s;
+		die("incorrect 'die' format: $@") unless $3;
 		local $_ = $1;
 		$__FILE__ = $2;
 		$__LINE__ = $3;
