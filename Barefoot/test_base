@@ -2,8 +2,10 @@
 
 use strict;
 
+package test;
 use Barefoot::base;
 
+package main;
 die("true not correct") unless true == 1;
 die("false not correct") unless false == 0;
 die("DEBUG not correct") unless DEBUG_MODE == 0;
