@@ -1,0 +1,42 @@
+-- SORT GROUP: Commission Reports
+-- TITLE: Pay Commissions
+
+print ""
+print ""
+print "<H3>Period from [start_date] to [end_date]</H3>"
+print ""
+print ""
+go
+
+set nocount on
+go
+
+select 
+e.emp,
+substring (fname,1,10) + " " + substring (lname,1,10) name, 
+c.comm_type C, 
+convert (varchar(3), convert ( int, isnull ( cm.modifier, 1.0 ) * 100)) + "%" mod,
+convert (numeric(8,2),amount ) regular,
+convert (numeric(8,2), ( round ( amount * isnull ( cm.modifier, 1.0),2) )) adjusted
+from timer..employee e, 
+timer..commission c,
+timer..commission_modifier cm
+where e.emp = c.pay_to
+
+and c.period_start <= "[end_date]"
+and c.period_end >= "[start_date]"
+
+and cm.start_date <= "[end_date]"
+and cm.end_date >= "[start_date]"
+
+and payment_id is null
+
+and c.pay_to *= cm.emp
+and cm.pay_type = "E"
+and c.comm_type *= cm.comm_type
+
+order by e.emp, substring (fname,1,10) + " " + substring (lname,1,10) 
+compute sum ( convert (numeric(8,2),round ( amount * isnull ( cm.modifier,1.0),2))) by 
+e.emp, substring (fname,1,10) + " " + substring (lname,1,10) 
+compute sum ( convert (numeric(8,2),round ( amount * isnull ( cm.modifier,1.0),2))) 
+go
