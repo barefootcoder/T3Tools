@@ -48,6 +48,7 @@ use constant DATABASE_DIRECTIVE => 'Database';
 use constant TIMERDIR_DIRECTIVE => 'TimerDir';
 use constant REQUESTDIR_DIRECTIVE => 'RequestDir';
 use constant MODULEDIR_DIRECTIVE => 'ModulesDir';
+use constant WREPORTDIR_DIRECTIVE => 'WebReportsDir';
 
 
 # files for use by client/server routines
