@@ -316,7 +316,7 @@ sub process_employee
 			sleep 1;
 			print "\nModify commission check from $modified_total\n";
 			my $changed_total = input("\nNew amount:");
-print "$changed_total \n";
+
 			if ( get_yn ( "\nNew total is \$$changed_total. Is this correct?" ) == 0 )
 			{
 				sleep 1;
