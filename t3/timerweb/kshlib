@@ -1,46 +1,6 @@
 #!/bin/ksh
 
 #	$Header$
-#	$Log$
-#	Revision 1.2  2000/02/06 01:39:04  buddy
-#	removed daterange_is_current
-#	added drop_procedure
-#	fixed employee_name to understand new employee table columns
-#	changed build_emp_comm to build_profit_item (whole new function)
-#	added parentheses around return from period_num
-#
-#	Revision 1.6  1998/07/30 02:21:47  bburden
-#	commented most constants
-#	added many constants (TERMINATED_STATUS, rate types for rims_contracts_rates,
-#	  lengths and values for RIMS input files)
-#	added remove_sp_returns() and remove_bcp_rows()
-#	added FIXED option to bcp_file()
-#	fixed bug with make_midnight()
-#	added zero_fill()
-#
-#	Revision 1.5  1998/07/02 19:05:07  bburden
-#	added constants: BEGINNING_OF_TIME, MERGER_DATE, CONTRACTED,
-#	  NON_CONTRACTED, SINGLE_RATE, FEE_SCHEDULE, IND_SCHEDTYPE,
-#	  DISC_SCHEDTYPE, ZIP_LOCTYPE, INVALID_TO_LINK
-#	fixed bug in daterange_is_current()
-#	added function make_midnight()
-#
-#	Revision 1.4  1998/06/21 19:07:17  bburden
-#	added constants for primary and service addtypes
-#	added copy structure function
-#	added constant for exception schedule type
-#	some general cleanup
-#
-#	Revision 1.3  1998/04/20 19:08:45  bburden
-#	changed update_rownumber to allow for a column name other than rownumber
-#
-#	Revision 1.2  1998/03/29 08:57:59  bburden
-#	added function to update row numbers (e.g., prov_net)
-#	polished up overwrite table function
-#
-#	Revision 1.1  1998/03/20 04:40:08  bburden
-#	Initial revision
-#
 
 # This file originally begun
 # July 18, 1997
@@ -405,12 +365,13 @@ function build_profit_item
 
 		-- first, get time logs that will be one profit item each
 		insert time_log_profit
-			(log_source, log_id, emp, client, proj, date, hours,
+			(log_source, log_id, emp, client, proj, phase, date, hours,
 					start_date, end_date, requires_payment,
 					resource_billing, class_billing, billing_ratio, sum_by_proj)
 		select log.log_source, log.log_id, log.emp, log.client, log.proj,
-				log.date, log.hours, log.date, log.date, pt.requires_payment,
-				pt.resource_billing, pt.class_billing, 1, 0
+				log.phase, log.date, log.hours, log.date, log.date,
+				pt.requires_payment, pt.resource_billing,
+				pt.class_billing, 1, 0
 		from time_log log, project p, project_type pt
 		where $where_clause
 		and log.client = p.client
@@ -423,11 +384,11 @@ function build_profit_item
 		-- next, get time logs that will be summed
 		-- into one profit item per project
 		insert time_log_profit
-			(log_source, log_id, emp, client, proj, date, hours,
+			(log_source, log_id, emp, client, proj, phase, date, hours,
 					start_date, end_date, requires_payment,
 					resource_billing, class_billing, billing_ratio, sum_by_proj)
 		select log.log_source, log.log_id, log.emp, log.client, log.proj,
-				log.date, log.hours, p.start_date, p.end_date,
+				log.phase, log.date, log.hours, p.start_date, p.end_date,
 				pt.requires_payment, pt.resource_billing,
 				pt.class_billing, 1, 1
 		from time_log log, project p, project_type pt
@@ -480,9 +441,9 @@ function build_profit_item
 
 		-- get class logs that are one item per class
 		insert profit_item
-			(client, proj, start_date, end_date, log_source, units,
+			(client, proj, start_date, end_date, log_source, log_id, units,
 					price_per_unit)
-		select log.client, log.proj, log.date, log.date, 'class_log',
+		select log.client, log.proj, log.date, log.date, log_source, log_id,
 				datediff(minute, log.start_time, log.end_time) / 60.0
 						- (isnull(log.num_breaks, 0) * .25),
 				log.num_students * br.rate
