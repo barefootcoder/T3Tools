@@ -84,8 +84,8 @@ print RQ <<END;
 	;
 
 	create database $destdb
-		on data_2 = 75
-		log on data_1 = 25
+		on data_2 = 100
+		log on data_1 = 35
 	;
 	sp_dboption $destdb, 'trunc log on chkpt', true
 	;
