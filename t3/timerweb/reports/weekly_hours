@@ -72,5 +72,11 @@ from pay_amount pa, employee e
 where pa.emp = e.emp
 group by
 		$(employee_name e),										?!user
-		$(period_name "$(period_num pa.date 7)" 7)
+		$(period_name "$(period_num pa.date 7)" 7),
+		$(period_num pa.date 7)
+order by
+		$(employee_name e),										?!user
+		$(period_num pa.date 7)
+compute sum(sum(pa.hours))
+		by $(employee_name e)									?!user
 go
