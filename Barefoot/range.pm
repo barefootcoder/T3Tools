@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  2000/08/28 21:06:18  buddy
+# first truly working version
+#
 # Revision 1.1  2000/02/03 16:02:21  buddy
 # Initial revision
 #
@@ -19,8 +22,11 @@
 # This module contains useful functions relating to ranges of numbers.
 # The functions contained herein are:
 #
-#		round($x, ROUND_UP);			# round number
-#		round($x, ROUND_OFF, .5);		# round number to an arbitrary base
+#		range::min(@list);					# minimum number in list
+#		range::max(@list);					# maximum number in list
+#		range::force($num, $low, $high);	# force num between high and low
+#		range::round($x, ROUND_UP);			# round number
+#		range::round($x, ROUND_OFF, .5);	# round number to arbitrary base
 #
 # #########################################################################
 #
@@ -51,6 +57,35 @@ my @_rounding_types = (ROUND_OFF, ROUND_UP, ROUND_DOWN);
 #
 # Subroutines:
 #
+
+
+# min function ... returns smallest number in list or undef for empty list
+sub min
+{
+	return undef unless @_;
+
+	my $min = shift @_;
+	$min = $_ < $min ? $_ : $min foreach @_;
+	return $min;
+}
+
+# max function ... ditto
+sub max
+{
+	return undef unless @_;
+
+	my $max = shift @_;
+	$max = $_ > $max ? $_ : $max foreach @_;
+}
+
+
+# force into a certain range
+sub force
+{
+	my ($num, $low, $high) = @_;
+
+	return $num > $high ? $high : ($num < $low ? $low : $num);
+}
 
 
 # rounding function ... note that if $whichway is not specified, it will
