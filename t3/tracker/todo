@@ -94,6 +94,7 @@ tie %menu_list, 'Tie::IxHash',
 	"Cancel a task"			=>		\&cancel_todo,
 	"Done with a task"		=>		\&complete_todo,
 	"Refresh task list"		=>		\&refresh_list,
+	"Mass postpone tasks"	=>		\&shift_schedule,
 	"Quit program"			=>		sub { exit },
 );
 
@@ -118,9 +119,11 @@ initialize();
 # infinite loop for menu and actions
 while (true)
 {
-	show_todos();
 	my @menu_choices = keys %menu_list;
-	my $command = menu_select("Choose:", @menu_choices);
+	my $mheader = menu_header();
+	my $command = menu_select("Choose:", @menu_choices,
+			{ LMARGIN => 2, SPBETWEEN => 3, HEADER => $mheader, TMARGIN => 1,
+					TRUNC_MSG => "<<MORE TASKS THAN SHOWN>>\n", } );
 	$menu_list{ $menu_choices[$command] }->();
 }
 
@@ -218,6 +221,31 @@ sub refresh_list
 }
 
 
+sub shift_schedule
+{
+	# determine oldest task
+	my $oldest_todo = (sort { $a->{due} <=> $b->{due} } @todo_list)[0];
+	my $old_date = $oldest_todo->{due};
+	writeln('Oldest task is dated @m/#d/@y.', $old_date);
+
+	print "Please enter a new date for this task.\n";
+	my $new_date = input_date();
+
+	my $shift_days = int(date::dayDiff($old_date, $new_date));
+	print "All tasks will be moved forward $shift_days days.\n";
+	if (get_yn("Are you sure?"))
+	{
+		foreach my $todo (@todo_list)
+		{
+			$todo->{due} = date::dateTimeSeconds(
+					date::incDays($todo->{due}, $shift_days));
+		}
+
+		writefile();
+	}
+}
+
+
 #################################
 # SUBROUTINES
 #################################
@@ -308,31 +336,27 @@ sub sync_lists
 }
 
 
-sub show_todos
+sub todo_menu_list
+{
+	my @menu_list = sort { $a->{due} <=> $b->{due} } @todo_list;
+	foreach my $todo (@menu_list)
+	{
+		$todo = swrite(TodoList, todo_fields($todo)) . "\n";
+	}
+	return @menu_list;
+}
+
+
+sub menu_header
 {
 	if (@todo_list)
 	{
-		# sort list and truncate if too long to fit on screen
-		my @disp_list = sort { $a->{due} <=> $b->{due} } @todo_list;
-		my $more = false;
-		if (@disp_list > $max_task_list)
-		{
-			# use max number - 1 to account for "more" line
-			splice @disp_list, $max_task_list - 1;
-			$more = true;
-		}
-
-		print "\n", TodoListHeader, "\n";
-		foreach my $todo (@disp_list)
-		{
-			writeln(TodoList, todo_fields($todo));
-		}
-		print "<<MORE TASKS THAN SHOWN>>\n" if $more;
-		print "\n";
+		my $list_header = TodoListHeader . "\n";
+		return join('', $list_header, todo_menu_list());
 	}
 	else
 	{
-		print "\n\tYou have no items in your todo list.\n\n";
+		return "\n\tYou have no items in your todo list.\n\n";
 	}
 }
 
