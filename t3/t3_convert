@@ -4,6 +4,7 @@ use strict;
 
 use Barefoot::T3;
 use Time::Local;
+use CGI;
 
 use constant HIST_FILE => 'Timer.his';
 use constant BAK_FILE => 'Timer.bak';
@@ -29,14 +30,35 @@ my $perlsecs = time;
 while ( <IN> )
 {
 	chomp;
-	
-	s/<BR>/&#13;&#10;/g;
-	s/\cM//g;
-	/<(.*?)><(.*?)><(.*?)><(.*?)>(.*)/;
-	
-	print OUT "<MESSAGE from=\"$1\" location=\"\"";
-	print OUT " time=\"$3\" to=\"$2\" status=\"NORMAL\"";
-	print OUT " subject=\"$4\">$5</MESSAGE>\n";
+
+	# Handle special case for linebreaks
+	s/&#13;&#10;/\<BR\>/g;
+	s/
+//g;
+
+	s/<MESSAGE from=\"(.*?)\" location=\"\"/<$1>/;
+	s/ time=\"(.*?)\" to=\"(.*?)\" status=\"NORMAL\"/<$2><$1>/;
+
+	my $subject;
+	my $message;
+
+	if (s/ subject=\"(.*?)\"\>(.*?)<\/MESSAGE\>//)
+	{
+		$subject = $1;
+		$message = $2;
+	}
+
+	print OUT $_;
+
+	$subject =~ s/&gt;/GREATERTHANSIGN/g;
+	$subject =~ s/&#62/GREATERTHANSIGN/g;
+	$subject = CGI::unescapeHTML($subject);
+	$subject =~ s/GREATERTHANSIGN/&#62/g;
+
+	$message = CGI::unescapeHTML($message);
+
+	print OUT "<$subject>$message
+\n";
 }
 close(OUT);
 close(IN);
