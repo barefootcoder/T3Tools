@@ -87,7 +87,7 @@ go
 	insert #fin_ovhd
 	select pa.proj,
 		$(period_num pa.date 7) "period", 
-		sum(pa.total_pay) / 2 "total"
+		sum(pa.total_pay) "total"
 	from pay_amount pa
 	where pa.client = '001'
 	and pa.proj in ('PAY','INV')
