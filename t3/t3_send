@@ -2,7 +2,7 @@
 
 use strict;
 
-#use Barefoot::debug;							# comment out for production
+#use Barefoot::debug;		# comment out for production
 
 use Barefoot::T3;
 
@@ -17,6 +17,7 @@ if (@ARGV != 2)
 
 my ($to, $text) = @ARGV;
 
-my $message = T3::build_message($T3::username, $to, "NO_REPLY", $text);
+my $message = T3::build_message(T3::NOREPLY_MESSAGE, $T3::username, $to,
+								"", "", "", $text);
 
 T3::send_message($message);
