@@ -167,22 +167,33 @@ set nocount off
 --------------------------------------------------------------------------------
 
 print ""
-print "Summary for Salaried Employees"
+print "Summary for Salary/Draw Employees"
 print ""
+if exists ( select  1
+			from salary_amount sa, employee e
+			where sa.emp = e.emp  )
+begin
 
-select  sa.emp,
-	$(employee_name e) "employee",
-convert (numeric(8,2),sa.total_pay ) total_pay,
-convert (numeric(8,2),sa.actual_pay ) actual_pay,
-convert (numeric(8,2),sa.bank_before ) bank_before,
-convert (numeric(8,2),sa.bank_adjust ) bank_adjust,
-convert (numeric(8,2),sa.bank_after ) bank_after
-from salary_amount sa, employee e
-where sa.emp = e.emp 
+	select  sa.emp,
+		$(employee_name e) "employee",
+	convert (numeric(8,2),sa.total_pay ) total_pay,
+	convert (numeric(8,2),sa.actual_pay ) actual_pay,
+	convert (numeric(8,2),sa.bank_before ) bank_before,
+	convert (numeric(8,2),sa.bank_adjust ) bank_adjust,
+	convert (numeric(8,2),sa.bank_after ) bank_after
+	from salary_amount sa, employee e
+	where sa.emp = e.emp 
+
+end
+else
+begin
+	print "*** There are no currently employees on salary/draw ***"
+end
 
 --------------------------------------------------------------------------------
 
 set nocount on
+print ""
 print ""
 print "SAL3 (Insurance Adjustments) for Employees"
 print ""
