@@ -64,7 +64,7 @@ my $vars = {
 						admin	=>	1,
 					},
 };
-my @admin_users = ('christy', 'buddy', 'wayne');
+my @admin_users = ('christy', 'buddy');
 
 my $title = 'TIMER Reports';
 my $scripturlpath = "/cgi-bin/timer/scripts";
@@ -116,12 +116,11 @@ processdir("reprt");
 processdir("script");
 
 print "<multicol cols=3>\n";
-my $q = '"';
 foreach my $group (keys %report_groups)
 {
 	next if ($group eq "Administrative Updates"
 			and not is_admin_user());
-	print "<P>", $cgi->h3($group);
+	print "<P>", $cgi->h3($group), "\n";
 	foreach my $report (sort {$a->{title} cmp $b->{title}}
 			@{$report_groups{$group}})
 	{
@@ -130,33 +129,54 @@ foreach my $group (keys %report_groups)
 		my @variables = $report->{vars};
 		if ($report->{params} eq "script")
 		{
-			print $cgi->a({-href=>"$scripturlpath/$report->{file}?"
+			print $cgi->a(
+					{
+						-href => "$scripturlpath/$report->{file}?"
 								   . "admin=$admin",
-						  -onMouseover=>"showtip(this,event,'$report->{vars}')",
-						  -onMouseout=>"hidetip()"},
-						  $report->{title}), $cgi->br;
+						-onMouseover => "showtip(this,event,'$report->{vars}')",
+						-onMouseout => "hidetip()"
+					},
+					$report->{title} . " [NOT YET UPDATED]"
+			), $cgi->br;
 		} 
 		elsif ($report->{params})
 		{
-			print $cgi->a({-href=>"sqlcgi.pl?sqlfile=$report->{file}&"
-								   . "$report->{params}",
-						  -onMouseover=>"showtip(this,event,'$report->{vars}')",
-						  -onMouseout=>"hidetip()"},
-						  $report->{title}), $cgi->br;  
+			print $cgi->a(
+					{
+						-href => "sqlcgi.pl?sqlfile=$report->{file}&"
+								. "$report->{params}",
+						-onMouseover => "showtip(this,event,'$report->{vars}')",
+						-onMouseout => "hidetip()",
+					},
+					$report->{title}
+							. ($report->{updated} ? "" : " [NOT YET UPDATED]")
+			), $cgi->br;  
 		}
 		else
 		{
-			print $cgi->a({-href=>"sqlcgi.pl?$report->{file}",
-						  -onMouseover=>"showtip(this,event,'$report->{vars}')",
-						  -onMouseout=>"hidetip()"},
-						  $report->{title}),  $cgi->br; 
+			print $cgi->a(
+					{
+						-href => "sqlcgi.pl?$report->{file}",
+						-onMouseover => "showtip(this,event,'$report->{vars}')",
+						-onMouseout => "hidetip()"
+					},
+					$report->{title}
+							. ($report->{updated} ? "" : " [NOT YET UPDATED]")
+			),  $cgi->br; 
 		}
+		print "\n";
 	}
 }
 print "</multicol>\n";
 
 print $debug_string if DEBUG;
 print $cgi->end_html();
+
+
+###########################
+# SUBROUTINES
+###########################
+
 
 sub param_to_cookie
 {
@@ -179,6 +199,7 @@ sub param_to_cookie
 		$vars->{$name}->{value} = $value;
 	}
 }
+
 
 sub text_form
 {
@@ -211,6 +232,7 @@ sub text_form
 	print $cgi->endform(), "\n";
 }
 
+
 sub html_spaces
 {
 	my ($how_many) = @_;
@@ -218,10 +240,12 @@ sub html_spaces
 	print "&nbsp;" x $how_many;
 }
 
+
 sub is_admin_user
 {
 	return grep { $_ eq $ENV{REMOTE_USER} } @admin_users;
 }
+
 
 sub debug
 {
@@ -237,42 +261,51 @@ sub debug
 
 sub linkjava
 {
-	my $q = '"';    # need to use doublequotes
-	
-    print "<script>\n";
-    print "if (!document.layers&&!document.all)\n";
-    print "event='test';\n";
-    print "function showtip(current,e,text){\n";
+	print <<END;
 
-    print "if (document.all){\n";
-    print "thetitle=text.split('<br>');\n";
-    print "if (thetitle.length>1){\n";
-    print "thetitles='';\n";
-    print "for (i=0;i<thetitle.length;i++)\n";
-    print "thetitles+=thetitle[i];\n";
-    print "current.title=thetitles\n";
-    print "}\n";
-    print "else \n";
-    print "current.title=text\n";
-    print "}\n";
-    print "else if (document.layers){\n";
-    print "document.tooltip.document.write('<layer bgColor=$q"
-			. "white$q style=$q"."border:1px solid black;font-size"
-			. ":12px;$q>'+text+'</layer>');\n";
-	print "document.tooltip.document.close();\n";
-    print "document.tooltip.left=e.pageX+5;\n";
-    print "document.tooltip.top=e.pageY+5;\n";
-    print "document.tooltip.visibility='show'\n";
-    print "}\n";
-    print "}\n";
-    print "function hidetip(){\n";
-    print "if (document.layers)\n";
-    print "document.tooltip.visibility='hidden'\n";
-    print "}\n";
+		<script>
+			if (!document.layers && !document.all)
+				event='test';
 
-    print "</script>\n";
-    print "<div id='tooltip' style='position:absolute;visibility"
-			. ":hidden'></div>\n";
+			function showtip (current,e,text)
+			{
+				if (document.all)
+				{
+					thetitle=text.split('<br>');
+					if (thetitle.length>1)
+					{
+						thetitles='';
+						for (i=0;i<thetitle.length;i++)
+						thetitles+=thetitle[i];
+						current.title=thetitles
+					}
+					else 
+						current.title=text
+				}
+				else if (document.layers)
+				{
+					document.tooltip.document.write(
+							'<layer bgColor="white" '
+							+ 'style="border:1px solid black;font-size:12px">'
+							+ text + '</layer>'
+					);
+					document.tooltip.document.close();
+					document.tooltip.left=e.pageX+5;
+					document.tooltip.top=e.pageY+5;
+					document.tooltip.visibility='show'
+				}
+			}
+
+			function hidetip ()
+			{
+				if (document.layers)
+					document.tooltip.visibility='hidden'
+			}
+
+		</script>
+		<div id='tooltip' style='position:absolute;visibility:hidden'></div>
+
+END
 }
 
 
@@ -292,7 +325,7 @@ sub processdir
 
 	for $file ( glob("$path/*") )
 	{
-		my ($group, $alt_params, $variables, $title);
+		my ($group, $updated, $alt_params, $variables, $title);
 		my ($required, $optional, $basefile);
 		my (%parameters, %tparam, %tgroup);
 
@@ -302,12 +335,14 @@ sub processdir
 		open(FILE, $file) or next;
 		while ( <FILE> )
 		{
-			if ( /--\s*SORT GROUP:\s*(.*)\s*/ or /\#\s*SORT GROUP:\s*(.*)\s*/)
+			if ( /(--)\s*SORT GROUP:\s*(.*)\s*/
+					or /(\#)\s*SORT GROUP:\s*(.*)\s*/)
 			{
-				$group = $1;
+				$updated = $1 eq '#';
+				$group = $2;
 				if (not exists $report_groups{$group})
 				{
-					$report_groups{$group} = ();
+					$report_groups{$group} = [];
 				}
 			}
 
@@ -401,6 +436,7 @@ sub processdir
 			my $report = {};
 			$report->{file} = $basefile;
 			$report->{title} = $title;
+			$report->{updated} = $updated;
 			$report->{params} = "script" if $dirtype ne "reprt";
 			$report->{params} = $tparam{$title} if $dirtype eq "reprt";
 			$report->{vars} = $variables;
@@ -408,4 +444,3 @@ sub processdir
 		}
 	}
 }
-
