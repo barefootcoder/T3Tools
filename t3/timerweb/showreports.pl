@@ -2,6 +2,11 @@
 
 # $Header$
 # $Log$
+# Revision 1.8  1999/12/19 22:57:48  buddy
+# fixed sorting of variables
+# invoice and check_date are no longer administrative-only
+# removed Tim from list of administrative users
+#
 # Revision 1.7  1999/06/03 16:12:36  buddy
 # added inv_paydate variable
 # made reports grouped into two columns
@@ -154,7 +159,7 @@ for $file ( < $basepath/* > )
 	}
 }
 
-print "<multicol cols=2>\n";
+print "<multicol cols=3>\n";
 foreach my $group (keys %report_groups)
 {
 	next if ($group eq "Administrative Updates"
