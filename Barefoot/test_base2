@@ -1,0 +1,9 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;
+
+die("DEBUG not correct") unless DEBUG == 1;
+
+use test_base2;
