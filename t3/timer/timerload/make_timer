@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.8  2001/01/09 19:13:49  tryan
+# Added code for creating insurance_rate, insurance_contribution
+#
 # Revision 1.7  2001/01/04 20:17:07  tryan
 # Added update rights to the payroll table.
 #
@@ -854,14 +857,12 @@ run_query -S$server -U$user -D$destdb <<-END
 
 	$(overwrite_table salary_bank "
 		emp                            internal_id NOT NULL,
-		bank_amount                    money NOT NULL,
-		start_date                     datetime NOT NULL,
-		end_date                       datetime NOT NULL,
-		check_date                     datetime NOT NULL,
+		bank_amount                    money       NOT NULL,
+    	payroll_id                     unique_id   NOT NULL,
 		create_user                    varchar(20) NOT NULL,
-		create_date                    datetime NOT NULL,
+		create_date                    datetime    NOT NULL,
 		chguser                        varchar(20) NULL,
-		chgdate                        datetime NULL
+		chgdate                        datetime    NULL
 	")
 
 	grant insert,update on salary_bank to $admin_users
