@@ -28,10 +28,11 @@ go
 
 declare @client_header varchar(100)
 select distinct @client_header
-		= "<CENTER><H3>for client: " + c.name + "</H3></CENTER>"
+		= "<CENTER><H3>For Client: " + c.name + "</H3></CENTER>"
 from profit_item pi, client c
 where pi.client = c.client
 print @client_header
+print "<CENTER><H5>Period: [start_date] to [end_date]</H5></CENTER>"
 go
 
 print "<HR><H4>Details by Date</H4>"
