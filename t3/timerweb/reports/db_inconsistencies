@@ -1,9 +1,6 @@
 -- SORT GROUP: Error Checkers
 -- TITLE: Database Consistency Errors
 
-use TIMER
-go
-
 print "projects that don't match a client"
 go
 select p.*
@@ -30,19 +27,6 @@ print "projects with end dates at 12/31/99"
 select *
 from project
 where end_date = '12/31/99'
-go
-
-print "projects with rate dates outside project dates"
-go
-select p.*
-from project p, bill_rate br
-where p.client = br.client
-and p.proj = br.proj
-and
-(
-	br.start_date < p.start_date
-	or br.end_date > p.end_date
-)
 go
 
 print "bill rates with end dates at 12/31/99"
@@ -88,20 +72,7 @@ and not exists
 )
 go
 
-print "projects with sales commission dates outside project dates"
-go
-select p.*
-from project p, sales_commission sc
-where p.client = sc.client
-and p.proj = sc.proj
-and
-(
-	sc.start_date < p.start_date
-	or sc.end_date > p.end_date
-)
-go
-
-print "clients that cannot log time to Barefoot non-payable"
+print "employees that cannot log time to Barefoot non-payable"
 go
 select e.*
 from employee e
@@ -116,9 +87,9 @@ go
 
 print "log entries that don't match an employee"
 go
-select l.*
-from log l
-where l.emp not in
+select tl.*
+from time_log tl
+where tl.emp not in
 (
 	select e.emp
 	from employee e
@@ -128,59 +99,70 @@ go
 
 print "log entries that don't match any existing project (after 1996)"
 go
-select l.*
-from log l
-where l.date >= "1/1/1997"
+select tl.*
+from time_log tl
+where tl.date >= "1/1/1997"
 and not exists
 (
 	select 1
 	from project p
-	where l.client = p.client
-	and l.proj = p.proj
+	where tl.client = p.client
+	and tl.proj = p.proj
 )
 order by emp, client, proj, phase
 go
 
 print "log entries with illegal employee/client combinations (from 1999 on)"
 go
-select l.*
-from log l
-where l.date >= '1/1/1999'
+select tl.*
+from time_log tl
+where tl.date >= '1/1/1999'
 and not exists
 (
 	select 1
 	from client_employee ce
-	where l.emp = ce.emp
-	and l.client = ce.client
-	and l.date between ce.start_date and ce.end_date
+	where tl.emp = ce.emp
+	and tl.client = ce.client
+	and tl.proj = isnull(ce.proj, tl.proj)
+	and tl.date between ce.start_date and ce.end_date
 )
+go
 
 print "log entries with dates outside project dates"
 go
-select l.*
-from log l, project p
-where l.client = p.client
-and l.proj = p.proj
-and l.date not between p.start_date and p.end_date
+select tl.*
+from time_log tl, project p
+where tl.client = p.client
+and tl.proj = p.proj
+and not exists
+(
+	select 1
+	from project p1
+	where tl.client = p1.client
+	and tl.proj = p1.proj
+	and tl.date between p1.start_date and p1.end_date
+)
 go
 
 set nocount on
-$(build_emp_comm "
-	date >= '1/1/1998'
+$(build_profit_item "
+	log.date >= '1/1/1998'
 ")
-exec emp_commission
+exec calc_total_price
+exec calc_total_cost
 set nocount off
 go
 
 print "log entries with no determinable billing rate (from 1998 on)"
 go
-select * from #emp_comm
-where amt_billed is null
+select * from time_log_profit
+where bill_rate is null
+and class_billing = 0
 go
 
 print "log entries with no determinable pay rate (from 1998 on)"
 go
-select * from #emp_comm
-where source_tbl = 'log'
-and amt_paid is null
+select * from pay_amount
+where requires_payment = 1
+and pay_rate is null
 go
