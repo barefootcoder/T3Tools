@@ -422,13 +422,4 @@ run_query -S$server -U$user -D$destdb <<-END
 	select * from $srcdb..insurance_rate
 	go
 
-	-- insurance_amount
-
-	print "building insurance_amount"
-	go
-
-	insert insurance_amount
-	select * from $srcdb..insurance_amount
-	go
-
 END
