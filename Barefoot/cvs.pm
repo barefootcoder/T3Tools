@@ -2,22 +2,6 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.5  2000/11/20 20:38:50  buddy
-# fixed stupid mistake where $USER was $HOME instead
-#
-# Revision 1.4  2000/11/20 20:20:59  buddy
-# changed working dir to /proj/$USER
-#
-# Revision 1.3  2000/11/20 19:45:29  buddy
-# switched from /export/usr/$USER/proj to $HOME/proj for private CVS dir
-#
-# Revision 1.2  2000/08/28 21:01:44  buddy
-# first truly working version
-#
-# Revision 1.1  1999/11/22 15:02:38  buddy
-# Initial revision
-#
 #
 # $Id$
 # $Revision$
@@ -43,7 +27,8 @@ package cvs;
 
 use strict;
 
-use constant WORKING_DIR => "/proj/$ENV{USER}";
+use constant WORKING_DIR => "/proj/" .
+		exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER};
 
 1;
 
