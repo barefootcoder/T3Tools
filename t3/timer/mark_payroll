@@ -108,6 +108,31 @@ foreach my $row (@$rows)
 print "\n";
 exit 1 unless get_yn("Is this right?");
 
+### START INS HERE
+$rows = timerdata::query_results("
+		set nocount on
+
+		select ia.emp,
+			   ia.barefoot_contribution 'Barefoot Contribution',
+			   ia.insurance_adjustment 'SAL3 Adjustment'
+		from insurance_amount ia
+		order by ia.emp
+
+		set nocount off
+
+	");
+die("couldn't access timer database") unless defined($rows);
+
+print "\n\nPayroll: Please confirm Barefoot insurance contributions:\n";
+printf "\n%-5.5s %10.10s %10.10s\n" , "Emp", "BF Contrib", "SAL3 Adj";
+foreach my $row (@$rows)
+{
+	printf "%-5.5s %10.2f %10.2f\n" , $row->[0],$row->[1],$row->[2];
+}
+print "\n";
+exit 1 unless get_yn("Is this right?");
+### END INS HERE
+
 $min_date =~ /(\d\d\d\d)(\d\d)(\d\d)/;
 $min_date = "$2/$3/$1";
 
@@ -122,10 +147,15 @@ my $check_date = input("Check Date:");
 die("illegal date") unless date::isValid($check_date);
 
 my $insert_query = "
+
+	set nocount on
+
+	declare \@payroll_id int
+
 	insert payroll
 		(period_start, period_end, check_date, create_user, create_date)
 	values ('$from_date', '$to_date', '$check_date', '$::ENV{USER}', getdate())
-	go
+	select \@payroll_id = \@\@identity
 
 	update time_log
 	set payroll_id = pay.payroll_id, chguser = '$::ENV{USER}',
@@ -135,10 +165,42 @@ my $insert_query = "
 	and tl.log_id = pa.log_id
 	and pay.check_date = '$check_date'
 
-	insert salary_bank ( emp, bank_amount, start_date, end_date, check_date, create_user, create_date )
-	select emp, bank_after, start_date, end_date, '$check_date', '$::ENV{USER}', getdate() from salary_amount 
+	insert salary_bank ( 
+	          emp, 
+	          bank_amount, 
+			  start_date, 
+			  end_date, 
+			  check_date, 
+			  create_user, 
+			  create_date )
+	select emp, 
+			bank_after, 
+			start_date, 
+			end_date, 
+			'$check_date', 
+			'$::ENV{USER}', 
+			getdate() 
+	from salary_amount 
+
+	insert insurance_contribution ( 
+	 			emp, 
+				payroll_id, 
+				amount, 
+				create_user, 
+				create_date )
+	select emp, 
+			\@payroll_id, 
+			barefoot_contribution,
+			'$::ENV{USER}', 
+			getdate() 
+	from insurance_amount 
+	where barefoot_contribution > 0
 
 	delete from pay_amount
+	delete from salary_amount
+	delete from insurance_amount
+
+	set nocount off
 	go
 ";
 
@@ -152,8 +214,8 @@ my $results = timerdata::run_query("
 	rollback tran
 	go
 ");
-die("mark failed <<$results>>") unless
-		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
+
+die("mark failed <<$results>>") if ( length ( $results ) );
 
 print "\nInitial attempt successful for payroll $from_date to $to_date,\n";
 print "    check date $check_date, affecting $num_rows rows & new bank balances\n";
@@ -168,6 +230,7 @@ my $results = timerdata::run_query("
 	commit tran
 	go
 ");
-die("theoretically impossible error occurred <<$results>>") unless
-		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
+die("theoretically impossible error occurred <<$results>>")  
+	if ( length ( $results ) );
+
 print "\nmark was successful\n";
