@@ -4,14 +4,9 @@
 	select tl.log_id, tl.emp_id, pe.first_name "employee", tl.client_id "CLI",
 			tl.proj_id as "PRJ", tl.phase_id as "PHASE", tl.tracking_code,
 			tl.log_date, tl.hours, tl.comments
-	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
-			{~t3}.person pe, {~t3}.workgroup_user wu
+	from {@time_log} tl, {@employee} e, {@client} c, {@person} pe
 	where tl.emp_id = e.emp_id
 	and e.person_id = pe.person_id
-	and pe.person_id = wu.person_id
-{if user}
-	and wu.nickname = {user}
-{endif}
 	and tl.client_id = c.client_id
 {if client}
 	and c.client_id = {client}
@@ -20,6 +15,15 @@
 	and tl.proj_id = {proj}
 {endif}
 	and tl.log_date between {start_date} and {end_date}
+{if user}
+	and exists
+	(
+		select 1
+		from {@workgroup_user} wu
+		where pe.person_id = wu.person_id
+		and wu.nickname = {user}
+	)
+{endif}
 	order by tl.log_date
 	# compute sum(l.hours)
 ;
@@ -30,14 +34,9 @@ Totals by Client/Project
 
 	select tl.emp_id, pe.first_name "employee", tl.client_id "cli",
 			c.name "client", tl.proj_id, tl.phase_id, sum(tl.hours) as "hours"
-	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
-			{~t3}.person pe, {~t3}.workgroup_user wu
+	from {@time_log} tl, {@employee} e, {@client} c, {@person} pe
 	where tl.emp_id = e.emp_id
 	and e.person_id = pe.person_id
-	and pe.person_id = wu.person_id
-{if user}
-	and wu.nickname = {user}
-{endif}
 	and tl.client_id = c.client_id
 {if client}
 	and c.client_id = {client}
@@ -46,6 +45,15 @@ Totals by Client/Project
 	and tl.proj_id = {proj}
 {endif}
 	and tl.log_date between {start_date} and {end_date}
+{if user}
+	and exists
+	(
+		select 1
+		from {@workgroup_user} wu
+		where pe.person_id = wu.person_id
+		and wu.nickname = {user}
+	)
+{endif}
 	group by tl.emp_id, pe.first_name, tl.client_id, c.name,
 			tl.proj_id, tl.phase_id
 	order by tl.client_id, tl.proj_id
@@ -84,14 +92,9 @@ Totals by Client Tracking Code
 
 	select tl.emp_id, pe.first_name as "employee", tl.client_id as "cli",
 			c.name "client", tl.tracking_code, sum(tl.hours) as "hours"
-	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
-			{~t3}.person pe, {~t3}.workgroup_user wu
+	from {@time_log} tl, {@employee} e, {@client} c, {@person} pe
 	where tl.emp_id = e.emp_id
 	and e.person_id = pe.person_id
-	and pe.person_id = wu.person_id
-{if user}
-	and wu.nickname = {user}
-{endif}
 	and tl.client_id = c.client_id
 {if client}
 	and c.client_id = {client}
@@ -100,6 +103,15 @@ Totals by Client Tracking Code
 	and tl.proj_id = {proj}
 {endif}
 	and tl.log_date between {start_date} and {end_date}
+{if user}
+	and exists
+	(
+		select 1
+		from {@workgroup_user} wu
+		where pe.person_id = wu.person_id
+		and wu.nickname = {user}
+	)
+{endif}
 	group by tl.emp_id, pe.first_name, tl.client_id, c.name, tl.tracking_code
 	order by tl.client_id, tl.tracking_code
 	# compute sum(sum(tl.hours)) by tl.client_id
