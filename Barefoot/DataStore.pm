@@ -75,7 +75,10 @@ our $constants =
 our $funcs =
 {
 		Sybase		=>	{
-							curdate			=>	sub { "getdate()" },
+							curdate			=>	sub {
+													"dateadd(hour, 1, 
+															getdate())"
+													},
 							ifnull			=>	sub { "isnull($_[0], $_[1])" },
 							drop_index		=>	sub {
 													"drop index $_[0].$_[1]"
@@ -189,6 +192,7 @@ sub _transform_query
 	my $this = shift;
 	my ($query) = @_;
 	my @vars = ();
+	my $calc_funcs = {};
 
 	# it's a bad idea to allow queries while the data store is modified.
 	# the biggest reason is that the result set returned by do() contains
@@ -212,7 +216,7 @@ sub _transform_query
 	# the cost for searching for the various types of sub's
 	if ($query =~ /{/)	# if you want % to work in vi, you need a } here
 	{
-		# $this->_dump_attribs("before SQL preproc");
+		$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
 
 		# schema translations
 		while ($query =~ / {~ (\w+) } \. /x)
@@ -225,7 +229,7 @@ sub _transform_query
 			$query =~ s/$schema/$translation/g;
 		}
 
-		# print STDERR "about to check for functions in $query\n";
+		print STDERR "about to check for functions in $query\n" if DEBUG >= 5;
 		# function calls
 		while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
 		{
@@ -245,6 +249,7 @@ sub _transform_query
 			$query =~ s/$function/$func_output/g;
 		}
 
+		print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
 		# variables and constants
 		while ($query =~ / { (\w+) } /x)
 		{
@@ -271,13 +276,64 @@ sub _transform_query
 				$query =~ s/$variable/$value/g;
 			}
 		}
+
+		print STDERR "about to check for calc cols in $query\n" if DEBUG >= 5;
+		# calculated columns
+		while ($query =~ / { \* (.*?) \s* = \s* (.*) } /sx)
+		{
+			my $field_spec = quotemeta($&);
+			my $calc_col = $1;
+			my $calculation = $2;
+			print STDERR "found a calc column: $calc_col = $calculation\n"
+					if DEBUG >= 4;
+			print STDERR "going to replace <<$field_spec>> with "
+					. "<<1 as \"*$calc_col\">> in query <<$query>>\n"
+					if DEBUG >= 5;
+
+			while ($calculation =~ /%(\w+)/)
+			{
+				my $col_ref = $1;
+				my $spec = quotemeta($&);
+
+				print STDERR "found col ref in calc: $col_ref\n" if DEBUG >= 4;
+				print STDERR qq/going to sub $spec with /,
+						qq/\$_[0]->col("$col_ref")\n/ if DEBUG >= 5;
+				$calculation =~ s/$spec/\$_[0]->col("$col_ref")/g;
+			}
+
+			while ($calculation =~ /\$([a-zA-Z]\w+)/)
+			{
+				my $varname = $1;
+				my $spec = quotemeta($&);
+
+				$calculation =~ s/$spec/\$_[0]->{ds}->{vars}->{$varname}/g;
+			}
+
+			print STDERR "going to evaluate calc func: sub { $calculation }\n"
+					if DEBUG >= 2;
+			my $calc_function = eval "sub { $calculation }";
+			croak("illegal syntax in calculated column: $field_spec ($@)")
+					if $@;
+			$calc_funcs->{$calc_col} = $calc_function;
+
+			$query =~ s/$field_spec/1 as "*$calc_col"/g;
+			print STDERR "after calc col subst, query is <<$query>>\n"
+					if DEBUG >= 5;
+		}
 	}
 
 	print STDERR "current query:\n$query\n" if DEBUG >= 4;
 	print "DataStore current query:\n$query\n" if $this->{show_queries};
 
-	#return wantarray ? ($query, @vars) : $query;
-	return $query;
+	if (wantarray)
+	{
+		return ($query, $calc_funcs, @vars);
+	}
+	else
+	{
+		carp("calculated columns are being lost") if %$calc_funcs;
+		return $query;
+	}
 }
 
 
@@ -428,10 +484,10 @@ sub do
 {
 	my $this = shift;
 	my ($query) = @_;
-	my @vars;
+	my (@vars, $calc_funcs);
 
 	# handle substitutions
-	$query = $this->_transform_query($query);
+	($query, $calc_funcs, @vars) = $this->_transform_query($query);
 	print STDERR "after transform, query is:\n$query\n" if DEBUG >= 4;
 
 	my $sth = $this->{dbh}->prepare($query);
@@ -454,6 +510,7 @@ sub do
 	$results->{ds} = $this;
 	$results->{rows} = $rows;
 	$results->{sth} = $sth;
+	$results->{calc_funcs} = $calc_funcs;
 	bless $results, 'DataStore::results';
 
 	return $results;
@@ -726,6 +783,31 @@ sub _get_colnum
 }
 
 
+sub _get_colval
+{
+	my ($this, $col_id) = @_;
+
+	my $true_colname = $this->{sth}->{NAME}->[$col_id];
+	print STDERR "getting column $col_id, true name is $true_colname\n"
+			if DEBUG >= 5;
+
+	if (substr($true_colname, 0, 1) eq '*')
+	{
+		$true_colname = substr($true_colname, 1);
+		croak("calc column with no calc function: $true_colname")
+				unless exists $this->{calc_funcs}->{$true_colname};
+		print STDERR "function for $true_colname will return ",
+				$this->{calc_funcs}->{$true_colname}->($this), "\n"
+					if DEBUG >= 4;
+		return $this->{calc_funcs}->{$true_colname}->($this);
+	}
+	else
+	{
+		return $this->{currow}->[$col_id];
+	}
+}
+
+
 sub next_row
 {
 	my $this = shift;
@@ -764,9 +846,8 @@ sub col
 	my $this = shift;
 	my ($col_id) = @_;
 
-	$col_id = $this->_get_colnum($col_id) if $col_id =~ /^[a-zA-Z_]/;
-
-	return $this->{currow}->[$col_id];
+	$col_id = $this->_get_colnum($col_id) if $col_id !~ /^\d/;
+	return $this->_get_colval($col_id);
 }
 
 
@@ -786,7 +867,7 @@ sub all_cols
 	my @cols = ();
 	for (my $x = 0; $x < $this->{sth}->{NUM_OF_FIELDS}; ++$x)
 	{
-		push @cols, $this->{currow}->[$x];
+		push @cols, $this->_get_colval($x);
 	}
 	return @cols;
 }
