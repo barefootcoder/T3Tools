@@ -27,6 +27,7 @@ die("not blessed ref (DataSet)") unless $data->isa("DataStore::DataSet");
 test_foreach_row();
 test_add_column();
 test_remove_column();
+test_alter();
 test_group();
 
 
@@ -84,9 +85,21 @@ sub test_add_column
 
 	foreach (@$data)
 	{
-		die("foreach_row didn't work")
+		die("add_column didn't work")
 				unless $_->{new_col} eq substr($_->{name}, 0, 5);
 	}
+
+=comment
+	# now try to add multiple columns
+	$data->add_column( col1 => sub {return 1}, col2 => sub {return 2},
+			col3 => sub {return 3} )
+			or die("add_column (multiple) call failed");
+	$data->foreach_row
+	{
+		die("add_column (multiple) didn't work")
+				unless $_->{col1} == 1 and $_->{col2} == 2 and $_->{col3} == 3;
+	};
+=cut
 }
 
 
@@ -103,13 +116,74 @@ sub test_remove_column
 		die("remove_column didn't work")
 				if exists $_->{new_col};
 	}
+
+=comment
+	# now test with multiple columns
+	$data->remove_column( qw<col1 col2 col3> )
+			or die("remove_column (multiple) call failed");
+=cut
 }
+
+
+sub test_alter
+{
+	# save some info for later comparison
+	my (@names, @categories);
+	foreach (@$data)
+	{
+		push @names, $_->{name};
+		push @categories, $_->{category};
+	}
+
+	# first, the call
+	$data->alter_dataset({
+			add_columns		=>	[ qw<name_len category1 name1> ],
+			remove_columns	=>	[ qw<name category> ],
+			foreach_row		=>	sub
+			{
+				$_->{name1} = $_->{name};
+				$_->{category1} = $_->{category};
+
+				$_->{name_len} = length($_->{name});
+			}
+	}) or die("alter_dataset call failed");
+
+	my $i = 0;
+	foreach (@$data)
+	{
+		die("alter_dataset didn't work")
+				unless
+					$_->{name1} eq $names[$i]
+					and $_->{category1} eq $categories[$i]
+					and $_->{name_len} == length($names[$i])
+					and not exists $_->{name}
+					and not exists $_->{category};
+		++$i;
+	}
+
+	# test rename column
+	$data->rename_column(name1 => 'name') or die("rename_column call failed");
+	die("rename_column didn't work")
+			unless exists $data->[0]->{name}
+				and not exists $data->[0]->{name1};
+
+	# test bad rename
+	test_error { $data->rename_column(bogus => 'whatever'); }
+	catch { /unknown column name/ }
+	or die("rename_column didn't catch bogus column name");
+
+	# finish putting things back the way they were
+	$data->rename_column(category1 => 'category');
+	$data->remove_column('name_len');
+}
+
 
 sub test_group
 {
 	# make sure the mechanics are working
 	my $newdata = $data->group(
 			group_by	=>	[ qw<category name> ],
+			new_columns	=>	[ qw<category name> ],
 			calculate	=>	sub
 							{
 								my ($src, $dst) = @_;
@@ -122,23 +196,34 @@ sub test_group
 							},
 	);
 	die("group call failed") unless $newdata;
+	die("group call didn't return a dataset")
+			unless $newdata->isa("DataStore::DataSet");
 	foreach my $orig_row (sort { $a->{category} cmp $b->{category} } @$data)
 	{
 		my $grouped_row = shift @$newdata;
+		die("row not a DataRow in group")
+				unless $grouped_row->isa('DataStore::DataRow');
 		my $didnt_work = sub
 		{
-			die("do-nothing group didn't work")
+			die("do-nothing group didn't work: " . $_[0])
 		};
 
 		foreach (keys %$orig_row)
 		{
-			&$didnt_work unless exists $grouped_row->{$_}
+			$didnt_work->("chk grp row ($_)")
+					unless exists $grouped_row->{$_}
 					and $orig_row->{$_} eq $grouped_row->{$_};
 		}
 		foreach (keys %$grouped_row)
 		{
-			&$didnt_work unless exists $orig_row->{$_}
+			$didnt_work->("chk orig row ($_)")
+					unless exists $orig_row->{$_}
 					and $orig_row->{$_} eq $grouped_row->{$_};
+		}
+		foreach (0..$#$orig_row)
+		{
+			$didnt_work->("chk idxs ($_)")
+					unless $orig_row->[$_] eq $grouped_row->[$_];
 		}
 	}
 
@@ -154,13 +239,14 @@ sub test_group
 	);
 	my $group = $data->group(
 			group_by	=>	[ qw<num_words> ],
+			new_columns	=>	[ qw<num_words symbols> ],
 			calculate	=>	sub
 							{
 								my ($src, $dst) = @_;
 								print STDERR "adding symbol $src->{category} "
 										. "to num words $dst->{num_words}\n"
 										if DEBUG >= 3;
-								if (exists $dst->{symbols})
+								if (defined $dst->{symbols})
 								{
 									$dst->{symbols} .= "," . $src->{category};
 								}
@@ -171,6 +257,7 @@ sub test_group
 							},
 	);
 	die("group call failed") unless $group;
+	$group->dump_set(*STDERR) if DEBUG >= 4;
 
 	# go at this from a different angle and hope we get the same results
 	my (%words, @words);
@@ -203,11 +290,17 @@ sub test_group
 			and tl.client_id = p.client_id
 			and tl.proj_id = p.proj_id
 			and tl.log_date between p.start_date and p.end_date
-			and tl.log_date between '1/1/1999' and '12/31/1999'
+			and tl.log_date between '1/1/1999' and '6/30/1999'
 	") or die("can't load for extended test");
 	my $ds_group = $data->group(
 			group_by	=>	[ qw<emp_id client_id proj_id phase_id> ],
+			new_columns	=>	[ qw<emp_id client_id proj_id phase_id>,
+								qw<client_name proj_name total_hours> ],
 			constant	=>	[ qw<client_name proj_name> ],
+			on_new_group=>	sub
+							{
+								$_->{total_hours} = 0;
+							},
 			calculate	=>	sub
 							{
 								my ($src, $dst) = @_;
@@ -215,6 +308,7 @@ sub test_group
 							},
 	);
 	die("group call failed") unless $ds_group;
+	$ds_group->dump_set(*STDERR) if DEBUG >= 4;
 
 	# now get SQL to return the same info
 	my $sql_group = $t3->load_table("
@@ -226,7 +320,7 @@ sub test_group
 			and tl.client_id = p.client_id
 			and tl.proj_id = p.proj_id
 			and tl.log_date between p.start_date and p.end_date
-			and tl.log_date between '1/1/1999' and '12/31/1999'
+			and tl.log_date between '1/1/1999' and '6/30/1999'
 			group by tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id,
 					c.name, p.name
 			order by tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id
@@ -235,7 +329,7 @@ sub test_group
 	# now compare the two
 	# note: this relies on the fact that group() returns its data sorted
 	die("don't have the same number of rows") unless @$ds_group == @$sql_group;
-	for my $x (1..scalar(@$ds_group))
+	for my $x (0..$#$ds_group)
 	{
 		my $didnt_work = sub
 		{
@@ -244,7 +338,7 @@ sub test_group
 			die("group data not equal");
 		};
 
-		foreach (keys %{$ds_group->[$x]})
+		foreach ($ds_group->[$x]->colnames())
 		{
 			if ($_ eq 'total_hours')
 			{
@@ -266,7 +360,7 @@ sub test_group
 				}
 			}
 		}
-		foreach (keys %{$sql_group->[$x]})
+		foreach ($sql_group->[$x]->colnames())
 		{
 			if ($_ eq 'total_hours')
 			{
