@@ -194,8 +194,10 @@ die("didn't get proper number of rows (got $nrows)")
 
 # ... and get data back out
 $results = $testds->do("select * from test1");
+die("can't get resultset colnames")
+			unless join(':', $results->colnames()) eq 'a:b:c';
 $count = 0;
-while ($results->next_row())
+while (my $row = $results->next_row())
 {
 	++$count;
 	die("column 0 bad for row $count") unless $results->col(0) eq 'xxx';
@@ -206,6 +208,8 @@ while ($results->next_row())
 	die("bad name for column 1") unless $results->colname(1) eq 'b';
 	die("column 2 bad for row $count") unless $results->col(2) == 48.35;
 	die("bad name for column 2") unless $results->colname(2) eq 'c';
+	die("can't get row colnames")
+			unless join(':', $row->colnames()) eq 'a:b:c';
 }
 die("didn't get proper number of rows back")
 		unless $count == NUM_TEST_ROWS * 2;
@@ -542,12 +546,32 @@ sub test_conditionals
 
 sub test_load_append_replace
 {
-	my $contents = $testds->load_table("
+	my $contents = $testds->load_data("
+			select * from {~dbo}.test1
+			where a = 'con'
+			order by b
+	");
+	die("load_data returned undefined results") unless $contents;
+	die("can't get dataset colnames")
+				unless join(':', $contents->colnames()) eq 'a:b:c';
+	$contents->dump_set(*STDERR) if DEBUG >= 3;
+	die("contents aren't correct")
+			unless $contents->[0]->{a} eq 'con'
+			and $contents->[1]->{a} eq 'con'
+			and $contents->[0]->{b} eq 'Jan  1 1753 12:00AM'
+			and $contents->[1]->{b} eq 'Dec 31 9999 12:00AM'
+			and $contents->[0]->{c} == 0
+			and $contents->[1]->{c} == 0;
+
+	# make sure load_table is the exact same as load_data
+	$contents = $testds->load_table("
 			select * from {~dbo}.test1
 			where a = 'con'
 			order by b
 	");
 	die("load_table returned undefined results") unless $contents;
+	die("can't get dataset colnames")
+				unless join(':', $contents->colnames()) eq 'a:b:c';
 	$contents->dump_set(*STDERR) if DEBUG >= 3;
 	die("contents aren't correct")
 			unless $contents->[0]->{a} eq 'con'
