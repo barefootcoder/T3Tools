@@ -5,14 +5,35 @@ use strict;
 use Barefoot::T3;
 use Barefoot::input qw(input);
 
-my $user = $ARGV[0];
-$user = input("user to log off?") unless defined($user);
-
-if (!`t3_who | grep $user`)
-{
-	print STDERR "$0: user $user doesn't appear to be logged in\n";
-	exit(2);
-}
 
 T3::initialize($::ENV{HOME});
-T3::send_message(T3::build_message($user, "", T3::LOGOFF_MESSAGE));
+my $retval = 0;
+
+if ($ARGV[0])
+{
+	foreach my $user (@ARGV)
+	{
+		$retval |= logoff($user);
+	}
+}
+else
+{
+	my $user = input("user to log off?");
+	$retval |= logoff($user);
+}
+exit($retval);
+
+
+sub logoff
+{
+	my ($user) = @_;
+
+	if (!`t3_who | grep $user`)
+	{
+		print STDERR "$0: user $user doesn't appear to be logged in\n";
+		return 1;
+	}
+
+	T3::send_message(T3::build_message($user, "", T3::LOGOFF_MESSAGE));
+	return 0;
+}
