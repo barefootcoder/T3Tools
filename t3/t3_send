@@ -7,13 +7,22 @@ use strict;
 use Barefoot::T3;
 
 
-if (@ARGV != 2)
+if (@ARGV < 1 or @ARGV > 2)
 {
-	print STDERR "usage: $0 user \"message text\"\n";
+	print STDERR "usage: $0 user [\"message text\"]\n";
 	exit 2;
 }
 
-my ($to, $text) = @ARGV;
+my ($to, $text);
+$to = shift @ARGV;
+if (@ARGV)
+{
+	$text = shift @ARGV;
+}
+else
+{
+	$text = join('', <STDIN>);
+}
 
 my $message = T3::build_message(T3::NOREPLY_MESSAGE, $T3::username, $to,
 								"", "", "", $text);
