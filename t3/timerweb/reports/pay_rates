@@ -14,14 +14,39 @@ set active = 'Active'
 where end_date = $END_OF_TIME
 go
 
+print ''
+print '<H4>Current rates only</H4>'
 select prt.empname "employee", isnull(c.name, "ALL CLIENTS") "client",
-		isnull(prt.proj, "ALL") "proj", 
-		isnull(prt.phase, "ALL") "phase", 
-		prt.rate_type "T",
-		convert(char(8), prt.rate, 1) "rate",
+		isnull(prt.proj, "ALL") "proj", isnull(prt.phase, "ALL") "phase", 
+		prt.rate_type "T", convert(char(8), prt.rate, 1) "rate",
+		convert(char(10), prt.start_date, 101) "start date",
+		convert(char(10), prt.end_date, 101) "end date", prt.active
+from #pay_rate_temp prt, client c
+where prt.client *= c.client
+and end_date = $END_OF_TIME
+order by prt.client, prt.proj, prt.phase, prt.end_date, prt.start_date
+go
+
+print ''
+print '<H4>Grouped by client</H4>'
+select prt.empname "employee", isnull(c.name, "ALL CLIENTS") "client",
+		isnull(prt.proj, "ALL") "proj", isnull(prt.phase, "ALL") "phase", 
+		prt.rate_type "T", convert(char(8), prt.rate, 1) "rate",
 		convert(char(10), prt.start_date, 101) "start date",
 		convert(char(10), prt.end_date, 101) "end date", prt.active
 from #pay_rate_temp prt, client c
 where prt.client *= c.client
 order by prt.client, prt.proj, prt.phase, prt.end_date, prt.start_date
+go
+
+print ''
+print '<H4>Chronological order</H4>'
+select prt.empname "employee", isnull(c.name, "ALL CLIENTS") "client",
+		isnull(prt.proj, "ALL") "proj", isnull(prt.phase, "ALL") "phase", 
+		prt.rate_type "T", convert(char(8), prt.rate, 1) "rate",
+		convert(char(10), prt.start_date, 101) "start date",
+		convert(char(10), prt.end_date, 101) "end date", prt.active
+from #pay_rate_temp prt, client c
+where prt.client *= c.client
+order by prt.start_date, prt.end_date, prt.client, prt.proj
 go
