@@ -134,7 +134,7 @@ my $sysobjquery = "
 my $results = $testds->do($sysobjquery);
 die("got no results (query 1)") unless $results;
 die("results aren't blessed properly")
-		unless $results->isa("DataStore::results");
+		unless $results->isa("DataStore::ResultSet");
 $results->next_row();
 die("incorrect number of columns") unless $results->num_cols() == 2;
 die("results are not correct")
@@ -517,6 +517,7 @@ sub test_load_append_replace
 			order by b
 	");
 	die("load_table returned undefined results") unless $contents;
+	$contents->dump_set(*STDERR) if DEBUG >= 3;
 	die("contents aren't correct")
 			unless $contents->[0]->{a} eq 'con'
 			and $contents->[1]->{a} eq 'con'
