@@ -511,6 +511,15 @@ sub test_vars
 	test_output("select * from test1 where a = {a_val}",
 			"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
 			"variable set to 'xxx' didn't work");
+
+	# now test temporary, or override, vars
+	$testds->do("insert test1 values
+					( {a_val}, 'Jan  1 2000 12:00AM', {c_val} )",
+				a_val => 'var', c_val => 96)
+			or die("can't insert for temp var test");
+	test_output("select * from test1 where a = 'var'",
+			"var:Jan  1 2000 12:00AM:96\n",
+			"override vars don't work");
 }
 
 sub test_conditionals
