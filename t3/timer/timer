@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  1999/02/23 22:50:00  buddy
+# Initial revision
+#
 # $Id$
 # $Revision$
 
@@ -10,6 +13,8 @@ use strict;
 
 use Env qw(TIMERDIR HOME USER);
 use Getopt::Std;
+
+use Barefoot::timerdata;
 
 #################################
 # CONSTANTS
@@ -31,7 +36,7 @@ use Getopt::Std;
 #################################
 
 *Elapsed =
-	\'@<< @<<<<<<<<<<<<<<<<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<<<<<<<<';
+	\'@<< @<<<<<<<<<<<<<<<<<  for @<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<<<<<<<<';
 
 #################################
 # OPTIONS AND ENVIRONMENT VARS
@@ -41,7 +46,8 @@ if (@ARGV == 0)
 {
 	error(0,
 		"incorrect usage; usage is:\n",
-		"    timer -(s|p|d|c|e|r|b) [-fh] [-u user] [timername]\n",
+		"    timer -{s|p|d|c|e|r|b} [-fh] [-u user] [-C clientnum] ",
+						"[timername] [newtimername]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
@@ -52,17 +58,25 @@ if (@ARGV == 0)
 		"       -b:   break down a timer's portions\n",
 		"       -f:   force (ignore all confirmations)\n",
 		"       -h:   half-time timing (while watching movies, etc)\n",
+		#"       -l:   leave existing timer running (when starting new one)\n",
 		"       -u:   user name to use (default is current user)\n",
+		"       -C:   client number to use (default is user-specific)\n",
+		"    user must have an I:\\ drive directory\n",
+		"    clientnum must be a valid 3-digit timer code\n",
+		"    timername is ignored for -p\n",
+		"    newtimername is ignored for all but -n\n",
 	);
 }
 
 my $timerinfo = {};
 
 my $opt = {};
-getopts('sedrcpnbfhu:$:', $opt);
+getopts('sedrcpnbfhlu:C:$:', $opt);
 $timerinfo->{force} = defined($opt->{f});
 $timerinfo->{halftime} = defined($opt->{h});
+$timerinfo->{leavecurrent} = defined($opt->{l});
 $timerinfo->{user} = $opt->{u};
+$timerinfo->{client} = $opt->{C};
 
 $timerinfo->{tdir} = defined($::TIMERDIR) ? $::TIMERDIR : $::HOME;
 if (!$timerinfo->{user})
@@ -75,7 +89,8 @@ elsif ($timerinfo->{user} ne $::USER)
 }
 $timerinfo->{tfile} = "$timerinfo->{tdir}/$::timefile";
 $timerinfo->{hfile} = "$timerinfo->{tdir}/$::histfile";
-$timerinfo->{newtimer} = $ARGV[0] ? $ARGV[0] : "default";
+$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : "default";
+$timerinfo->{newname} = $ARGV[1];
 $timerinfo->{timers} = {};
 my $func = "";
 my $fopt;
@@ -133,18 +148,20 @@ if ($func eq 's')					# start a timer
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		get_newtimer("start", $timerinfo);
+		get_giventimer("start", $timerinfo);
 	}
 
-	if ($timerinfo->{newtimer} eq $timerinfo->{curtimer})
+	if ($timerinfo->{giventimer} eq $timerinfo->{curtimer})
 	{
 		error(1, "already timing for $timerinfo->{curtimer}\n");
 	}
-	$timerinfo->{timers}->{$timerinfo->{curtimer}} .= time . ','
-			if $timerinfo->{curtimer};
-	$timerinfo->{timers}->{$timerinfo->{newtimer}} .=
+	$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ','
+			if $timerinfo->{curtimer} and not $timerinfo->{leavecurrent};
+	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time} .=
 			($timerinfo->{halftime} ? "2/" : "") . time . '-';
-	$timerinfo->{curtimer} = $timerinfo->{newtimer};
+	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{client}
+			= get_client($func, $timerinfo);
+	$timerinfo->{curtimer} = $timerinfo->{giventimer};
 
 	print_elapsed($timerinfo);
 	writefile($timerinfo);
@@ -164,7 +181,7 @@ if ($func eq 'p')					# pause all timers
 		exit unless <STDIN> =~ /^y/i;
 	}
 
-	$timerinfo->{timers}->{$timerinfo->{curtimer}} .= time . ',';
+	$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ',';
 	delete $timerinfo->{curtimer};
 
 	print_elapsed($timerinfo);
@@ -176,22 +193,22 @@ if ($func eq 'c')					# cancel a timer
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		get_newtimer("cancel", $timerinfo);
+		get_giventimer("cancel", $timerinfo);
 
 		print STDERR "warning! a cancelled timer is gone forever!\n";
 		print STDERR "are you sure you want to cancel timer ",
-				$timerinfo->{newtimer}, "?  (y/N) ";
+				$timerinfo->{giventimer}, "?  (y/N) ";
 		exit unless <STDIN> =~ /^y/i;
 	}
 
-	if (!exists $timerinfo->{timers}->{$timerinfo->{newtimer}})
+	if (!exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
 	{
 		error(1, "can't cancel; no such timer\n");
 	}
 
-	delete $timerinfo->{timers}->{$timerinfo->{newtimer}};
+	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	delete $timerinfo->{curtimer}
-			if $timerinfo->{curtimer} eq $timerinfo->{newtimer};
+			if $timerinfo->{curtimer} eq $timerinfo->{giventimer};
 
 	print_elapsed($timerinfo);
 	writefile($timerinfo);
@@ -202,26 +219,49 @@ if ($func eq 'n')					# new name for a timer
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		get_newtimer("new name for", $timerinfo);
+		get_giventimer("new name for", $timerinfo);
 	}
 
-	if (!exists $timerinfo->{timers}->{$timerinfo->{newtimer}})
+	# just a shortcut here
+	my $oldname = $timerinfo->{giventimer};
+
+	if (!exists $timerinfo->{timers}->{$oldname})
 	{
 		error(1, "can't rename; no such timer\n");
 	}
 
-	print STDERR "new name for this timer? ";
-	my $newname = <STDIN>;
-	chomp $newname;
-
-	if (exists $timerinfo->{timers}->{$newname})
+	my $newname;
+	if ($timerinfo->{newname} and $timerinfo->{force})
 	{
-		error(1, "that timer already exists\n");
+		$newname = $timerinfo->{newname};
+	}
+	else
+	{
+		my $defname = $timerinfo->{newname} ? $timerinfo->{newname} : $oldname;
+		print STDERR "new name for this timer? ($defname)  ";
+		$newname = <STDIN>;
+		chomp $newname;
+		$newname = $defname if not $newname;
 	}
 
-	$timerinfo->{timers}->{$newname} =
-			$timerinfo->{timers}->{$timerinfo->{newtimer}};
-	delete $timerinfo->{timers}->{$timerinfo->{newtimer}};
+	# if we're renaming ...
+	if ($newname ne $oldname)
+	{
+		if (exists $timerinfo->{timers}->{$newname})
+		{
+			error(1, "that timer already exists\n");
+		}
+
+		$timerinfo->{timers}->{$newname} = $timerinfo->{timers}->{$oldname};
+		delete $timerinfo->{timers}->{$oldname};
+		# got to do this so get_client() (below) will work
+		$timerinfo->{giventimer} = $newname;
+	}
+
+	# but of course we might just be changing the client
+	$timerinfo->{timers}->{$newname}->{client} = get_client($func, $timerinfo);
+
+	$timerinfo->{curtimer} = $newname if $timerinfo->{curtimer} eq $oldname;
 	print_elapsed($timerinfo);
 	writefile($timerinfo);
 }
@@ -231,10 +271,11 @@ if ($func eq 'b')
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		get_newtimer("break down", $timerinfo);
+		get_giventimer("break down", $timerinfo);
 	}
 
-	my @parts = split(/,/, $timerinfo->{timers}->{$timerinfo->{newtimer}});
+	my @parts = split(/,/,
+			$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time});
 	my $part;
 	foreach $part (@parts)
 	{
@@ -287,20 +328,21 @@ if ($func eq 'd')					# done with a timer; run TIMELOG
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		get_newtimer("done with", $timerinfo);
+		get_giventimer("done with", $timerinfo);
 	}
 
-	if (!exists $timerinfo->{timers}->{$timerinfo->{newtimer}})
+	if (!exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
 	{
-		error(1, "no such timer as $timerinfo->{newtimer}\n");
+		error(1, "no such timer as $timerinfo->{giventimer}\n");
 	}
 
-	my $thistimer = $timerinfo->{timers}->{$timerinfo->{newtimer}};
-	my $minutes = calc_time($thistimer);
+	my $thistimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	my $minutes = calc_time($thistimer->{time});
 	my $hours = round($minutes / 60, $::DOWN),
 	my $date = calc_date($thistimer);
+	my $client = $thistimer->{client};
 	print "total time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
-		" mins) on $date\n";
+		" mins) on $date for $client\n";
 	print "please remember this in case TIMELOG has a problem!\n";
 	if (!$timerinfo->{force})
 	{
@@ -309,11 +351,11 @@ if ($func eq 'd')					# done with a timer; run TIMELOG
 	}
 
 	save_history($timerinfo, "done");
-	delete $timerinfo->{timers}->{$timerinfo->{newtimer}};
+	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	writefile($timerinfo);
 
 	print "\nrunning the FoxPro timelog program ...\n";
-	exec $::timelog, $timerinfo->{user}, "D", $minutes, $date;
+	exec $::timelog, $timerinfo->{user}, "D", $minutes, $date, $client;
 	die "couldn't execute timelog: $!";
 }
 
@@ -338,9 +380,12 @@ sub readfile
 	open(TFILE, $timerinfo->{tfile}) or return 0;
 	while ( <TFILE> )
 	{
-		my ($key, $value) = split;
-		$timerinfo->{timers}->{$key} = $value;
-		$timerinfo->{curtimer} = $key if ($value =~ /-$/);
+		my ($key, $time, $client) = split;
+		my $curtimer = {};
+		$curtimer->{time} = $time;
+		$curtimer->{client} = $client;
+		$timerinfo->{timers}->{$key} = $curtimer;
+		$timerinfo->{curtimer} = $key if ($time =~ /-$/);
 	}
 	close(TFILE);
 }
@@ -353,7 +398,9 @@ sub writefile
 	my $timer;
 	foreach $timer (keys %{$timerinfo->{timers}})
 	{
-		print TFILE $timer, "\t", $timerinfo->{timers}->{$timer}, "\n";
+		my $timerstuff = $timerinfo->{timers}->{$timer};
+		print TFILE $timer, "\t", $timerstuff->{time}, "\t",
+				$timerstuff->{client}, "\n";
 	}
 	close(TFILE);
 
@@ -366,19 +413,20 @@ sub writefile
 sub save_history
 {
 	my ($timerinfo, $func) = @_;
+	my $timerstuff = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
 	open(HIST, ">>$timerinfo->{hfile}") or die("couldn't open history file");
-	print HIST "$timerinfo->{user}\t$func\t",
-			"$timerinfo->{timers}->{$timerinfo->{newtimer}}\n";
+	print HIST "$timerinfo->{user}\t$func\t$timerinfo->{giventimer}\t",
+			"$timerstuff->{time}\t$timerstuff->{client}\n";
 	close(HIST);
 }
 
-sub get_newtimer
+sub get_giventimer
 {
 	my ($function, $timerinfo) = @_;
 
 	{
-		print "$function what timer? ($timerinfo->{newtimer})  ";
+		print "$function what timer? ($timerinfo->{giventimer})  ";
 		my $new = <STDIN>;
 		chomp $new;
 		if ($new =~ /\s/)
@@ -386,8 +434,84 @@ sub get_newtimer
 			print STDERR "timer name can't have a space; sorry\n";
 			redo;
 		}
-		$timerinfo->{newtimer} = $new if $new;
+		$timerinfo->{giventimer} = $new if $new;
 	}
+}
+
+sub get_client
+{
+	my ($func, $timerinfo) = @_;
+	# a little shortcut here
+	my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+
+	# this is somewhat complicated ...  we need to figure out what the
+	# proper client should be, and then use it as the default ... now,
+	# we have three possible places to get the potential client from:
+	# the default client for this user (out of Sybase), the client
+	# already set for a pre-existing timer, or the client specified on
+	# the command line (if given) ... for starting a timer, the priority
+	# is: pre-existing, command line, default ... for renaming a timer,
+	# the priority is command line, pre-existing, default ... now! if -f
+	# (force) was specified, we can quit right here ... also, if we're
+	# _start_ing a pre-existing timer, the user isn't allowed to change
+	# the client, so we quit in that case too ...
+
+	# got it? here we go ...
+	my $defclient;
+	if ($func ne 'n')							# anything but new name
+	{											# (probably start)
+		if (exists $giventimer->{client})		# pre-existing client first
+		{
+			$defclient = $giventimer->{client};
+		}
+		elsif ($timerinfo->{client})			# then -C option
+		{
+			$defclient = $timerinfo->{client};
+		}
+		else									# defclient from Sybase
+		{
+			$defclient = timerdata::default_client($timerinfo->{user});
+		}
+	}
+	else										# must be new name
+	{
+		if ($timerinfo->{client})				# -C option first
+		{
+			$defclient = $timerinfo->{client};
+		}
+		elsif (exists $giventimer->{client})	# then pre-existing client
+		{
+			$defclient = $giventimer->{client};
+		}
+		else									# defclient from Sybase
+		{
+			$defclient = timerdata::default_client($timerinfo->{user});
+		}
+	}
+	return $defclient if $timerinfo->{force}
+			or ($func eq 's' and exists $giventimer->{client});
+
+	my $client;
+	# make a(n unnamed) block so redo will work
+	{
+		print "which client is this for? ($defclient)  ";
+		$client = <STDIN>;
+		chomp $client;
+		$client = $defclient if not $client;	# use default if not specified
+		my $fullname = timerdata::client_name($client);
+		if (defined($fullname))
+		{
+			print "illegal client number!\n" and redo if not $fullname;
+			print "client is $client: $fullname; is this right? (y/N)  ";
+		}
+		else
+		{
+			print "can't verify client number! are you sure you want to ",
+					"proceed? (y/N)  ";
+		}
+		redo unless <STDIN> =~ /^y/i;
+	}
+	return $client;
 }
 
 sub print_elapsed
@@ -398,14 +522,15 @@ sub print_elapsed
 	my $timer;
 	foreach $timer (keys %{$timerinfo->{timers}})
 	{
-		my $minutes = calc_time($timerinfo->{timers}->{$timer});
+		my $minutes = calc_time($timerinfo->{timers}->{$timer}->{time});
 		my $hours = round($minutes / 60, $::DOWN);
 		$minutes = $minutes - $hours * 60;
-		my $date = calc_date($timerinfo->{timers}->{$timer});
+		my $date = calc_date($timerinfo->{timers}->{$timer}->{time});
 
 		writeln($::Elapsed, $timerinfo->{curtimer} eq $timer ? "==>" : "",
-				$timer, $hours, $minutes, $date,
-				$timerinfo->{timers}->{$timer} =~ m{/\d+-$}
+				$timer, $timerinfo->{timers}->{$timer}->{client},
+				$hours, $minutes, $date,
+				$timerinfo->{timers}->{$timer}->{time} =~ m{/\d+-$}
 					? "HALF-TIMING" : "");
 	}
 	print $timerinfo->{curtimer} ? "active timer is $timerinfo->{curtimer}"
