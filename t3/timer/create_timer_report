@@ -1,25 +1,30 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
 
 use strict;
+
+# use Barefoot::debug;						# comment out for production
 
 use CGI;
 use POSIX;
 use FileHandle;
 use Time::Local;
+use Date::Parse;
 
 use Barefoot::date;
+use Barefoot::range;
+use Barefoot::format;
+use Barefoot::timerdata;
 
-*User =
-	\'For user  @<<<<<<<<<<<<<<  :              at current rate of work:';
-*Header1 =
-	\'                                worked     will reach  will reach';
-*Header2 =
-	\'Client:                         so far:      by Fri:     by Sun:';
-*Client_Hours =
-	\'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   @##.##       @##.##      @##.##';
+use constant USER_HEADER =>
+	'For user  @<<<<<<<<<<<<<<  :              at current rate of work:';
+use constant SUB_HEADER1 =>
+	'                                worked     will reach  will reach';
+use constant SUB_HEADER2 =>
+	'Client:                         so far:      by Fri:     by Sun:';
+use constant CLIENT_HOURS =>
+	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   @##.##       @##.##      @##.##';
 
 $ENV{USER} = "misc";
-$ENV{TIMERDIR} = "/export/usr/misc";
 $ENV{PATH} = "$ENV{PATH}:/opt/sybase/bin:/usr/local/sybutils";
 
 # pseudo-constant for the beginning of the week
@@ -37,11 +42,11 @@ unlink(TMPFILE);
 open(TMP, ">" . TMPFILE) and close(TMP) or die("can't init tmp file");
 chmod(0777, TMPFILE);
 
-foreach my $timerfile ( </usr/local/t3/barefoot/*.timer> )
+foreach my $timerfile ( glob("/usr/local/t3/barefoot/*.timer") )
 {
 	my ($user) = $timerfile =~ m@/usr/local/t3/barefoot/(.*?)\.timer@;
 	# print "generating times for user $user\n";
-	if (system('/usr/local/t3/bin/timer -@: -u' . $user . ' >>' . TMPFILE))
+	if (system('/usr/local/t3/bin/timer -tu' . $user . ' >/dev/null'))
 	{
 		print STDERR "$0: couldn't generate timer info for $user\n";
 	}
@@ -51,71 +56,95 @@ foreach my $timerfile ( </usr/local/t3/barefoot/*.timer> )
 # parse through timer data and set up data for report
 my %timerdata;
 my $curuser = "";
-my $curtimer = {};
-	$curtimer->{name} = "";
+my $curtimer = {
+	name		=>	"",
+	first_time	=>	time(),
+	last_time	=>	0,
+};
 my $cur_udata = {};
-initialize_inout_times($cur_udata);
+#initialize_inout_times($cur_udata);
 
-open(TMP, TMPFILE) or die("can't open tmp file");
-while ( <TMP> )
+my $users = timerdata::query_results(
+		"select login, timer_name, client from timer");
+die("can't get users and timers out of database") unless defined $users;
+# build a hash: keys are login names, values are refs to arrays of timer names
+my %users;
+foreach my $row (@$users)
 {
-	chomp;
-	# example of format from timer -$ output
-	# wayne:busDev_Phaedo:001:183:956603628:956614568
-	my ($user, $timer, $client, $mins, $start_time, $end_time) = split(':');
+	my ($login, $timer_name, $client) = @$row;
+	$users{$login}->{$timer_name} = $client;
+}
 
-	if ($timer ne $curtimer->{name})		# starting a new timer's data
+foreach my $user (keys %users)
+{
+	initialize_inout_times($user);
+
+	foreach my $timer_name (keys %{$users{$user}})
 	{
-		# print "**timer: $curtimer->{name} (user $curuser) ",
-				# "from $curtimer->{first_time} ",
-				# "to $curtimer->{last_time}\n";
-		if ($curtimer->{last_time} < $MONDAY)
+		my $first_start = time();
+		my $last_end = 0;
+		my $client = $users{$user}->{$timer_name};
+
+		my $chunks = timerdata::query_results qq(
+
+				select start_time, end_time
+				from timer_chunk
+				where login = '$user'
+				and timer_name = '$timer_name'
+
+		);
+		die("can't get timer chunks out of database") unless defined $chunks;
+
+		foreach my $chunk (@$chunks)
 		{
-			push @{$cur_udata->{errors}},
-					"Timer $curtimer->{name} for client $curtimer->{client} "
-					. "is left over from last week";
-		}
-		elsif ($curtimer->{first_time} < $MONDAY)
-		{
-			# implies last_time >= $MONDAY
-			push @{$cur_udata->{warnings}},
-					"Timer $curtimer->{name} crosses a week boundary";
+			my ($start, $end) = @$chunk;
+
+			# check for currently timing ... 
+			if ($start and $end eq "NULL")	# means timer is currently running
+			{
+				push @{$timerdata{$user}->{warnings}},
+						"Timer $timer_name is still running";
+			}
+
+			# turn database date strings into Perl datetimes
+			$start = str2time($start);
+			$end = $end eq "NULL" ? time() : str2time($end);
+
+			$first_start = range::min($start, $first_start);
+			$last_end = range::max($end, $last_end);
+			check_inout_times($user, $start, $end);
+
+			# print "$user:$timer_name:$start:$end\n";
 		}
 
-		$curtimer = {};
-		$curtimer->{name} = $timer;
-		$curtimer->{client} = $client;
-		$curtimer->{first_time} = time;
-		$curtimer->{last_time} = 0;
-
-		if ($user ne $curuser)				# also starting a new user's data
+		# check for warnings and/or errors for this timer
+		if ($last_end < $MONDAY)
 		{
-			$timerdata{$curuser} = $cur_udata if $curuser;
-			$curuser = $user;
-			$cur_udata = {};
-			initialize_inout_times($cur_udata);
+			push @{$timerdata{$user}->{errors}},
+					"Timer $timer_name for client $client" .
+						" is left over from last week (or before)";
 		}
-
-		# check for currently timing ... this only applies to the latest
-		# (first) time chunk, so we do it here
-		if ($start_time and not $end_time)	# means timer is running right now
+		elsif ($first_start < $MONDAY)
 		{
-			push @{$cur_udata->{warnings}},
-					"Timer $timer is still running";
+			# implies last_end >= $MONDAY
+			push @{$timerdata{$user}->{warnings}},
+					"Timer $timer_name crosses a week boundary";
 		}
 	}
 
-	$curtimer->{first_time} = $start_time
-			if $start_time < $curtimer->{first_time};
-	$curtimer->{last_time} = $start_time
-			if $start_time > $curtimer->{last_time};
-	$cur_udata->{clients}->{$client} += $mins;
-
-	check_inout_times($cur_udata, $start_time, $end_time);
+	my ($totals, $bad_proj) = timerdata::this_week_totals($user);
+	die("can't access database")
+				unless defined($totals) and defined($bad_proj);
+	$timerdata{$user}->{totals_info} = $totals;
+	foreach my $row (@$bad_proj)
+	{
+		my ($client, $hours) = @$row;
+		$hours = sprintf("%.2f", $hours);
+		push @{$timerdata{$user}->{errors}},
+				"Some timers for client $client have invalid projects, "
+						. "totalling $hours hours";
+	}
 }
-# get the last user
-$timerdata{$curuser} = $cur_udata if $curuser;
-close(TMP);
 
 
 # now print out results
@@ -145,13 +174,15 @@ foreach my $user (sort keys %timerdata)
 		print PAGE $cgi->font({color=>'orange'}, "WARNING: $warning<BR>");
 	}
 
-	foreach my $client (keys %{$data->{clients}})
+	foreach my $row (@{$data->{totals_info}})
 	{
-		my $mins = $data->{clients}->{$client};
-		my $hours = int($mins / 60);
-		$mins -= $hours * 60;
+		my ($client, $client_name, $rate, $total_hours) = @$row;
+		my $hours = int($total_hours);
+		my $mins = ($total_hours - $hours) * 60;
+
 		# print "      $client: $hours hours, $mins minutes";
-		print PAGE "for client $client: $hours hours, $mins minutes<BR>";
+		print PAGE "for client $client $client_name at rate \$$rate: "
+				. "$hours hours, $mins minutes<BR>";
 	}
 
 	foreach my $day (0..6)
@@ -174,8 +205,8 @@ foreach my $user (sort keys %timerdata)
 
 #		my ($user) = $dir =~ m@/export/usr/(.*)@;
 #		print "\n\n";
-#		writeln($::User, $user);
-#		print "$::Header1\n$::Header2\n";
+#		writeln(USER, $user);
+#		print SUB_HEADER1, "\n", SUB_HEADER2, "\n";
 #		open(TIMER, "perl /usr/local/timer/timer -tu $user|") or
 #				(print STDERR "couldn't run timer -tu for user $user\n"
 #				and next);
@@ -185,58 +216,52 @@ foreach my $user (sort keys %timerdata)
 #			my $client = substr($_, 4, 30);
 #			my $hours = substr($_, 43, 6) + 0;
 #			my $daily = $hours / $days_so_far;
-#			writeln($::Client_Hours, $client, $hours, $daily * 5, $daily * 7);
+#			writeln(CLIENT_HOURS, $client, $hours, $daily * 5, $daily * 7);
 #		}
 #		close(TIMER);
 
 
-sub writeln
-{
-	my ($format, @vars) = @_;
-	$format .= "\n";
-	$^A = "";
-	formline($format, @vars);
-	print $^A;
-}
-
 sub get_monday_time
 {
 	my @monday_timeparts = localtime(date::MondayTime());
-	@monday_timeparts[date::PART_SEC..date::PART_HR] = (0,0,0);
-	my $monday_midnight = timelocal(@monday_timeparts);
-	# since timer considers anything before 6am to be "yesterday",
-	# we'll advance this time by 6 hours
-	return $monday_midnight + 6 * 60 * 60;
+	# have to use 6am, which is what timer considers to be the start of the day
+	@monday_timeparts[date::PART_SEC..date::PART_HR] = (0,0,6);
+	return timelocal(@monday_timeparts);
 }
 
 sub get_day
 {
 	my ($time) = @_;
 
-	my $day = (localtime($time))[date::PART_DOW];
-	my $hour = (localtime($time))[date::PART_HR];
-	--$day and $day %= 7 if $hour < 6;
+	my ($day, $hour) = (localtime($time))[date::PART_DOW,date::PART_HR];
+	if ($hour < 6)						# before 6am counts as yesterday
+	{
+		--$day;
+		$day = 6 if $day == -1;			# wrapped around; make it Saturday
+	}
 	return $day;
 }
 
 sub initialize_inout_times
 {
-	my ($udata) = @_;
+	my ($user) = @_;
 
 	foreach my $day (0..6)
 	{
-		$udata->{in_time}->[$day] = time;
-		$udata->{out_time}->[$day] = 0;
+		$timerdata{$user}->{in_time}->[$day] = time;
+		$timerdata{$user}->{out_time}->[$day] = 0;
 	}
 }
 
 sub check_inout_times
 {
-	my ($udata, $start, $end) = @_;
+	my ($user, $start, $end) = @_;
 
 	return if $start < $MONDAY;				# has to be this week
 	my $day = get_day($start);
 
-	$udata->{in_time}->[$day] = $start if $start < $udata->{in_time}->[$day];
-	$udata->{out_time}->[$day] = $end if $end > $udata->{out_time}->[$day];
+	$timerdata{$user}->{in_time}->[$day]
+			= range::min($start, $timerdata{$user}->{in_time}->[$day]);
+	$timerdata{$user}->{out_time}->[$day]
+			= range::max($end, $timerdata{$user}->{out_time}->[$day]);
 }
