@@ -566,6 +566,24 @@ sub test_load_append_replace
 			and $contents->[0]->{c} == 0
 			and $contents->[1]->{c} == 0;
 
+	# make sure load_data can accept temp variables
+	my $contents = $testds->load_data('
+			select * from {~dbo}.test1
+			where a = {a}
+			order by b
+	', a => 'con');
+	die("load_data returned undefined results") unless $contents;
+	die("can't get dataset colnames")
+				unless join(':', $contents->colnames()) eq 'a:b:c';
+	$contents->dump_set(*STDERR) if DEBUG >= 3;
+	die("contents aren't correct")
+			unless $contents->[0]->{a} eq 'con'
+			and $contents->[1]->{a} eq 'con'
+			and $contents->[0]->{b} eq 'Jan  1 1753 12:00AM'
+			and $contents->[1]->{b} eq 'Dec 31 9999 12:00AM'
+			and $contents->[0]->{c} == 0
+			and $contents->[1]->{c} == 0;
+
 	# make sure load_table is the exact same as load_data
 	$contents = $testds->load_table("
 			select * from {~dbo}.test1
