@@ -221,6 +221,153 @@ begin
 	where end_date = '12/31/99'
 end
 
+-- Billing Ratio checks
+
+if exists ( 
+				select *
+				from billing_ratio
+				where end_date < start_date
+          )
+begin
+	print "Billing ratio with end dates before start dates:"
+	print ""
+	select *
+	from billing_ratio
+	where end_date < start_date
+
+	select @error_occur = 1
+end
+
+
+if exists (
+				select br.*
+				from billing_ratio br
+				where not exists
+				(
+					select 1
+					from employee e
+					where e.emp = br.emp
+				)
+          )
+begin
+	print "Billing ratio that don't match any existing employee:"
+	print ""
+	select br.*
+	from billing_ratio br
+	where not exists
+	(
+		select 1
+		from employee e
+		where e.emp = br.emp
+	)
+
+	select @error_occur = 1
+end
+
+
+if exists (
+				select br.*
+				from billing_ratio br
+				where not exists
+				(
+					select 1
+					from client c
+					where c.client = br.client
+				)
+          )
+begin
+	print "Billing ratio that don't match any existing client:"
+	print ""
+	select br.*
+	from billing_ratio br
+	where not exists
+	(
+		select 1
+		from client c
+		where c.client = br.client
+	)
+
+	select @error_occur = 1
+end
+
+
+if exists (
+				select br.*
+				from billing_ratio br
+				where not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and isnull ( br.proj, p.proj)= p.proj
+				)
+          )
+begin
+	print "Billing ratio that don't match any existing project:"
+	print ""
+	select br.*
+	from billing_ratio br
+	where not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and isnull ( br.proj, p.proj) = p.proj
+	)
+
+	select @error_occur = 1
+end
+
+
+if exists (
+				select br.*
+				from billing_ratio br
+				where not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and isnull ( br.proj, p.proj) = p.proj
+					and br.start_date between p.start_date and p.end_date
+				)
+				or not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and isnull ( br.proj, p.proj) = p.proj
+					and br.end_date between p.start_date and p.end_date
+				)
+          )
+begin
+	print "Billing ratio with at least one date outside corresponding project dates:"
+	print ""
+	select br.*
+	from billing_ratio br
+	where not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and isnull ( br.proj, p.proj) = p.proj
+		and br.start_date between p.start_date and p.end_date
+	)
+	or not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and isnull ( br.proj, p.proj) = p.proj
+		and br.end_date between p.start_date and p.end_date
+	)
+
+	select @error_occur = 1
+end
+
+
+-- End Billing Ration checks
+
+
 if exists ( 
 				select *
 				from resource_employee
