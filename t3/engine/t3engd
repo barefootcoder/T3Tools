@@ -2,17 +2,17 @@
 
 use strict;
 
-use Barefoot::debug;						# comment out for production
-#use Barefoot::debug_verbose;				# comment out for production
+use Barefoot::debug(1);						# comment out for production
 
 use Fcntl;
 use FileHandle;
 use File::Basename;
-use Barefoot::exception;
-use Barefoot::T3::common;
+use POSIX qw<mkfifo>;
 
-# system paths
-use constant MKFIFO => '/usr/bin/mkfifo';
+use Barefoot::base;
+use Barefoot::exception;
+use Barefoot::T3::base;
+use Barefoot::T3::Server;
 
 setup_modules();
 
@@ -23,7 +23,7 @@ open(LOG, ">t3engd.log") or die("can't create log file");
 LOG->autoflush();
 log_error("starting server");
 
-create_pipe(T3::REQUEST_FILE);
+my $req_pipe = create_pipe(T3::REQUEST_FILE);
 
 
 # the open will block until it receives a request
@@ -53,8 +53,8 @@ while (1)
 		my $req = parse_request_string($request);
 		next unless $req;			# indicates error in parsing
 
-		my $module = $req->{module};
-		T3::debug("module is module");
+		my $handler = $req->{request};
+		T3::debug("request handler is $request");
 		unless ($req->{output})
 		{
 			log_error("output pipe name invalid or missing");
@@ -80,7 +80,7 @@ while (1)
 				}
 			}
 
-			T3::execute_module($module, @input_lines);
+			T3::Server::execute_request($handler, $req, @input_lines);
 			select($oldfh);
 			$pipe->close() unless exists $req->{combine_next};
 		}
@@ -98,8 +98,7 @@ die("popped out of infinite loop");
 
 sub setup_modules
 {
-	my $mod_dir = DEBUG ? T3::TEST_MODULES_DIR
-			: T3::config_param("SERVER", "ModulesDir");
+	my $mod_dir = t3_config(T3::MODULEDIR_DIRECTIVE);
 	T3::debug("modules directory is $mod_dir");
 	die("modules directory parameter not set in config file") unless $mod_dir;
 	die("modules directory $mod_dir is not accessible") unless -d $mod_dir;
@@ -131,26 +130,40 @@ sub log_error
 	print LOG "$0: $msg at ", scalar(localtime(time())), "\n";
 }
 
-sub create_pipe
+BEGIN
 {
-	my ($pipe_file) = @_;
+	my $pipe_dir = t3_config(T3::REQUESTDIR_DIRECTIVE);
 
-	unlink($pipe_file) if -e $pipe_file;
-	T3::debug(-e $pipe_file ? "pipe exists" : "pipe is gone");
-	log_error($!) if system(MKFIFO, $pipe_file);
+	sub create_pipe
+	{
+		my ($pipe_file) = @_;
+		$pipe_file = "$pipe_dir/$pipe_file";
+
+		unlink($pipe_file) if -e $pipe_file;
+		T3::debug(4, -e $pipe_file ? "pipe exists" : "pipe is gone");
+		if (mkfifo($pipe_file, 0666))
+		{
+			return $pipe_file;
+		}
+		else
+		{
+			log_error($!);
+			return undef;
+		}
+	}
 }
 
 sub open_request_pipe
 {
-	T3::debug("about to open pipe " . T3::REQUEST_FILE);
-	T3::debug(-p T3::REQUEST_FILE ? "file is a pipe" : "file is not a pipe");
+	T3::debug(5, "about to open pipe $req_pipe");
+	T3::debug(4, -p $req_pipe ? "file is a pipe" : "file is not a pipe");
 	# T3::debug("fuser says " . `/usr/sbin/fuser -u ./t3.request`);
 
 	# a regular open wasn't working here, but I don't know why ...
 	# sysopen seems to have solved the problem (for now)
-	sysopen(PIPE, T3::REQUEST_FILE, O_RDONLY)
+	sysopen(PIPE, $req_pipe, O_RDONLY)
 			or die("can't open the request pipe for reading");
-	T3::debug("got pipe open");
+	T3::debug(5, "got pipe open");
 }
 
 sub parse_request_string
@@ -171,10 +184,10 @@ sub parse_request_string
 	}
 
 	# check for basic errors
-	log_error("missing module name [$_[0]]") and return undef
-			unless exists $req->{module};
-	log_error("unknown module [$req->{module}]") and return undef
-			unless T3::exists_module($req->{module});
+	log_error("missing request handler name [$_[0]]") and return undef
+			unless exists $req->{request};
+	log_error("unknown request handler [$req->{request}]") and return undef
+			unless T3::Server::exists_request($req->{request});
 
 	return $req;
 }
@@ -190,14 +203,13 @@ sub open_output_pipe
 		return undef;
 	}
 
-	my $pipe_file = T3::OUTPUT_FILE . $id;
-	create_pipe($pipe_file);
+	my $pipe_file = create_pipe(T3::OUTPUT_FILE . $id);
 	return new FileHandle(">$pipe_file");
 }
 
 sub shutdown_server
 {
-	unlink(T3::REQUEST_FILE) or log_error("couldn't remove input pipe");
+	unlink($req_pipe) or log_error("couldn't remove input pipe");
 	log_error("shutting down");
 	exit 0;
 }
