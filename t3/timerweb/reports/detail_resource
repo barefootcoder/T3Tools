@@ -48,7 +48,24 @@ and pi.proj = p.proj
 and pi.end_date between p.start_date and p.end_date
 and tl.phase = ph.phase
 and tl.emp = re.emp
-and pi.client = re.client
+and
+(
+	tl.phase = re.phase
+	or
+	(
+		re.phase is NULL
+		and not exists
+		(
+			select 1
+			from resource_employee re2
+			where tl.client = re2.client
+			and tl.emp = re2.emp
+			and tl.phase = re2.phase
+			and tl.date between re2.start_date and re2.end_date
+		)
+	)
+)
+and tl.client = re.client
 and tl.date between re.start_date and re.end_date
 and re.client = rr.client
 and re.resrc = rr.resrc
@@ -102,7 +119,24 @@ from profit_item pi, time_log tl, resource_rate rr, resource_employee re
 where pi.log_source = tl.log_source
 and pi.log_id = tl.log_id
 and tl.emp = re.emp
-and pi.client = re.client
+and
+(
+	tl.phase = re.phase
+	or
+	(
+		re.phase is NULL
+		and not exists
+		(
+			select 1
+			from resource_employee re2
+			where tl.client = re2.client
+			and tl.emp = re2.emp
+			and tl.phase = re2.phase
+			and tl.date between re2.start_date and re2.end_date
+		)
+	)
+)
+and tl.client = re.client
 and tl.date between re.start_date and re.end_date
 and re.client = rr.client
 and re.resrc = rr.resrc
