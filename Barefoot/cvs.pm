@@ -28,7 +28,8 @@ package cvs;
 use strict;
 
 use constant WORKING_DIR => "/proj/" .
-		exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER};
+		scalar(exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER});
+
 
 1;
 
@@ -63,6 +64,7 @@ sub getLockers
 	return @lockers;
 }
 
+
 sub parse_module
 {
 	my ($path) = @_;
@@ -94,6 +96,7 @@ sub parse_module
 	return ($project, $subdir, $module);
 }
 
+
 sub project_group
 {
 	my ($project) = @_;
@@ -102,6 +105,7 @@ sub project_group
 	my $project_grname = getgrgid($project_gid);
 	return $project_grname;
 }
+
 
 sub is_offsite
 {
@@ -116,4 +120,3 @@ sub is_offsite
 		return 0;
 	}
 }
-
