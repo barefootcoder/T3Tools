@@ -125,6 +125,9 @@ unlink(TEST_DS_FILE);
 $testds->commit_configs();
 die("didn't create data store after commit configs") unless -e TEST_DS_FILE;
 
+# can we ping?
+die("can't ping data store") unless $testds->ping();
+
 # can we get one row?
 my $sysobjquery = "
 		select name, crdate
