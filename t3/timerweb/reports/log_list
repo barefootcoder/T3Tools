@@ -2,7 +2,7 @@
 -- TITLE: Time Log Listing
 
 select tl.log_id, tl.emp, $(employee_name e) "employee", tl.client "CLI",
-		tl.proj "PRJ", tl.phase "PHASE",
+		tl.proj "PRJ", tl.phase "PHASE", tl.cliproj,
 		convert(char(10), tl.date, 101) "date", tl.hours, tl.comments
 from time_log tl, employee e, client c
 where tl.emp = e.emp
