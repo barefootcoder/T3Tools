@@ -1,15 +1,17 @@
-#! /usr/bin/perl
-
-use CGI;
-use Barefoot::string;
+#! /usr/bin/perl -w
 
 use strict;
 
-use constant DEBUG => 0;
+#use Barefoot::debug;						# comment out for production
+
+use CGI;
+
+use Barefoot::string;
+
 
 my $cgi = new CGI;
 my $cookie_array = [];
-my $debug_string = "";
+my $debug_string = "" if DEBUG;
 my $vars = {
 	start_date	=>	{
 						sort	=>	1,
@@ -61,15 +63,12 @@ my $vars = {
 						admin	=>	1,
 					},
 };
-my @admin_users = ('christy', 'buddy', 'marcw', 'wayne');
-
-my $debug_user;
-($debug_user) = $ENV{SCRIPT_FILENAME} =~ m@/([^/]*?)test/@ if DEBUG;
+my @admin_users = ('christy', 'buddy', 'wayne');
 
 my $title = 'TIMER Reports';
 my $scripturlpath = "/cgi-bin/timer/scripts";
-my $scriptpath = "/home/httpd$scripturlpath"; 
-my $basepath = DEBUG ? "/proj/$debug_user/t3/timerweb/reports"
+my $scriptpath = "/home/httpd" . $scripturlpath; 
+my $basepath = DEBUG ? "/proj/$ENV{REMOTE_USER}/t3/timerweb/reports"
 		: "/home/httpd/sybase/timer_reports";
 
 							debug("env has cookies $ENV{HTTP_COOKIE}");
@@ -87,7 +86,6 @@ if ($cgi->param('Clear Variables'))
 foreach $var (keys %$vars)
 {
 	$vars->{$var}->{value} = $cgi->cookie($var);
-						#debug("$var is $var->{$var} from cookie");
 }
 
 
@@ -226,10 +224,13 @@ sub is_admin_user
 
 sub debug
 {
-	my ($msg) = @_;
+	if (DEBUG)
+	{
+		my ($msg) = @_;
 
-	$msg =~ s/\n/<BR>/g;
-	$debug_string .= "<P>$msg</P>\n";
+		$msg =~ s/\n/<BR>/g;
+		$debug_string .= "<P>$msg</P>\n";
+	}
 }
 
 
@@ -288,14 +289,14 @@ sub processdir
 		$path = $scriptpath; 
 	}
 
-	for $file ( < $path/* > )
+	for $file ( glob("$path/*") )
 	{
 		my ($group, $alt_params, $variables, $title);
 		my ($required, $optional, $basefile);
 		my (%parameters, %tparam, %tgroup);
 
 		$basefile = $file;
-		$basefile =~ s?^$path/??;
+		$basefile =~ s@^$path/@@;
 
 		open(FILE, $file) or next;
 		while ( <FILE> )
