@@ -1,51 +1,79 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
 
 use strict;
 
+#use Barefoot::debug(1);						# comment out for production
+
 use CGI;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+use Barefoot::DataStore::display;
+
 $| = 1;
 
-use constant DEBUG => 0;
-
-my $debug_user;
-($debug_user) = $ENV{SCRIPT_FILENAME} =~ m@/([^/]*?)test/@ if DEBUG;
 
 my $cgi = new CGI;
-my $script = "/tmp/sqlcgi$$.ksh";
-my $basepath = DEBUG ? "/proj/$debug_user/t3/timerweb/reports/"
-		: "/home/httpd/sybase/timer_reports/";
+my $basepath = DEBUG ? "/proj/$ENV{REMOTE_USER}/t3/timerweb/reports"
+		: "/home/httpd/sybase/timer_reports";
 my $lib = "/usr/local/bin/kshlib";
-my $db = DEBUG ? "timertest" : "timer";
+my $dsname = DEBUG ? "t3test" : "t3";
 my $title = "";
-my $debug_string = "";
+my $debug_string = "" if DEBUG;
 
 set_environment();
 print $cgi->header();
 
+my $ds;
+try
+{
+	$ds = DataStore->open($dsname, $ENV{USER});
+}
+catch
+{
+	error("cannot open data store: $dsname\n$_");
+	exit;
+};
+
+$ds->show_queries() if DEBUG >= 2;
+
 my $file = $ARGV[0] ? $ARGV[0] : $cgi->param("sqlfile");
 if ($file)
 {
-	$file=$basepath . $file;
+	$file = "$basepath/$file";
 	debug("file is $file");
 
-	if (create_script($file, $script))
+	# get cookie values and make them variables for the data store
+	foreach my $name ($cgi->cookie())
 	{
-		print $cgi->start_html(-title=>$title);
-		if ($title)
-		{
-			print $cgi->center($cgi->h1($title)), "\n";
-		}
-
-		print "<PRE>\n";
-		print STDERR "going to run script\n";
-		system ("ksh", "-c", $script) == 0 or die "system \@args failed: $?";
-		print STDERR "ran script\n";
-		print "</PRE>\n";
-		print $debug_string if DEBUG;
-		print $cgi->end_html();
+		my $value = $cgi->cookie($name);
+		$ds->define_var($name, $value) if $value;
 	}
 
-	unlink $script unless DEBUG;
+	print $cgi->start_html(-title=>$title);
+	if ($title)
+	{
+		print $cgi->center($cgi->h1($title)), "\n";
+	}
+
+	print "<PRE>\n";
+	try
+	{
+		print DataStore::display($ds, $file);
+	}
+	catch
+	{
+		error($_);
+	};
+	print "</PRE>\n";
+	print $debug_string if DEBUG;
+	print $cgi->end_html();
 }
 else
 {
@@ -54,27 +82,21 @@ else
 
 sub set_environment
 {
-	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/sybutils:/opt/sybase:.";
+	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/dbutils:/opt/sybase";
 	$ENV{SYBASE} = "/opt/sybase";
-	$ENV{HOME} = "/home/www" if !$ENV{HOME};
+	$ENV{USER} = "www" unless $ENV{USER};
+	$ENV{HOME} = "/home/$ENV{USER}" unless $ENV{HOME};
 
-	# get cookie values and stick them in the environment
-	my @cookies = $cgi->cookie();
-	foreach my $name (@cookies)
-	{
-		my $value = $cgi->cookie($name);
-		$ENV{$name} = $value;
-	}
-
+=comment
 	# get CGI attributes and stick them in the environment too
-	my @attribs = $cgi->param();
-	foreach my $attr (@attribs)
+	foreach my $attr ($cgi->param())
 	{
-		my $value = $cgi->param($attr);
-		$ENV{$attr} = $value;
+		$ENV{$attr} = $cgi->param($attr);
 	}
+=cut
 }
 
+=comment
 sub create_script
 {
 	my ($file, $script) = @_;
@@ -111,7 +133,8 @@ END
 				debug("checking to see if $name = $val");
 				next LINE if $cgi->param($name) ne $val;
 			}
-			$reset_title = 1 and next LINE;
+			$reset_title = 1;
+			next LINE;
 		}
 
 		# check for "only if this var is set" lines
@@ -165,6 +188,7 @@ END
 	chmod 0777, $script;
 	return 1;
 }
+=cut
 
 sub error
 {
@@ -179,8 +203,11 @@ sub error
 
 sub debug
 {
-	my ($msg) = @_;
+	if (DEBUG)
+	{
+		my ($msg) = @_;
 
-	$msg =~ s/\n/<BR>/g;
-	$debug_string .= "<P>$msg</P>\n";
+		$msg =~ s/\n/<BR>/g;
+		$debug_string .= "<P>$msg</P>\n";
+	}
 }
