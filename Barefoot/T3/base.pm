@@ -43,6 +43,7 @@ use constant DBSERVER_DIRECTIVE => 'DBServer';
 use constant DATABASE_DIRECTIVE => 'Database';
 use constant TIMERDIR_DIRECTIVE => 'TimerDir';
 use constant REQUESTDIR_DIRECTIVE => 'RequestDir';
+use constant MODULEDIR_DIRECTIVE => 'ModulesDir';
 
 
 # files for use by client/server routines
@@ -54,7 +55,7 @@ use constant OUTPUT_FILE => 't3.output.';
 # workgroup names
 
 use constant DEFAULT_WORKGROUP => 'Barefoot';
-#use constant DEFAULT_WORKGROUP => 'TestCompany';
+use constant TEST_WORKGROUP => 'TestCompany';
 
 
 # one sub; just don't want to clutter anybody's namespace with this
@@ -99,7 +100,8 @@ use Barefoot::config_file;
 our $t3;									# DataStore for singleton
 
 # need this for getting proper values out of config file (below)
-our $workgroup = $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
+our $workgroup = DEBUG ? T3::TEST_WORKGROUP
+		: $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
 
 # let's read in the config file here and let people use t3_config
 # to get various and sundry parameters out of it
