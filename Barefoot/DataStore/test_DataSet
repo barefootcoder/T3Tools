@@ -138,7 +138,7 @@ sub test_alter
 	# first, the call
 	$data->alter_dataset({
 			add_columns		=>	[ qw<name_len category1 name1> ],
-			remove_columns	=>	[ qw<name category> ],
+			remove_columns	=>	[ qw<category name> ],
 			foreach_row		=>	sub
 			{
 				$_->{name1} = $_->{name};
