@@ -6,6 +6,7 @@ use strict;
 
 use CGI;
 
+use Barefoot::base;
 use Barefoot::string;
 
 
