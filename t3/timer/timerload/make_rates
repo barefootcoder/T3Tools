@@ -1,0 +1,14 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+# $Log$
+# $Id$
+# $Revision$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+srcdb=TIMERLOAD
+destdb=TIMER
