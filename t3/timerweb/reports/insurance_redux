@@ -1,2 +1,40 @@
 -- SORT GROUP: Error Checkers
 -- TITLE: Recalculate Insurance Contributions
+
+print "Paychecks dated between {start_date} to {end_date}"		{!check_date}
+print ""														{!check_date}
+print ""														{!check_date}
+go																{!check_date}
+
+print "Insurance paid on Payroll Check date: {check_date}"		{?check_date}
+print ""														{?check_date}
+print ""														{?check_date}
+go																{?check_date}
+
+$(build_pay_amount "
+	exists
+	(
+		select 1
+		from payroll pay
+		where log.payroll_id = pay.payroll_id
+		and pay.check_date between '{start_date}'				{!check_date}
+				and '{end_date}'								{!check_date}
+		and pay.check_date = '{check_date}'						{?check_date}
+	)
+")
+go
+
+calc_insurance_contribution @start_date = '{start_date}'		{!check_date}
+calc_insurance_contribution @check_date = '{check_date}'		{?check_date}
+go
+
+select ia.emp, $(employee_name e) "Employee", 
+		convert(char(10), pay.check_date, 101) "Check Date",
+		ia.applicable_hours "Applicable Hours",
+		ia.barefoot_contribution "Barefoot Contribution"
+from insurance_amount ia, employee e, payroll pay
+where ia.emp = e.emp
+and ia.payroll_id = pay.payroll_id
+order by ia.emp, pay.check_date
+compute sum(ia.barefoot_contribution) by ia.emp
+go
