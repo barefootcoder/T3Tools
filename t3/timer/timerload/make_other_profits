@@ -1,0 +1,59 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+# $Log$
+# Revision 1.1  1999/01/04 19:46:09  buddy
+# Initial revision
+#
+# $Id$
+# $Revision$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+srcdb=TIMERLOAD
+destdb=TIMER
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	$(overwrite_table other_profits "
+		client				char(3)			NOT NULL,
+		date_delivered		datetime		NOT NULL,
+		amount_billed		money			NOT NULL,
+		amount_paid			money			NOT NULL,
+		comments			varchar(255)	NULL,
+		invoice_num			char(7)			NULL,
+		invoice_paydate		datetime		NULL,
+		sales_comm_paydate	datetime		NULL,
+		admin_comm_paydate	datetime		NULL,
+		chguser				varchar(20)		NOT NULL,
+		chgdate				datetime		NOT NULL,
+	")
+
+	create unique index oprofits
+	on other_profits (client, date_delivered, amount_billed)
+	go
+
+	print "adding records for IDP"
+	go
+	insert other_profits
+	select "002", "10/1/1998", 9000, 7500,
+			"Stage I of Mortgage Program for IDP client",
+			"1100513", "10/21/1998", NULL, NULL, "buddy", getdate()
+	insert other_profits
+	select "002", "12/21/1998", 6000, 5000,
+			"Stage II of Mortgage Program for IDP client",
+			"1100539", "1/13/1999", NULL, NULL, "buddy", getdate()
+	insert other_profits
+	select "002", "2/2/1999", 3740, 3400,
+			"Carl's further work on Mortgage Maximizer",
+			"1100563", "2/16/1999", NULL, NULL, "buddy", getdate()
+	insert other_profits
+	select "002", "2/24/1998", 2398, 2180,
+			"Carl's further work on Mortgage Maximizer",
+			"1100573", NULL, NULL, NULL, "buddy", getdate()
+	go
+
+END
