@@ -12,6 +12,7 @@ use strict;
 
 use CGI;
 
+use Barefoot::base;
 use Barefoot::exception;
 use Barefoot::DataStore;
 use Barefoot::DataStore::display;
