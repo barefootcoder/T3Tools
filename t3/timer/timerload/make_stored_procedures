@@ -53,7 +53,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		client				internal_id		NOT NULL,
 		proj				internal_id		NOT NULL,
 		phase				internal_id		NULL,
-		date				datetime		NOT NULL,
+		pay_date			datetime		NOT NULL,
 		hours				numeric(5,2)	NOT NULL,
 		requires_payment	bit				NOT NULL,
 		requires_billing	bit				NOT NULL,
@@ -149,7 +149,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		client				internal_id		NOT NULL,
 		proj				internal_id		NOT NULL,
 		phase				internal_id		NULL,
-		date				datetime		NOT NULL,
+		log_date			datetime		NOT NULL,
 		hours				numeric(5,2)	NOT NULL,
 		start_date			datetime		NOT NULL,
 		end_date			datetime		NOT NULL,
@@ -217,7 +217,7 @@ run_query -S$server -U$user -D$destdb <<-END
 				check (pay_type = 'E'),
 		pay_to				internal_id		NOT NULL,
 		name				description		NULL,
-		date				datetime		NOT NULL,
+		comm_date			datetime		NOT NULL,
 		pay_to_employee		money			NOT NULL,
 		total_pay			money			NOT NULL,
 		employee_percent	numeric(6,5)	NULL,
@@ -274,7 +274,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.client = brat.client
 		and brat.proj is NULL
 		and brat.phase is NULL
-		and tlp.date between brat.start_date and brat.end_date
+		and tlp.log_date between brat.start_date and brat.end_date
 		-- STEP 2: project specific billing ratios
 		update time_log_profit
 		set billing_ratio = brat.ratio
@@ -283,7 +283,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.client = brat.client
 		and tlp.proj = brat.proj
 		and brat.phase is NULL
-		and tlp.date between brat.start_date and brat.end_date
+		and tlp.log_date between brat.start_date and brat.end_date
 		-- STEP 3: phase specific billing ratios
 		update time_log_profit
 		set billing_ratio = brat.ratio
@@ -292,10 +292,10 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.client = brat.client
 		and tlp.proj = brat.proj
 		and tlp.phase = brat.phase
-		and tlp.date between brat.start_date and brat.end_date
+		and tlp.log_date between brat.start_date and brat.end_date
 
 		-- now figure billing rate
-		-- STEP 1: "regular" billing rates
+		-- STEP 1: project billing rates
 		update time_log_profit
 		set bill_rate = br.rate, fixed_price_days = br.fixed_price_days
 		from time_log_profit tlp, bill_rate br
@@ -303,7 +303,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.class_billing = 0
 		and tlp.client = br.client
 		and tlp.proj = br.proj
-		and tlp.date between br.start_date and br.end_date
+		and tlp.log_date between br.start_date and br.end_date
 		-- STEP 2: resource billing rates (all phases)
 		update time_log_profit
 		set bill_rate = rr.rate
@@ -313,10 +313,10 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.emp = re.emp
 		and re.phase is NULL
 		and tlp.client = re.client
-		and tlp.date between re.start_date and re.end_date
+		and tlp.log_date between re.start_date and re.end_date
 		and re.client = rr.client
 		and re.resrc = rr.resrc
-		and tlp.date between rr.start_date and rr.end_date
+		and tlp.log_date between rr.start_date and rr.end_date
 		-- STEP 3: resource billing rates (phase specific)
 		update time_log_profit
 		set bill_rate = rr.rate
@@ -326,10 +326,10 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.emp = re.emp
 		and tlp.phase = re.phase
 		and tlp.client = re.client
-		and tlp.date between re.start_date and re.end_date
+		and tlp.log_date between re.start_date and re.end_date
 		and re.client = rr.client
 		and re.resrc = rr.resrc
-		and tlp.date between rr.start_date and rr.end_date
+		and tlp.log_date between rr.start_date and rr.end_date
 
 		-- insert individual time logs
 		insert profit_item
@@ -372,15 +372,15 @@ run_query -S$server -U$user -D$destdb <<-END
 		insert profit_item
 			(client, proj, start_date, end_date, log_source, units,
 					price_per_unit)
-		select distinct client, proj,
-				$(period_start "$(period_num date fixed_price_days)"		\
-						fixed_price_days),
-				$(period_end "$(period_num date fixed_price_days)"			\
-						fixed_price_days),
-				'time_log FIXED', 1, bill_rate
-		from time_log_profit
-		where fixed_price_days is not NULL
-		and bill_rate is not NULL
+		select distinct tlp.client, tlp.proj,
+				$(period_start "$(period_num tlp.log_date					\
+						tlp.fixed_price_days)" tlp.fixed_price_days),
+				$(period_end "$(period_num tlp.log_date						\
+						tlp.fixed_price_days)" tlp.fixed_price_days),
+				'time_log FIXED', 1, tlp.bill_rate
+		from time_log_profit tlp
+		where tlp.fixed_price_days is not NULL
+		and tlp.bill_rate is not NULL
 
 		-- whew! now that we have all the profit items set, we can calculate
 		-- the total price (which is after all the point of all this)
@@ -497,7 +497,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		where pi.log_source = tlp.log_source
 		and pi.log_id = tlp.log_id
 		and tlp.emp = rc.emp
-		and tlp.date between rc.start_date and rc.end_date
+		and tlp.log_date between rc.start_date and rc.end_date
 
 		-- next, everything else (except the materials logs)
 		insert referral_comm_amount
@@ -509,9 +509,9 @@ run_query -S$server -U$user -D$destdb <<-END
 				'class_log', 'class_log SUM')
 		and pi.client = tlp.client
 		and pi.proj = tlp.proj
-		and tlp.date between pi.start_date and pi.end_date
+		and tlp.log_date between pi.start_date and pi.end_date
 		and tlp.emp = rc.emp
-		and tlp.date between rc.start_date and rc.end_date
+		and tlp.log_date between rc.start_date and rc.end_date
 
 		-- get the name of the commission payee if an employee
 		update referral_comm_amount
@@ -553,8 +553,8 @@ run_query -S$server -U$user -D$destdb <<-END
 
 	-- this little procedure figures out pay_rates
 	-- we sometimes need to do this independent of the other procedures,
-	-- so this one doesn't expect anything but $build_pay_amount or
-	-- $build_profit_item (which itself calls $build_pay_amount) to have
+	-- so this one doesn't expect anything but $ build_pay_amount or
+	-- $ build_profit_item (which itself calls $ build_pay_amount) to have
 	-- been run ... it is called by calc_total_cost (below)
 	print "Creating proc calc_pay_amount"
 	go
@@ -572,7 +572,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pr.client is NULL
 		and pr.proj is NULL
 		and pr.phase is NULL
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- get general employee/phase rates
 		update pay_amount
@@ -582,7 +582,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pr.client is NULL
 		and pr.proj is NULL
 		and pa.phase = pr.phase
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- get general employee/client rates
 		update pay_amount
@@ -592,7 +592,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pa.client = pr.client
 		and pr.proj is NULL
 		and pr.phase is NULL
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- get general employee/client/phase rates
 		update pay_amount
@@ -602,7 +602,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pa.client = pr.client
 		and pr.proj is NULL
 		and pa.phase = pr.phase
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- get specific employee/client/project rates
 		update pay_amount
@@ -612,7 +612,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pa.client = pr.client
 		and pa.proj = pr.proj
 		and pr.phase is NULL
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- get specific employee/client/project/phase rates
 		update pay_amount
@@ -622,7 +622,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and pa.client = pr.client
 		and pa.proj = pr.proj
 		and pa.phase = pr.phase
-		and pa.date between pr.start_date and pr.end_date
+		and pa.pay_date between pr.start_date and pr.end_date
 
 		-- now figure the actual total pay
 		update pay_amount
@@ -688,7 +688,7 @@ run_query -S$server -U$user -D$destdb <<-END
 				'class_log', 'class_log SUM')
 		and pi.client = tlp.client
 		and pi.proj = tlp.proj
-		and tlp.date between pi.start_date and pi.end_date
+		and tlp.log_date between pi.start_date and pi.end_date
 		group by pi.profit_id
 
 		-- and update the total_cost
@@ -721,8 +721,9 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- get the "one on one" time logs
 		insert employee_comm_amount
-			(profit_id, pay_to, date, pay_to_employee, total_pay)
-		select pi.profit_id, tlp.emp, tlp.date, tlp.total_pay, pi.total_cost
+			(profit_id, pay_to, comm_date, pay_to_employee, total_pay)
+		select pi.profit_id, tlp.emp, tlp.log_date, tlp.total_pay,
+				pi.total_cost
 		from profit_item pi, time_log_profit tlp
 		where pi.log_source = tlp.log_source
 		and pi.log_id = tlp.log_id
@@ -731,18 +732,18 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- now the other time logs
 		insert employee_comm_amount
-			(profit_id, pay_to, date, pay_to_employee, total_pay)
-		select pi.profit_id, tlp.emp, tlp.date,
+			(profit_id, pay_to, comm_date, pay_to_employee, total_pay)
+		select pi.profit_id, tlp.emp, tlp.log_date,
 				sum(tlp.total_pay), pi.total_cost
 		from profit_item pi, time_log_profit tlp
 		where pi.log_source in ('time_log FIXED', 'time_log SUM',
 				'class_log', 'class_log SUM')
 		and pi.client = tlp.client
 		and pi.proj = tlp.proj
-		and tlp.date between pi.start_date and pi.end_date
+		and tlp.log_date between pi.start_date and pi.end_date
 		and tlp.requires_payment = 1
 		and tlp.pay_rate_type != 'S'
-		group by pi.profit_id, tlp.emp, tlp.date, pi.total_cost
+		group by pi.profit_id, tlp.emp, tlp.log_date, pi.total_cost
 
 		-- get the name of the commission payee (it's always an employee)
 		update employee_comm_amount
@@ -770,7 +771,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		-- old formula (previous to magic date of 9/7/98) is easy
 		update employee_comm_amount
 		set amount = diff * .04
-		where date < '9/7/98'
+		where comm_date < '9/7/98'
 		and diff > 0
 		-- (this formula is somewhat bitchy)
 		declare @rate_factor real, @breakeven_factor real, @flare_factor real
@@ -784,7 +785,7 @@ run_query -S$server -U$user -D$destdb <<-END
 							(diff - gross / @breakeven_factor) / @flare_factor
 				) / 100.0
 			)
-		where date >= '9/7/98'
+		where comm_date >= '9/7/98'
 		and diff > 0
 
 		-- round to avoid silly summing mismatches
@@ -1164,7 +1165,6 @@ run_query -S$server -U$user -D$destdb <<-END
 		multiplier            numeric(5,2) 	NULL,
 		total_hours           numeric(5,2) 	NULL,
 		applicable_hours      numeric(8,2) 	NULL,
-		insurance_adjustment  money        	NULL,
 		barefoot_contribution money        	NULL
 	")
 
@@ -1182,10 +1182,6 @@ run_query -S$server -U$user -D$destdb <<-END
  		@check_date datetime = null
 	as
 
-		 declare @sal3_adjustment money
-
-		 select @sal3_adjustment = 25
-
 		 delete insurance_amount
 
 	  	 if @check_date is not null
@@ -1197,26 +1193,28 @@ run_query -S$server -U$user -D$destdb <<-END
 		 -- Retrieve current insurance terms for those covered.
 		 insert insurance_amount 
 		      ( emp, fixed_amount, nonbill_hrs_limit,
-			    multiplier, total_hours, insurance_adjustment )
+			    multiplier, total_hours )
 		 select pa.emp,
 			 ir.fixed_amount,
 			 ir.nonbill_hrs_limit,
 			 ir.multiplier,
-			 sum ( pa.hours ) total_hours,
-			 0
+			 sum ( pa.hours ) total_hours
 		 from pay_amount pa, insurance_rate ir
 		 where ir.emp = pa.emp
-		 and  @start_date between ir.start_date and ir.end_date
+		 and pa.pay_date between ir.start_date and ir.end_date
 		 group by pa.emp,
 			 ir.fixed_amount,
 			 ir.nonbill_hrs_limit,
 			 ir.multiplier
 
 		 -- Use this table to determine #insurance_adjustment.applicable_hours
-		 select emp, requires_billing, requires_payment, sum (hours) "hours"
+		 select pa.emp, pa.requires_billing, pa.requires_payment,
+		 		sum(pa.hours) "hours"
 		 into #billable_nonbillable_hrs
-		 from  pay_amount
-		 group by emp, requires_billing, requires_payment
+		 from pay_amount pa, insurance_rate ir
+		 where ir.emp = pa.emp
+		 and pa.pay_date between ir.start_date and ir.end_date
+		 group by pa.emp, pa.requires_billing, pa.requires_payment
 
 		 -- This update is to adjust insurance_amount.applicable_hours
 		 --  for non-billable, but payable hours.
@@ -1231,7 +1229,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		 and bnh.hours <= ia.nonbill_hrs_limit
 
 		 -- This update is to adjust #insurance_adjustment.applicable_hours
-		 --  for non-billable, but payable hours.
+		 -- for non-billable, but payable hours.
 		 -- (where total non-billable/payable hours > nonbill_hrs_limit)
 		 update insurance_amount
 		 set applicable_hours = ia.nonbill_hrs_limit
@@ -1261,11 +1259,6 @@ run_query -S$server -U$user -D$destdb <<-END
 		 update insurance_amount
 		 set barefoot_contribution =  convert ( int, applicable_hours/10  ) 
 		                              * multiplier
-		 where fixed_amount is null
-
-		 -- Calculate what needs to be displayed as the SAL3 Adjustment.
-		 update insurance_amount
-		 set insurance_adjustment = barefoot_contribution - @sal3_adjustment
 		 where fixed_amount is null
 	go
 
