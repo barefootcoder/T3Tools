@@ -1,14 +1,25 @@
 -- SORT GROUP: Database Lists
 -- TITLE: History of Pay Rates (by user)
 
-select $(employee_name e) "employee", isnull(c.name, "ALL CLIENTS") "client",
-		isnull(pr.proj, "ALL") "proj", pr.rate_type "T",
-		convert(char(8), pr.rate, 1) "rate",
-		convert(char(10), pr.start_date, 101) "start date",
-		convert(char(10), pr.end_date, 101) "end date"
-from pay_rate pr, employee e, client c
+select $(employee_name e) "empname", pr.client, pr.proj, pr.rate_type,
+		pr.rate, pr.start_date, pr.end_date, 'Inactive' "active"
+into #pay_rate_temp
+from pay_rate pr, employee e
 where pr.emp = e.emp
 and e.login = '[user]'
-and pr.client *= c.client
-order by pr.client, pr.proj, pr.start_date
+go
+
+update #pay_rate_temp
+set active = 'Active'
+where end_date = $END_OF_TIME
+go
+
+select prt.empname "employee", isnull(c.name, "ALL CLIENTS") "client",
+		isnull(prt.proj, "ALL") "proj", prt.rate_type "T",
+		convert(char(8), prt.rate, 1) "rate",
+		convert(char(10), prt.start_date, 101) "start date",
+		convert(char(10), prt.end_date, 101) "end date", prt.active
+from #pay_rate_temp prt, client c
+where prt.client *= c.client
+order by prt.client, prt.proj, prt.end_date, prt.start_date
 go
