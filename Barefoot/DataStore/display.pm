@@ -215,6 +215,7 @@ use strict;
 
 # don't try to turn on debugging here; do it in DataStore.pm instead
 
+use Barefoot::base;
 use Barefoot::range;
 use Barefoot::string;
 use Barefoot::format;
@@ -258,14 +259,15 @@ sub display
 	my ($display, $query, $command, $command_arg) = ("", "", "", "");
 	my $format = {};
 	my $exact = false;
-	my $in_format = false;
 	my $if_status = -1;
 
 	CORE::open(IN, $filename) or croak("display: cannot open file $filename");
 	while ( <IN> )
 	{
-		s/ \# .* $ //x unless $in_format;	# remove comments unless in format
-		next if /^\s*$/ and not $exact;		# skip blank lines unless exact on
+		# remove comments unless in format
+		s/ \# .* $ //x unless exists $format->{output};
+		# skip blank lines unless exact mode is on
+		next if /^\s*$/ and not $exact;
 
 		if ( / ^ \s* ; \s* $ /x )			# end of query or command arg
 		{
@@ -286,12 +288,38 @@ sub display
 				$query = "";				# reset the query
 			}
 			$exact = false;					# reset exact mode
-			$in_format = false;				# reset format def mode
 			$format = {};					# reset format itself
 			next;
 		}
 
-		if ($in_format)
+		print STDERR "about to check $_ for conditional\n" if DEBUG >= 5;
+		if ( / ^ \s* { \s* if \s+ ( ! | (?:not \s) )? \s* (\w+) \s* } \s* $ /x )
+		{
+			# can't start an if inside another if
+			_fatal("cannot nest conditionals") unless $if_status == -1;
+
+			my $negative = defined $1;
+			my $varname = $2;
+			print STDERR "doing conditional on $varname\n" if DEBUG >= 2;
+
+			$if_status = exists $ds->{vars}->{$varname};
+			$if_status = not $if_status if $negative;
+			next;
+		}
+
+		if ( / ^ \s* { \s* endif \s* } \s* $ /x )
+		{
+			# can't allow endif's without an if
+			_fatal("endif outside of conditional") if $if_status == -1;
+
+			$if_status = -1;
+			next;
+		}
+
+		# if_status must either be true (1) or not applicable (-1)
+		next unless $if_status;
+
+		if (exists $format->{output})
 		{
 			_fatal("illegal format line") unless / ^ \s* ([HBF]) ([=-]) > /x;
 
@@ -300,6 +328,12 @@ sub display
 
 			# remove leader which tells us where and what kind of format it is
 			s/$&//;
+
+			# check for "shorcuts"
+			# for instance @<x20 turns into @<<<<<<<<<<<<<<<<<<<
+			# (note that 20 is the total length of the field, and
+			# *not* the number of < characters)
+			s/\@(.)x(\d+)/ '@' . $1 x ($2 - 1) /eg;
 
 			$format->{ "${place}_${type}" } .= $_;
 			next;
@@ -316,11 +350,7 @@ sub display
 				_fatal("can't create a format with no query pending")
 						if $query =~ /^\s*$/;
 
-				# also, can't start a format in the middle of a conditional
-				_fatal("can't create a format inside a conditional")
-						unless $if_status == -1;
-
-				$in_format = true;
+				$format->{output} = true;
 			}
 			elsif ($1 eq 'suppress_empty')
 			{
@@ -335,7 +365,7 @@ sub display
 
 		# only check for special commands if $query is blank
 		print STDERR "line is $_ and query is $query\n" if DEBUG >= 4;
-		if ( / ^ \s* & (\w+) (?: \s+ (.*?) )? $ /x and not $query )
+		if ( / ^ \s* & (\w+) (?: \s+ (.*?) )? \s* $ /x and not $query )
 		{
 			# again, can't start a command inside a conditional
 			_fatal("can't call a command inside a conditional")
@@ -403,32 +433,6 @@ sub display
 			next;
 		}
 
-		if ( / ^ \s* { \s* if \s+ ( ! | (?:not \s) )? \s* (\w+) \s* } \s* $ /x )
-		{
-			# can't start an if inside another if
-			_fatal("cannot nest conditionals") unless $if_status == -1;
-
-			my $negative = defined $1;
-			my $varname = $2;
-			print STDERR "doing conditional on $varname\n" if DEBUG >= 2;
-
-			$if_status = exists $ds->{vars}->{$varname};
-			$if_status = not $if_status if $negative;
-			next;
-		}
-
-		if ( / ^ \s* { \s* endif \s* } \s* $ /x )
-		{
-			# can't allow endif's without an if
-			_fatal("endif outside of conditional") if $if_status == -1;
-
-			$if_status = -1;
-			next;
-		}
-
-		# if_status must either be true (1) or not applicable (-1)
-		next unless $if_status;
-
 		# if we've survived this far, we need to tack the current line onto
 		# something.  if there's a current command, tack it onto the command
 		# argument.  otherwise, tack it onto the query
@@ -471,8 +475,19 @@ sub _process
 
 	if (not $res->{sth}->{NUM_OF_FIELDS})	# it's not a select query
 	{
-		my $rows = $res->rows_affected();
-		return $rows == -1 ? "" : "($rows rows affected)\n";
+		# rows_affected will return "0E0" (zero-but-true) if there was
+		# no error, but zero rows; we'll add 0 to that to make it just "0"
+		my $rows = $res->rows_affected() + 0;
+
+		return "" if exists $format->{suppress_empty} and $rows == 0;
+		if (exists $format->{output})
+		{
+			return _build_footer($rows, undef, undef, $format);
+		}
+		else
+		{
+			return $rows == -1 ? "" : "($rows rows affected)\n";
+		}
 	}
 
 	# loop through columns and get names
@@ -484,7 +499,7 @@ sub _process
 		my $name = $res->colname($x);
 		push @colnames, $name;
 		# we only need to collect widths if there's no format
-		push @widths, [ length($name) ] unless %$format;
+		push @widths, [ length($name) ] unless exists $format->{output};
 	}
 
 	# loop through rows and get data
@@ -494,7 +509,7 @@ sub _process
 	{
 		my @cols = $res->all_cols();
 		# again, only collect widths if there's no format
-		unless (%$format)
+		unless (exists $format->{output})
 		{
 			for (my $x = 0; $x < $numcols; ++$x)
 			{
@@ -533,11 +548,44 @@ sub _build_header
 	my ($colnames, $colsizes, $format) = @_;
 
 	my $header = "";
-	if (%$format)
+	if (exists $format->{output})
 	{
 		if (exists $format->{header_format})
 		{
 			$header = swrite($format->{header_format}, @$colnames);
+		}
+		elsif (exists $format->{header_literal})
+		{
+			$header = $format->{header_literal};
+
+			if ( $header =~ /%default\n/ )
+			{
+				_fatal("cannot specify default header without a -> style "
+						. "body format") unless exists $format->{body_format};
+
+				my $top_line = $format->{body_format};
+				my $bottom_line = $format->{body_format};
+
+				my $start_pos = 0;
+				foreach my $name (@$colnames)
+				{
+					last unless substr($top_line, $start_pos)
+							=~ / \@ ( <+ | >+ | \|+ | [#.]+ ) /x;
+					$start_pos = $start_pos + $-[0];
+					my $len = length($&);
+					my $namelen = length($name);
+
+					substr($top_line, $start_pos, $len) =
+							$namelen > $len
+								? substr($name, 0, $len)
+								: $name . ' ' x ($len - $namelen);
+					substr($bottom_line, $start_pos, $len) = '-' x $len;
+
+					$start_pos += $len;
+				}
+
+				$header =~ s/%default\n/$top_line$bottom_line/;
+			}
 		}
 	}
 	else
@@ -566,11 +614,35 @@ sub _build_body
 	my $body = "";
 	foreach my $row (@$colvalues)
 	{
-		if (%$format)
+		if (exists $format->{output})
 		{
 			if (exists $format->{body_format})
 			{
 				$body .= swrite($format->{body_format}, @$row);
+			}
+			elsif (exists $format->{body_literal})
+			{
+				my $line = $format->{body_literal};
+
+				# there's a few acrobatics we have to go through to make
+				# sure this doesn't blow up if the field contains a string
+				# which looks like a field specifier:
+				# basically, pos() contains the position in the string
+				# where the next match will pick up.  however, modifying
+				# the string resets pos().  therefore, we set it ourselves,
+				# to the point at the end of our substitute string
+				while ( $line =~ /%(\d+)/g )
+				{
+					# have to subtract one because %1 is $row->[0]
+					my $col_value = $row->[$1 - 1];
+
+					my $start_back_pos = pos($line)
+							+ (length($col_value) - length($&));
+					$line =~ s/$&/$col_value/;
+					pos($line) = $start_back_pos;
+				}
+
+				$body .= $line;
 			}
 		}
 		else
@@ -592,11 +664,14 @@ sub _build_footer
 {
 	my ($rowcount, $colnames, $colsizes, $format) = @_;
 
-	if (%$format)
+	if (exists $format->{output})
 	{
-		my $footer = $format->{footer_literal};
-		$footer =~ s/\%R/$rowcount/g;
-		return $footer;
+		if (exists $format->{footer_literal})
+		{
+			my $footer = $format->{footer_literal};
+			$footer =~ s/\%R/$rowcount/g;
+			return $footer;
+		}
 	}
 	else
 	{
