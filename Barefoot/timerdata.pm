@@ -63,6 +63,7 @@ sub set_user
 # generic query returner
 sub query_results
 {
+	local $/ = "\cX\n";
 	my ($sql_query) = @_;
 	$sql_query =~ s/"/'/g;		# change " to ' so shell can process correctly
 	my $rows = [];
