@@ -8,7 +8,7 @@
 
 use strict;
 
-#use Barefoot::debug;
+use Barefoot::debug;
 
 use CGI;
 use Getopt::Std;
@@ -19,11 +19,10 @@ use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw<get_yn input>;
-use Barefoot::T3Timer qw<get_timer_info do_timer_command calc_date calc_time>,
-		qw<get_emp_id default_client valid_employees valid_clients>,
-		qw<valid_projects proj_requirements>,
-		qw<phase_list this_week_totals insert_time_log >,
-		qw<client_rounding valid_trackings>;
+use Barefoot::T3Timer qw<get_timer_info do_timer_command calc_date calc_time
+		this_week_totals insert_time_log>;
+use Barefoot::T3::valid qw<get_parameter>;
+use Barefoot::T3::db_get qw<client_rounding proj_requirements>;
 
 
 #################################
@@ -65,7 +64,7 @@ use constant Log_Comments =>
 # OPTIONS AND ENVIRONMENT VARS
 #################################
 
-my $timerinfo = {};
+our $timerinfo = {};
 my $command_strings = {
 	s	=>	"START",
 	e	=>	"LIST",
@@ -78,7 +77,7 @@ my $command_strings = {
 	t	=>	"TOTAL",
 	'@'	=>	"PARSE",
 };
-my ($cgi, $command, $workgroup);
+our ($cgi, $command, $workgroup);
 
 if (-t STDOUT or @ARGV)
 {
@@ -160,14 +159,13 @@ if ($command eq 'START')					# start a timer
 		if ($timerinfo->{connected})
 		{
 			# print STDERR "given timer doesn't exist, getting new values\n";
-			$timerinfo->{client} = get_client($command, $timerinfo);
-			$timerinfo->{project} = get_project($command, $timerinfo,
-					$timerinfo->{client});
+			$timerinfo->{client} = get_timer_parameter("client");
+			$timerinfo->{project} = get_timer_parameter("project");
 
 			my ($phase_needed) = proj_requirements($timerinfo->{client},
 					$timerinfo->{project}, calc_date(time));
 
-			$timerinfo->{phase} = get_phase($command, $timerinfo)
+			$timerinfo->{phase} = get_timer_parameter("phase")
 					if $phase_needed;
 		}
 		else
@@ -223,15 +221,16 @@ if ($command eq 'RENAME')					# new name for a timer
 
 	if ($timerinfo->{connected})
 	{
-		$timerinfo->{client} = get_client($command, $timerinfo);
-		$timerinfo->{project} = get_project($command, $timerinfo,
-				$timerinfo->{client});
+		$timerinfo->{client} = get_timer_parameter("client");
+		$timerinfo->{project} = get_timer_parameter("project");
 
 		my ($phase_needed, $tracking_needed, $comments_needed) = 
-				proj_requirements($timerinfo->{client}, $timerinfo->{project}, 
-				calc_date(time));
+				proj_requirements(
+					$timerinfo->{client}, $timerinfo->{project},
+					calc_date(time)
+				);
 
-		$timerinfo->{phase} = get_phase($command, $timerinfo) if $phase_needed;
+		$timerinfo->{phase} = get_timer_parameter("phase") if $phase_needed;
 	}
 }
 
@@ -466,130 +465,34 @@ sub get_giventimer
 }
 
 
-sub get_client
+sub get_timer_parameter
 {
-	my ($command, $timerinfo) = @_;
-	$timerinfo->{employee} = get_emp_id($timerinfo->{user})
-		unless exists($timerinfo->{employee});
+	my ($parmname) = @_;
 
-	return get_parameter("client", $timerinfo, $command, 
-			valid_clients($timerinfo->{employee}),
-			default_client($timerinfo->{employee})
-	);
-}
-
-
-sub get_project
-{
-	my ($command, $timerinfo, $client) = @_;
-	$timerinfo->{employee} = get_emp_id($timerinfo->{user})
-		unless exists($timerinfo->{employee});
-
-	return get_parameter("project", $timerinfo, $command,
-			valid_projects($timerinfo->{employee}, $client), ""
-	);
-}
-
-
-sub get_phase
-{
-	my ($command, $timerinfo) = @_;
-	return get_parameter("phase", $timerinfo, $command, phase_list(), "");
-}
-
-
-sub get_trackings
-{
-	my ($command, $timerinfo) = @_;
-	return get_parameter("client tracking code", $timerinfo, $command,
-			valid_trackings($timerinfo->{client}), ""
-	);
-}
-
-
-sub get_parameter
-{
-	my ($parmname, $timerinfo, $command, $valid_parms, $db_default) = @_;
-	# a little shortcut here
-	my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	# timerinfo can double as parminfo inside get_parameter
+	# objinfo would be the current timer, which we get here
+	my $objinfo = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
 	# this is somewhat complicated.  we need to figure out what the
 	# proper thing (client, project, or phase) should be, and then use
 	# it as the default.  now, we have three possible places to get this
-	# info from: the default for this user (from the database; this really
-	# only applies to client right now), the thing already set (for a
-	# pre-existing timer), or the thing specified on the command line
-	# (if specified at all).  for most cases, the priority is: command line,
-	# pre-existing, default.  for the start command, however, a pre-existing
-	# parameter can't be changed if it exists, so we use it and exit.
-	# also, if -f (force) was specified, we can quit right there.
+	# info from: the default for this user (from the database; get_parameter
+	# knows how to retrieve that), the thing already set (for a pre-existing
+	# timer; this comes from objinfo), or the thing specified on the command
+	# line (if specified at all; this comes from parminfo, a.k.a. timerinfo).
+	# for most cases, the priority is: command line, pre-existing, default.
+	# for the start command, however, a pre-existing parameter can't be
+	# changed if it exists, so we use it and exit.	also, if -f (force) was
+	# specified (that flag is in parminfo), we can quit right there.
 
 	# got it? here we go ...
 
-	my $defvalue;
-	$defvalue = $db_default;			# default from database - low priority
+	my $opts = {};
+	# this will keep people from being able to change parameters if the
+	# command is "start"
+	$opts->{RESTRICT_CHANGES} = true if $command eq 'START';
 
-	if (exists $giventimer->{$parmname})# pre-existing parm - higher priority
-	{
-		$defvalue = $giventimer->{$parmname};
-	}
-
-	if ($timerinfo->{$parmname})		# -C/-P/-H option - highest priority
-	{
-		if ($command eq 'START' and exists $giventimer->{$parmname})
-		{
-			# Start command exception: use pre-existing if available
-			print "Can't change pre-existing $parmname with START: ",
-					"value ignored. \n";
-			return $defvalue;
-		}
-		else
-		{
-			$defvalue = $timerinfo->{$parmname};
-		}
-	}
-
-	return $defvalue if $timerinfo->{force};
-	
-	my $parm;
-	# make a block so redo will work
-	PARM:
-	{
-		$parm = input("Which $parmname is this for? (? for list)", $defvalue);
-		$parm = string::upper($parm);				# codes are all UC
-		$parm = string::trim($parm);				# no spaces
-
-		if ($parm eq "?")
-		{
-			foreach my $id (keys %$valid_parms)
-			{
-				print "  {", $id, " - ", $valid_parms->{$id}, "}\n";
-			}
-			redo PARM;
-		}
-
-		# Checks value to be sure it's valid
-		foreach my $id (keys %$valid_parms)
-		{
-			if ($parm eq string::trim($id))
-			{
-				if ($timerinfo->{noconfirm})
-				{
-					print "\u$parmname is $parm: $valid_parms->{$id}.\n";
-				}
-				else 		# ask for confirmation
-				{
-					redo PARM unless get_yn("\u$parmname is $parm: "
-							. "$valid_parms->{$id}; is this right?");
-				}
-				$parm = $id;
-				last PARM;
-			}
-		}
-		print "Invalid \u$parmname! \n";
-		redo PARM;
-	}
-	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
+	return get_parameter($parmname, $timerinfo, $objinfo, $opts);
 }
 
 
@@ -694,8 +597,7 @@ sub gather_log_info
 	# based on this, there is not a whole lot you can do differently in
 	# the order chosen below, so DON'T MUCK WITH IT!
 
-	($emp_id, $emp_fullname) = get_parameter("employee", $timerinfo,
-			$timerinfo->{command}, valid_employees(), get_emp_id($timerinfo->{user}));
+	($emp_id, $emp_fullname) = get_timer_parameter("employee");
 	$timerinfo->{employee} = $emp_id;	
 	
 	# $timerinfo->{user} may not match emp_id at this point; that's ok.
@@ -709,7 +611,7 @@ sub gather_log_info
 
 
 	# Get client info
-	($client, $client_name) = get_client($command, $timerinfo);
+	($client, $client_name) = get_timer_parameter("client");
 	$timerinfo->{client} = $client;
 
 	HOURS: {
@@ -729,53 +631,20 @@ sub gather_log_info
 	$timerinfo->{hours} = $hours;
 
 	# Get project info
-	($project, $project_name) = get_project($command, $timerinfo, $client);
+	($project, $project_name) = get_timer_parameter("project");
 	$timerinfo->{project} = $project;
 
 	my ($phase_needed, $tracking_needed, $comments_needed)
 			= proj_requirements($client, $project, $date);
 
 	# Get phase information
-	($phase, $phase_name) = $phase_needed ? get_phase($command, $timerinfo) : ("","");
+	($phase, $phase_name) = $phase_needed
+			? get_timer_parameter("phase") : ("","");
 	$timerinfo->{phase} = $phase;
 
 	($tracking, $tracking_name) = $tracking_needed ?
-			get_trackings($command, $timerinfo) : ("","");
+			get_timer_parameter("client tracking code") : ("","");
 	$timerinfo->{tracking} = $tracking;
-
-=comment
-	($tracking, $tracking_name) = ("","");
-	if ($tracking_needed)
-	{
-		my $valid_trackings = valid_trackings($client);
-		TRACKING: {
-			$tracking = input("Client Tracking Code or ? for list:");
-			if ($tracking eq "?")
-			{
-				foreach my $trk (keys %$valid_trackings)
-				{
-					print "  {", $trk, " - ", $valid_trackings->{$trk}, "}\n";
-				}
-				redo TRACKING;
-			}
-			# uppercase it for 'em
-			$tracking = string::upper($tracking);
-			# check for valid project
-			foreach my $trk (keys %$valid_trackings)
-			{
-				if ($tracking eq $trk)
-				{
-					$tracking_name = $valid_trackings->{$trk};
-					print "  {Client tracking code is ", $valid_trackings->{$trk}, "}\n";
-					last TRACKING;
-				}
-			}
-			print "  {Invalid client tracking code!}\n";
-			redo TRACKING;
-		}
-	}
-	$timerinfo->{tracking} = $tracking;
-=cut
 
 	COMMENTS: {
 		$comments = "";
