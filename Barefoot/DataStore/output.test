@@ -81,6 +81,9 @@ TEST
 The END_OF_TIME variable is set properly
 (1 rows returned)
 
+This test worked
+			This test worked too
+
   hours      pay_rate  total_pay
  -------  -----------  ===========
     0.50       20.00         10.00

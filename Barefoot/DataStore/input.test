@@ -48,14 +48,28 @@
 		Test printing DataStore variables: {~timer}.time_log {END_OF_TIME}
 	;
 
+	# test discard of false if
 	{if bogusvar}
 		this stuff is inside a bogus if
 		it should be discarded
 	{endif}
 	;
 
+	# test query inside true if
 	{if END_OF_TIME}
 		select 'The END_OF_TIME variable is set properly' "TEST"
+	{endif}
+	;
+
+	# test command inside true if
+	{if END_OF_TIME}
+		&print This test worked
+	{endif}
+
+	{if END_OF_TIME}
+		&print
+			This test worked too
+
 	{endif}
 	;
 
