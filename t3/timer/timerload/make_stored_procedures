@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.11  2000/11/16 23:11:27  tryan
+# Altered some formatting in calc_salary_pay
+#
 # Revision 1.10  2000/11/14 17:03:39  tryan
 # Altered proc calc_salary_pay to use latest salary_bank record
 # occurring before start_date variable, rather than max (end_date).
@@ -1202,5 +1205,113 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 	grant exec on  calc_salary_pay to public
 	go
+
+
+	print "Creating table insurance_amount"
+	go
+	$(overwrite_table insurance_amount "
+		emp                   internal_id  	NOT NULL,
+		fixed_amount          money        	NULL,
+		nonbill_hrs_limit     int          	NULL,
+		multiplier            numeric(5,2) 	NULL,
+		total_hours           numeric(5,2) 	NULL,
+		applicable_hours      numeric(8,2) 	NULL,
+		insurance_adjustment  money        	NULL,
+		barefoot_contribution money        	NULL
+	")
+
+ 	grant all on insurance_amount to public
+	go
+
+
+	print "Creating proc calc_insurance_contribution"
+	go
+
+	$(drop_procedure calc_insurance_contribution)
+
+	create procedure calc_insurance_contribution
+ 		@start_date datetime
+	as
+
+		 declare @sal3_adjustment money
+
+		 select @sal3_adjustment = 25
+
+		 delete insurance_amount
+
+		 -- Retrieve current insurance terms for those covered.
+		 insert insurance_amount ( emp, fixed_amount, nonbill_hrs_limit,
+								   multiplier, total_hours )
+		 select pa.emp,
+			 ir.fixed_amount,
+			 ir.nonbill_hrs_limit,
+			 ir.multiplier,
+			 sum ( pa.hours ) total_hours
+		 from pay_amount pa, insurance_rate ir
+		 where ir.emp = pa.emp
+		 and  @start_date between ir.start_date and ir.end_date
+		 group by pa.emp,
+			 ir.fixed_amount,
+			 ir.nonbill_hrs_limit,
+			 ir.multiplier
+
+		 -- Use this table to determine #insurance_adjustment.applicable_hours
+		 select emp, requires_billing, requires_payment, sum (hours) "hours"
+		 into #billable_nonbillable_hrs
+		 from  pay_amount
+		 group by emp, requires_billing, requires_payment
+
+		 -- This update is to adjust insurance_amount.applicable_hours
+		 --  for non-billable, but payable hours.
+		 -- (where total non-billable/payable hours <= nonbill_rs_limit)
+		 update insurance_amount
+		 set applicable_hours = bnh.hours
+		 from insurance_amount ia, #billable_nonbillable_hrs bnh
+		 where ia.emp = bnh.emp
+		 and bnh.requires_payment = 1
+		 and bnh.requires_billing = 0
+		 and ia.fixed_amount is null
+		 and bnh.hours <= ia.nonbill_hrs_limit
+
+		 -- This update is to adjust #insurance_adjustment.applicable_hours
+		 --  for non-billable, but payable hours.
+		 -- (where total non-billable/payable hours > nonbill_hrs_limit)
+		 update insurance_amount
+		 set applicable_hours = ia.nonbill_hrs_limit
+		 from insurance_amount ia, #billable_nonbillable_hrs bnh
+		 where ia.emp = bnh.emp
+		 and bnh.requires_payment = 1
+		 and bnh.requires_billing = 0
+		 and ia.fixed_amount is null
+		 and bnh.hours > ia.nonbill_hrs_limit
+
+		 -- This update is to adjust #insurance_adjustment.applicable_hours
+		 --  for billable/payable hours.
+		 update insurance_amount
+		 set applicable_hours = isnull ( applicable_hours, 0 ) + hours
+		 from insurance_amount ia, #billable_nonbillable_hrs bnh
+		 where ia.emp = bnh.emp
+		 and bnh.requires_payment = 1
+		 and bnh.requires_billing = 1
+		 and ia.fixed_amount is null
+
+		 -- Calculate the Barefoot contribution for fixed contribution
+		 update insurance_amount
+		 set barefoot_contribution = fixed_amount
+		 where fixed_amount is not null
+
+		 -- Calculate the Barefoot contribution for variable contribution
+		 update insurance_amount
+		 set barefoot_contribution =  convert ( int, applicable_hours/10  ) 
+		                              * multiplier
+		 where fixed_amount is null
+
+		 -- Calculate what needs to be displayed as the SAL3 Adjustment.
+		 update insurance_amount
+		 set insurance_adjustment = barefoot_contribution - @sal3_adjustment
+		 go
+
+	 grant exec on calc_insurance_contribution to public
+	 go
 
 END
