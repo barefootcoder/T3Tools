@@ -1,36 +1,36 @@
--- SORT GROUP: Customer Reports
--- TITLE: Timesheet
+# SORT GROUP: Customer Reports
+# TITLE: Timesheet
 
-$(build_profit_item "
-	log.client = '{client}'
-	and log.proj = '{proj}'										{?proj}
-	and log.date >= '{start_date}'
-	and log.date <= '{end_date}'
-")
+&proc build_profit_item
 
-calc_total_price
-go
+	log.client_id = '{client}'
+{if proj}
+	and log.proj_id = '{proj}'
+{endif}
+	and log.log_date >= '{start_date}'
+	and log.log_date <= '{end_date}'
 
-set nocount on
-go
+;
 
-declare @eheader varchar(30)
-select @eheader = "<H3>Employee:  " + $(employee_name e) + "</H3>"
-from employee e
-where e.login = '{user}'
-print @eheader
-go
+	select pe.first_name, pe.last_name
+	from {~t3}.workgroup_user wu, {~t3}.person pe
+	where wu.nickname = '{user}'
+	and wu.person_id = pe.person_id
+->format
+	B=><H3>Employee: %1 %2</H3>
+;
 
-print "<H3>For Time Period Ending:  {end_date}</H3>"
-go
+&print <H3>For Time Period Ending:  {end_date}</H3>
 
-select convert(char(12), tlp.date, 109) "Date:", sum(tlp.hours) "Hours:"
-from profit_item pi, time_log_profit tlp, employee e
-where pi.log_source = tlp.log_source
-and pi.log_id = tlp.log_id
-and tlp.emp = e.emp
-and e.login = '{user}'
-group by $(period_num tlp.date 7), convert(char(12), tlp.date, 109)
-order by $(period_num tlp.date 7), tlp.date
-compute sum(sum(tlp.hours)) by $(period_num tlp.date 7)
-go
+	select tlp.log_date as "Date:", sum(tlp.hours) "Hours:"
+	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
+			{~timer}.employee e, {~t3}.workgroup_user wu
+	where pi.log_source = tlp.log_source
+	and pi.log_id = tlp.log_id
+	and tlp.emp_id = e.emp_id
+	and e.person_id = wu.person_id
+	and wu.nickname = '{user}'
+	group by tlp.log_date
+	order by tlp.log_date
+	# compute sum(sum(tlp.hours)) by $(period_num tlp.log_date 7)
+;
