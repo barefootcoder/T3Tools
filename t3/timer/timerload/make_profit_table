@@ -1,0 +1,92 @@
+#! /bin/ksh
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+destdb=timertest
+
+while getopts ":S:U:D:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		h)  echo "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb" >&2
+			exit
+			;;
+		:)  echo "$me: $OPTARG requires an argument ($0 -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $0 -h for usage" >&2
+			exit
+	esac
+done
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	$(overwrite_table gross_profit_item "
+		grprofit			internal_id		NOT NULL,
+		name				description		NOT NULL,
+		sort_order			int				NOT NULL,
+		simple_profit		bit				NOT NULL,
+	")
+
+	create unique index grprofit
+	on gross_profit_item (grprofit)
+	go
+
+	insert gross_profit_item
+	values ('GRS', 'Gross Sales', 1, 1)
+	go
+	insert gross_profit_item
+	values ('COG', 'Total COGS', 2, 1)
+	go
+	insert gross_profit_item
+	values ('SLS', 'Sales Commission', 3, 1)
+	go
+	insert gross_profit_item
+	values ('REF', 'Referral Commission', 4, 1)
+	go
+	insert gross_profit_item
+	values ('EMP', 'Employee Commission', 5, 1)
+	go
+	insert gross_profit_item
+	values ('EOH', 'Employee Overhead', 6, 0)
+	go
+	insert gross_profit_item
+	values ('BOK', 'Bookkeeper Direct Cost', 7, 0)
+	go
+	insert gross_profit_item
+	values ('ACC', 'Accountant Direct Cost', 8, 0)
+	go
+	insert gross_profit_item
+	values ('ISC', 'Invoicing Staff Cost', 9, 0)
+	go
+	insert gross_profit_item
+	values ('PSC', 'Payroll Staff Cost', 10, 0)
+	go
+	insert gross_profit_item
+	values ('ADM', 'Administrative Commission', 11, 0)
+	go
+	insert gross_profit_item
+	values ('HLT', 'Health Ins Employer Cost', 12, 0)
+	go
+	insert gross_profit_item
+	values ('PAY', 'Payroll Service Cost', 13, 0)
+	go
+	insert gross_profit_item
+	values ('BPL', 'BOPL Tax', 14, 0)
+	go
+
+	$(overwrite_table yearly_profit "
+		grprofit			internal_id		NOT NULL,
+		year				char(4)			NOT NULL,
+		amount				money			NOT NULL,
+	")
+
+END
