@@ -344,6 +344,13 @@ run_query -S$server -U$user -D$destdb <<-END
 	set identity_insert class_log off
 	go
 
+	-- commission_modifier
+
+	print "building commission_modifier"
+	go
+
+	insert commission_modifier
+	select * from $srcdb..commission_modifier
 
 	-- commission
 
