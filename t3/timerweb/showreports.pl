@@ -137,7 +137,7 @@ foreach my $group (keys %report_groups)
 	{
 		if ($report->{params})
 		{
-			print $cgi->a({-href=>"sqlcgi.pl?file=$report->{file}&"
+			print $cgi->a({-href=>"sqlcgi.pl?sqlfile=$report->{file}&"
 					. "$report->{params}"}, $report->{title}), "<BR>\n";
 		}
 		else
