@@ -11,5 +11,6 @@ select i.invoice_number, c.name,
 from invoice i, client c
 where i.client = c.client
 and i.invoice_number >= '[invoice]'
+and i.client = '[client]'								??client
 order by i.invoice_number
 go
