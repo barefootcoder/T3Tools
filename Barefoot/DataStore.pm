@@ -219,6 +219,16 @@ sub _transform_query
 	{
 		$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
 
+		# alias translations
+		while ($query =~ / {\@ (\w+) } /x)
+		{
+			my $alias = $&;
+			my $alias_name = $1;
+			my $table_name = $this->{config}->{aliases}->{$alias_name};
+			croak("unknown alias: $alias_name") unless $table_name;
+			$query =~ s/$alias/$table_name/g;
+		}
+
 		# schema translations
 		while ($query =~ / {~ (\w+) } \. /x)
 		{
@@ -740,6 +750,16 @@ sub configure_type
 	my ($user_type, $base_type) = @_;
 
 	$this->{config}->{user_types}->{$user_type} = $base_type;
+	$this->{modified} = true;
+}
+
+
+sub configure_alias
+{
+	my $this = shift;
+	my ($alias, $table_name) = @_;
+
+	$this->{config}->{aliases}->{$alias} = $table_name;
 	$this->{modified} = true;
 }
 
