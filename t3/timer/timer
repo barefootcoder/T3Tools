@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.6  1999/05/04 17:26:41  buddy
+# changed call to timerdata::insert_log() to display error returned from Sybase
+#
 # Revision 1.5  1999/05/04 04:25:24  buddy
 # changed timerdata::insert_log() call to check for failure
 #
@@ -609,9 +612,18 @@ sub print_elapsed
 				$timerinfo->{timers}->{$timer}->{time} =~ m{/\d+-$}
 					? "HALF-TIMING" : "");
 	}
+	if ($timerinfo->{curtimer} eq $timerinfo->{giventimer})
+	{
+		print "no timer is active";
+		print "\n\n";
+	}
+	else
+	{
 	print $timerinfo->{curtimer} ? "active timer is $timerinfo->{curtimer}"
 			: "no timer is active";
+
 	print "\n\n";
+	}
 }
 
 sub calc_time
@@ -803,6 +815,8 @@ sub log_to_sybase
 		print "  {You must have comments}\n\n" and redo if not $comments;
 		print "  {Comments too long!}\n\n" and redo if length($comments) > 255;
 	}
+
+	print "working.....\n";
 
 	# show everything and double check:
 	writeln($::Log, $emp, timerdata::emp_fullname($emp),
