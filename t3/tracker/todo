@@ -1,0 +1,91 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
+
+use strict;
+
+#use Barefoot::debug;
+
+use Getopt::Std;
+
+use Barefoot::base;
+use Barefoot::date;
+use Barefoot::range;
+use Barefoot::format;
+use Barefoot::exception;
+use Barefoot::input qw<get_yn input>;
+use Barefoot::T3::valid qw<get_parameter>;
+
+
+#################################
+# CONSTANTS
+#################################
+
+
+#################################
+# FORMATS
+#################################
+
+
+#################################';
+# OPTIONS AND ENVIRONMENT VARS
+#################################
+
+our $parminfo = {};
+
+if (-t STDOUT or @ARGV)
+{
+	my $opt = {};
+	getopts('', $opt);
+}
+else
+{
+}
+
+
+#################################
+# CHECK FOR ERRORS
+#################################
+
+
+
+#################################
+# main()
+#################################
+
+
+#################################
+# SUBROUTINES
+#################################
+
+sub usage
+{
+}
+
+
+sub error
+{
+	my ($exitcode, @messages) = @_;
+	my $progname = $0;
+	$progname =~ s@.*/@@;
+=comment
+	if ($cgi)
+	{
+		foreach (@messages)
+		{
+			# s/\n/<BR>\n/g;
+		}
+		print @messages, "\n";
+		exit 0;
+	}
+	else
+	{
+		print STDERR "$progname: ", @messages, "\n";
+		exit $exitcode;
+	}
+=cut
+}
