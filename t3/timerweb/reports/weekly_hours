@@ -1,9 +1,6 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Hours per Week (by employee/rate)
 
-use TIMER
-go
-
 set nocount on
 go
 
@@ -18,60 +15,95 @@ print ""
 go
 
 
-$(build_emp_comm "
-	date between '[start_date]' and '[end_date]'
-	and emp in													??user
-	(															??user
-		select emp												??user
-		from employee											??user
-		where login = '[user]'									??user
-	)															??user
-" "1 = 0" "1 = 0")
-exec emp_commission
+select tl.emp, tl.client, tl.proj, tl.date, tl.hours,
+		convert(money, NULL) "pay_rate"
+into #time_log_week
+from time_log tl, employee e
+where tl.emp = e.emp
+and tl.date between '[start_date]' and '[end_date]'
+and e.login = '[user]'											??user
+go
+
+update #time_log_week
+set pay_rate = 0
+from #time_log_week tlw, project p, project_type pt
+where tlw.client = p.client
+and tlw.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_payment = 0
+go
+
+update #time_log_week
+set pay_rate = pr.rate
+from #time_log_week tlw, project p, project_type pt, pay_rate pr
+where tlw.client = p.client
+and tlw.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_payment = 1
+and tlw.emp = pr.emp
+and pr.client is NULL
+and pr.proj is NULL
+and tlw.date between pr.start_date and pr.end_date
+go
+
+update #time_log_week
+set pay_rate = pr.rate
+from #time_log_week tlw, project p, project_type pt, pay_rate pr
+where tlw.client = p.client
+and tlw.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_payment = 1
+and tlw.emp = pr.emp
+and tlw.client = pr.client
+and pr.proj is NULL
+and tlw.date between pr.start_date and pr.end_date
+go
+
+update #time_log_week
+set pay_rate = pr.rate
+from #time_log_week tlw, project p, project_type pt, pay_rate pr
+where tlw.client = p.client
+and tlw.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_payment = 1
+and tlw.emp = pr.emp
+and tlw.client = pr.client
+and tlw.proj = pr.proj
+and tlw.date between pr.start_date and pr.end_date
 go
 
 -- for debugging
 /*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
-	convert(numeric(6,2), payrate) "payrate", paytype "PayT",
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(6,2), amt_billed) "amt_billed",
-	convert(numeric(6,2), salescomm) "salescomm",
-	convert(numeric(6,2), refcomm) "refcomm",
-	convert(numeric(6,2), amt_paid) "amt_paid",
-	convert(numeric(6,2), diff) "diff",
-	convert(numeric(6,2), empcomm) "empcomm"
-from #emp_comm
+select emp, client, proj, convert(char(10), date, 101) "date", hours, pay_rate
+from #time_log_week
 order by emp, client, proj, date
 */
 go
 
 select
 		$(employee_name e) "employee",							?!user
-		convert(numeric(5,2), ec.payrate) "payrate", c.name "client",
-		$(period_name "$(period_num ec.date 7)" 7) "week",
-		sum(ec.hours) "hours"
-from #emp_comm ec, employee e, client c
-where ec.emp = e.emp
+		convert(char(6), tlw.pay_rate, 1) "payrate", c.name "client",
+		$(period_name "$(period_num tlw.date 7)" 7) "week",
+		sum(tlw.hours) "hours"
+from #time_log_week tlw, employee e, client c
+where tlw.emp = e.emp
 and e.login = "[user]"											??user
-and ec.client = c.client
-group by
-		$(employee_name e),										?!user
-		convert(numeric(5,2), ec.payrate), c.name,
-		$(period_name "$(period_num ec.date 7)" 7)
-order by ec.payrate, c.name
-compute sum(sum(ec.hours)) by ec.payrate, c.name
+and tlw.client = c.client
+group by $(employee_name e), tlw.pay_rate, c.name,
+		$(period_name "$(period_num tlw.date 7)" 7)
+order by $(employee_name e), tlw.payrate, c.name
+compute sum(sum(tlw.hours))
+	by $(employee_name e), tlw.payrate, c.name
 go
 
 select
 		$(employee_name e) "employee",							?!user
-		$(period_name "$(period_num ec.date 7)" 7) "week",
-		sum(ec.hours) "hours"
-from #emp_comm ec, employee e
-where ec.emp = e.emp
+		$(period_name "$(period_num tlw.date 7)" 7) "week",
+		sum(tlw.hours) "hours"
+from #time_log_week tlw, employee e
+where tlw.emp = e.emp
 and e.login = "[user]"											??user
 group by
 		$(employee_name e),										?!user
-		$(period_name "$(period_num ec.date 7)" 7)
-compute sum(sum(ec.hours))
+		$(period_name "$(period_num tlw.date 7)" 7)
 go
