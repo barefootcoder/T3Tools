@@ -1,14 +1,5 @@
 #! /usr/bin/perl
 
-# NOTES:
-# Dedicated component that resides in server and processes message requests
-# Adapted from Jay's code, which was Copyright 1998-2000 Oaesys Corporation.
-
-# this app expects messages to have "to", "from", and "status" attributes in the
-# first 3 attribute positions for one-element messages, and that these attrbs
-# have certain predefined values, but makes no other
-# assumptions about the xml message format
-
 # ---------------------------------------------------------------------------
 
 package Barefoot::T3Timer;
@@ -184,6 +175,7 @@ sub setuptimer						# Set up
     $timerinfo->{tfile} = "$timerinfo->{tdir}/$timerinfo->{user}"
             . TIMEFILE_EXT;
     $timerinfo->{hfile} = "$timerinfo->{tdir}/" . HISTFILE;
+	print "timer file is $timerinfo->{tfile}\n" if DEBUG >= 1;
 
 	return true;
 }
@@ -501,7 +493,7 @@ sub save_to_db
 
 	my $posted_timers = &t3->do("
 			select t.timer_name
-			from {%timer}.timer t, {%t3}.workgroup_user wu
+			from {~timer}.timer t, {~t3}.workgroup_user wu
 			where t.wuser_id = wu.wuser_id
 			and wu.nickname = '$timerinfo->{user}'
 	");
@@ -569,9 +561,9 @@ sub db_post_timer
 		my $proj = exists $timer->{project} ? "'$timer->{project}'" : "NULL";
 		my $phase = exists $timer->{phase} ? "'$timer->{phase}'" : "NULL";
 		my $result = &t3->do("
-				insert {%timer}.timer
+				insert {~timer}.timer
 				select wu.wuser_id, '$name', $client, $proj, $phase
-				from {%t3}.workgroup_user wu
+				from {~t3}.workgroup_user wu
 				where wu.nickname = '$user'
 		");
 		print STDERR &t3->last_error() and
@@ -589,9 +581,9 @@ sub db_post_timer
 					localtime($end_secs)) . "'" : "NULL";
 
 			my $result = &t3->do("
-					insert {%timer}.timer_chunk
+					insert {~timer}.timer_chunk
 					select wu.wuser_id, '$name', $divisor, $start, $end
-					from {%t3}.workgroup_user wu
+					from {~t3}.workgroup_user wu
 					where wu.nickname = '$user'
 			");
 			print STDERR &t3->last_error() and
@@ -614,13 +606,13 @@ sub db_delete_timer
 	print STDERR "Entered db_delete_timer, timer $name, user $user\n" if DEBUG >= 4;
 
 	my $result = &t3->do("
-			delete {%timer}.timer_chunk 
+			delete {~timer}.timer_chunk 
 			where timer_name = '$name'
 			and exists
 			(
 				select 1
-				from {%t3}.workgroup_user wu
-				where wu.wuser_id = {%timer}.timer_chunk.wuser_id
+				from {~t3}.workgroup_user wu
+				where wu.wuser_id = {~timer}.timer_chunk.wuser_id
 				and wu.nickname = '$user'
 			)
 	");
@@ -628,13 +620,13 @@ sub db_delete_timer
 	print STDERR "First delete (timer_chunk) finished w/o error\n" if DEBUG >= 4;
 
 	$result = &t3->do("
-			delete {%timer}.timer
+			delete {~timer}.timer
 			where timer_name = '$name'
 			and exists
 			(
 				select 1
-				from {%t3}.workgroup_user wu
-				where wu.wuser_id = {%timer}.timer.wuser_id
+				from {~t3}.workgroup_user wu
+				where wu.wuser_id = {~timer}.timer.wuser_id
 				and wu.nickname = '$user'
 			)
 	");
@@ -656,7 +648,7 @@ sub get_emp_id
 
 	my $res = &t3->do("
 			select e.emp_id
-			from {%t3}.workgroup_user wu, {%t3}.person pe, {%timer}.employee e
+			from {~t3}.workgroup_user wu, {~t3}.person pe, {~timer}.employee e
 			where wu.nickname = '$user'
 			and wu.person_id = pe.person_id
 			and pe.person_id = e.person_id
@@ -672,7 +664,7 @@ sub default_client
 
 	my $res = &t3->do("
 			select e.def_client
-			from {%timer}.employee e
+			from {~timer}.employee e
 			where e.emp_id = '$emp'
 	");
 	die("default client query failed") unless $res and $res->next_row();
@@ -684,12 +676,12 @@ sub valid_employees
 {
 	my $res = &t3->do("
 			select e.emp_id, pe.first_name, pe.last_name
-			from {%timer}.employee e, {%t3}.person pe
+			from {~timer}.employee e, {~t3}.person pe
 			where e.person_id = pe.person_id
 			and exists
 			(
 				select 1
-				from {%timer}.client_employee ce
+				from {~timer}.client_employee ce
 				where e.emp_id = ce.emp_id
 				and {&curdate} between ce.start_date and ce.end_date
 			)
@@ -711,11 +703,11 @@ sub valid_clients
 
 	my $res = &t3->do("
 			select c.client_id, c.name
-			from {%timer}.client c
+			from {~timer}.client c
 			where exists
 			(
 				select 1
-				from {%timer}.employee e, {%timer}.client_employee ce
+				from {~timer}.employee e, {~timer}.client_employee ce
 				where e.emp_id = '$emp'
 				and e.emp_id = ce.emp_id
 				and c.client_id = ce.client_id
@@ -740,13 +732,13 @@ sub valid_projects
 
 	my $res = &t3->do("
 			select p.proj_id, p.name
-			from {%timer}.project p
+			from {~timer}.project p
 			where p.client_id = '$client'
 			and {&curdate} between p.start_date and p.end_date
 			and exists
 			(
 				select 1
-				from {%timer}.employee e, {%timer}.client_employee ce
+				from {~timer}.employee e, {~timer}.client_employee ce
 				where e.emp_id = '$emp'
 				and e.emp_id = ce.emp_id
 				and p.client_id = ce.client_id
@@ -778,7 +770,7 @@ sub proj_requirements
 	my $res = &t3->do("
 			select pt.requires_phase, pt.requires_tracking,
 					pt.requires_comments
-			from {%timer}.project p, {%timer}.project_type pt
+			from {~timer}.project p, {~timer}.project_type pt
 			where p.client_id = '$client'
 			and p.proj_id = '$proj'
 			and '$date' between p.start_date and p.end_date
@@ -802,7 +794,7 @@ sub phase_list
 {
 	my $res = &t3->do("
 			select ph.phase_id, ph.name
-			from {%timer}.phase ph
+			from {~timer}.phase ph
 	");
 	die("phase list query failed:", &t3->last_error()) unless $res;
 
@@ -821,7 +813,7 @@ sub valid_trackings
 
 	my $res = &t3->do("
 			select ct.tracking_code, ct.name
-			from {%timer}.client_tracking ct
+			from {~timer}.client_tracking ct
 			where ct.client_id = '$client'
 	");
 	die("valid trackings query failed:", &t3->last_error()) unless $res;
@@ -841,7 +833,7 @@ sub client_rounding
 
 	my $res = &t3->do("
 			select c.rounding, c.to_nearest
-			from {%timer}.client c
+			from {~timer}.client c
 			where c.client_id = '$client'
 	");
 	die("client rounding query failed:", &t3->last_error())
@@ -1025,7 +1017,7 @@ sub insert_time_log
 	$comments = defined $comments ? "'$comments'" : "NULL";
 
 	my $query = "
-			insert {%timer}.time_log
+			insert {~timer}.time_log
 				(	emp_id, client_id, proj_id, phase_id, tracking_code,
 					log_date, hours, comments,
 					create_user, create_date
