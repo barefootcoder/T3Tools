@@ -34,6 +34,8 @@
 
 package T3;
 
+use strict;
+
 
 # config file and directives for same
 
@@ -58,7 +60,8 @@ use constant DEFAULT_WORKGROUP => 'Barefoot';
 use constant TEST_WORKGROUP => 'TestCompany';
 
 
-# one sub; just don't want to clutter anybody's namespace with this
+# a couple of subs that we want to access via the T3:: namespace
+# as opposed to having them exported
 
 sub debug
 {
@@ -91,7 +94,10 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
-@EXPORT = qw<t3 t3_config t3_username t3_filenames timer_fields todo_fields>;
+@EXPORT = qw<t3 t3_config t3_username t3_filenames t3_pipename t3_create_pipe
+		timer_fields todo_fields>;
+
+use POSIX qw<mkfifo>;
 
 use Barefoot::base;
 use Barefoot::config_file;
@@ -169,6 +175,29 @@ sub t3_filenames
 	print "timer file is $t3file\n" if DEBUG >= 2;
 
 	return ($t3file, $histfile);
+}
+
+
+my $pipe_dir = Barefoot::T3::base::t3_config(T3::REQUESTDIR_DIRECTIVE);
+sub t3_pipename
+{
+	return $pipe_dir . "/" . $_[0];
+}
+
+sub t3_create_pipe
+{
+	my $pipe_file = t3_pipename($_[0]);
+
+	unlink($pipe_file) if -e $pipe_file;
+	T3::debug(4, -e $pipe_file ? "pipe exists" : "pipe is gone");
+	if (mkfifo($pipe_file, 0666))
+	{
+		return $pipe_file;
+	}
+	else
+	{
+		return undef;
+	}
 }
 
 
