@@ -6,12 +6,28 @@ print ""
 print ""
 go
 
+-- in order to speed things up a bit, let's figure out all the projects
+-- ever worked on by any employee on whom was paid referral commission
+-- during the time for which they were supposed to be paid
+-- we can also eliminate all the non-billable logs (no comm on those)
+select distinct tl.client, tl.proj
+into #ref_comm_projs
+from time_log tl, referral_commission rc, project p, project_type pt
+where tl.emp = rc.emp
+and tl.date between rc.start_date and rc.end_date
+and tl.client = p.client
+and tl.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_billing = 1
+go
+
 $(build_profit_item "
 	exists
 	(
 		select 1
-		from referral_commission rc
-		where log.emp = rc.emp
+		from #ref_comm_projs rcp
+		where log.client = rcp.client
+		and log.proj = rcp.proj
 	)
 	and exists
 	(
@@ -49,7 +65,9 @@ order by emp, client, proj, date
 go
 
 -- now for the actual report
-select rca.name "pay to", $(employee_name e) "employee", c.name "client",
+select substring(rca.name, 1, 20) "pay to",
+		substring($(employee_name e), 1, 20) "employee",
+		substring(c.name, 1, 20) "client",
 		convert(numeric(5,2), sum(rca.hours)) "hours",
 		sum(rca.amount) "total referral comm"
 from profit_item pi, referral_comm_amount rca, employee e, client c
