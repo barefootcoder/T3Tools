@@ -23,10 +23,24 @@
 #
 #		ln -s barefoot/perl_mod Barefoot
 #
+# This module also sets the DEBUG constant, so that you can use tests like:
+#
+#		print "debugging message" if DEBUG;
+#
+# Since this is a compile-time constant, such code will be excised entirely
+# during compilation if this module is not use'd.  Thus, it will not slow
+# down run-time execution.  However, DEBUG itself will not be defined unless
+# Barefoot::base is also use'd, so be sure that it is.  You must also make
+# sure that Barefoot::debug is use'd _before_ Barefoot::base; in general,
+# it is recommended that you put your "use Barefoot::debug" statement very
+# early in your script.
+#
+# See also: Barefoot::base and Barefoot::debug_verbose
+#
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000 Barefoot Software.
+# licensing agreement.  Copyright (c) 2001 Barefoot Software.
 #
 ###########################################################################
 
@@ -35,6 +49,10 @@ package Barefoot::debug;
 ### Private ###############################################################
 
 use strict;
+
+use base qw(Exporter);
+use vars qw(@EXPORT);
+@EXPORT = qw(DEBUG);
 
 use Barefoot::cvs;
 
@@ -53,9 +71,13 @@ BEGIN
 }
 
 
-$::debug_mode = 1;
-$::debug = $::debug_mode;					# for backwards compatibility
-# note: $debug is deprecated.  please use $debug_mode in all new code
+sub DEBUG ()
+{
+	return 1;
+}
+
+use Barefoot::base;
+
 
 1;
 
@@ -65,3 +87,14 @@ $::debug = $::debug_mode;					# for backwards compatibility
 #
 
 
+sub import
+{
+	my $pkg = shift;
+	# print STDERR "here i am in debug import!\n";
+
+	my $caller_package = caller;
+	# print STDERR "my calling package is $caller_package\n";
+	die("DEBUG already defined; make use statement earlier in code")
+			if defined eval "${caller_package}::DEBUG();";
+	$pkg->export_to_level(1, $pkg, 'DEBUG');
+}
