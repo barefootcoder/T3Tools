@@ -7,7 +7,7 @@ use strict;
 use Barefoot::base;
 use Barefoot::T3::base;
 use Barefoot::T3::Server;
-use Barefoot::T3::Timer qw<calc_time>;
+use Barefoot::T3::Timer qw<calc_time calc_date>;
 
 T3::Server::register_request(TIMER_LIST => \&list_timers);
 
@@ -42,11 +42,14 @@ sub list_timers
 		my $total_time = calc_time($timer->{time});
 		my $pretty_time = sprintf("%d:%02d", int($total_time / 60),
 				$total_time % 60);
+		my $date = calc_date($timer->{time});
+		my $current = $timer->{time} =~ /-$/ ? 1 : 0;
 		$timer->{time} = $pretty_time;
 
 		if (exists $opts->{details} and $opts->{details} eq "yes")
 		{
-			print join("\t", timer_fields($timer)), "\n";
+			T3::debug(3, "going to print date $date");
+			print join("\t", timer_fields($timer), $date, $current), "\n";
 		}
 		else
 		{
