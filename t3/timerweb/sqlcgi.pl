@@ -5,10 +5,12 @@ use strict;
 use CGI;
 $| = 1;
 
+use constant DEBUG => 1;
+
 my $cgi = new CGI;
 my $script = "/tmp/sqlcgi$$.ksh";
-my $basepath = "/home/httpd/sybase/timer_reports/";
-# my $basepath = "/home/buddy/proj/timerweb/reports/";
+my $basepath = DEBUG ? "/home/buddy/proj/timerweb/reports/"
+		: "/home/httpd/sybase/timer_reports/";
 my $lib = "/usr/local/bin/kshlib";
 my $db = "timer";
 my $title = "";
@@ -17,10 +19,11 @@ my $debug_string = "";
 set_environment();
 print $cgi->header();
 
-my $file = $ARGV[0] ? $ARGV[0] : $cgi->param("file");
+my $file = $ARGV[0] ? $ARGV[0] : $cgi->param("sqlfile");
 if ($file)
 {
 	$file=$basepath . $file;
+	debug("file is $file");
 
 	if (create_script($file, $script))
 	{
@@ -31,13 +34,15 @@ if ($file)
 		}
 
 		print "<PRE>\n";
+		print STDERR "going to run script\n";
 		system ("ksh", "-c", $script) == 0 or die "system \@args failed: $?";
+		print STDERR "ran script\n";
 		print "</PRE>\n";
-		# print $debug_string;
+		print $debug_string if DEBUG;
 		print $cgi->end_html();
 	}
 
-	unlink $script;
+	unlink $script unless DEBUG;
 }
 else
 {
@@ -86,21 +91,35 @@ run_query -Uguest -SSYBASE_1 <<-SCRIPT_END | remove_sp_returns
 
 END
 
-	while ( <FILE> )
+	my $reset_title = 1;
+	LINE: while ( <FILE> )
 	{
 		if ( /--\s*TITLE:\s*(.*)\s*/ )
 		{
-			$title = $1;
+			$title = $1 and $reset_title = 0 if $reset_title;
+			next LINE;
 		}
+		if ( /--\s*ALSO RUN WITH:\s*(.*)\s*/ )
+		{
+			my @params = split(/&/, $1);
+			foreach my $param (@params)
+			{
+				my ($name, $val) = $param =~ /(.*)=(.*)/;
+				debug("checking to see if $name = $val");
+				next LINE if $cgi->param($name) ne $val;
+			}
+			$reset_title = 1 and next LINE;
+		}
+
 		# check for "only if this var is set" lines
 		# format: any line containing a token like this:
 		#		{?var}					(depracated form: ??var)
 		# will be removed unless "var" is set; if "var" _is_ set, the
 		# "conditional" token is removed and the line is processed normally
-		if (s/{\?(\w+)}// or s/\?\?(\w+)//)
+		while (s/{\?(\w+)}// or s/\?\?(\w+)//)
 		{
 								debug("got conditional $1");
-			next unless defined $ENV{$1};
+			next LINE unless defined $ENV{$1};
 								debug("will process this line");
 		}
 		# check for "only if this var is _not_ set" lines
@@ -108,10 +127,10 @@ END
 		#		{!var}					(depracated form:: ?!var)
 		# will be removed if "var" is set; if "var" is _not_ set, the
 		# conditional token is removed and the line is processed normally
-		if (s/{!(\w+)}// or s/\?!(\w+)//)
+		while (s/{!(\w+)}// or s/\?!(\w+)//)
 		{
 								debug("got not conditional $1");
-			next if defined $ENV{$1};
+			next LINE if defined $ENV{$1};
 								debug("will process this line");
 		}
 		# check for var substitutions
@@ -152,6 +171,7 @@ sub error
 	print $cgi->h1("ERROR"), "\n";
 	print "<P>", $cgi->strong("Your request has the following error!");
 	print "<BR>\n", "$msg</P>\n";
+	print $debug_string if DEBUG;
 }
 
 sub debug
