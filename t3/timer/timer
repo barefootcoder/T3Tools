@@ -250,12 +250,12 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 		my $tmp = $1 ? $1 : 0;
 		my ($min, $hr, $day, $mon, $year) = (localtime $2)[1..5];
 		++$mon, $year += 1900;
-		print "from $hr:$min $mon/$day/$year ";
+		print "from $mon/$day/$year $hr:$min ";
 		if ($3)
 		{
 			($min, $hr, $day, $mon, $year) = (localtime $3)[1..5];
 			++$mon, $year += 1900;
-			print "to $hr:$min $mon/$day/$year";
+			print "to $mon/$day/$year $hr:$min";
 		}
 		else
 		{
