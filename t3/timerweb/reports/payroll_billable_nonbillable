@@ -1,26 +1,6 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Percentage of Payrolls Billable and Non-Billable
 
--- first, figure how much *timer* thinks the total payroll should be
--- (i.e., the payroll without the overhead--taxes, FUTA, etc)
--- note that we get total pay for everything in a given payroll period,
--- and *not* total pay for the periods between start date and end date
--- this is necessary because our #payroll_percent table may not "match"
--- the pay periods (IOW, we may have only one week of a two-week payroll
--- at the beginning and/or end of the year)
-$(build_pay_amount "
-	exists
-	(
-		select 1
-		from payroll pay
-		where log.payroll_id = pay.payroll_id
-		and pay.period_end > '[start_date]'
-		and pay.period_start < '[end_date]'
-	)
-")
-calc_pay_amount
-go
-
 -- in order to break our two-week payroll periods into one week periods,
 -- we'll use the period num of both the start date and the end date of
 -- the payroll ... we still check those against the start/end date given,
@@ -33,46 +13,23 @@ select $(period_num pay.period_start 7) "period",
 		convert(money, NULL) "fin_overhead",
 		convert(numeric(4,2), NULL) "fin_overhead_percent",
 		convert(money, NULL) "subcontractor",
-		sum(pa.total_pay) "total_pay", pay.payroll_id, pay.payroll_amount
+		convert(numeric(6,0), pay.payroll_id) "payroll_id",
+		convert(numeric(6,6),
+				pay.overhead_amount / pay.payroll_amount) "overhead_percent"
 into #payroll_percent
-from pay_amount pa, time_log tl, payroll pay
-where isnull(pa.pay_rate_type, '') != 'S'
-and pa.log_source = tl.log_source
-and pa.log_id = tl.log_id
-and tl.payroll_id = pay.payroll_id
-and pay.period_start between '[start_date]' and '[end_date]'
--- and $(in_period_range pa.date "$(period_num pay.period_start 7)" 7)
-group by $(period_num pay.period_start 7), pay.payroll_id, pay.payroll_amount
+from payroll pay
+where pay.period_start between '[start_date]' and '[end_date]'
 go
 
 insert #payroll_percent
-	(period, total_pay, payroll_id, payroll_amount)
-select $(period_num pay.period_end 7) "period",
-		sum(pa.total_pay) "total_pay", pay.payroll_id, pay.payroll_amount
-from pay_amount pa, time_log tl, payroll pay
-where isnull(pa.pay_rate_type, '') != 'S'
-and pa.log_source = tl.log_source
-and pa.log_id = tl.log_id
-and tl.payroll_id = pay.payroll_id
-and pay.period_end between '[start_date]' and '[end_date]'
--- and $(in_period_range pa.date "$(period_num pay.period_end 7)" 7)
-group by $(period_num pay.period_end 7), pay.payroll_id, pay.payroll_amount
+	(period, payroll_id, overhead_percent)
+select $(period_num pay.period_end 7), pay.payroll_id,
+		convert(numeric(6,6), pay.overhead_amount / pay.payroll_amount)
+from payroll pay
+where pay.period_end between '[start_date]' and '[end_date]'
 go
 
-/*
--- potential errors
-select pay.period_start, sum(pa.total_pay)
-from pay_amount pa, time_log tl, payroll pay
-where isnull(pa.pay_rate_type, '') != 'S'
-and pa.log_source = tl.log_source
-and pa.log_id = tl.log_id
-and tl.payroll_id = pay.payroll_id
-and not pa.date between pay.period_start and pay.period_end
-group by pay.period_start
-*/
-go
-
--- now get pay amounts for the period we really care about
+-- now get pay amounts for the period in question
 $(build_pay_amount "
 	log.date between '[start_date]' and '[end_date]'
 ")
@@ -145,35 +102,24 @@ from #payroll_percent pp, #subcon sub
 where pp.period = sub.period
 go
 
--- update the percentages
-update #payroll_percent
-set non_billable_percent = convert(numeric(4,2), 100.0 * non_billable
-			/ total_pay),
-	billable_percent = convert(numeric(4,2), 100.0 * billable / total_pay),
-	fin_overhead_percent = convert(numeric(4,2), 100.0 * fin_overhead
-			/ total_pay)
-go
-
 -- the actual report
 select $(period_name pp.period 7) "week",
 		convert(char(9), pp.non_billable, 1) "non-billable",
-		non_billable_percent "NB %",
-		convert(char(9), pp.billable, 1) "billable", billable_percent "B %",
+		convert(char(8), convert(money, pp.non_billable * pp.overhead_percent), 1) "non-bill OH",
+		convert(char(9), pp.billable, 1) "billable",
+		convert(char(8), convert(money, pp.billable * pp.overhead_percent), 1) "bill OH",
 		convert(char(9), pp.fin_overhead, 1) "fin ovhd",
-		fin_overhead_percent "F %",
-		--convert(char(9), pp.subcontractor, 1) "subcontractor",
-		--convert(char(10), pp.total_pay, 1) "total pay",
-		--non_billable_percent + billable_percent "Tot %",
-		convert(char(9), pp.payroll_amount, 1) "payroll amt"
+		convert(char(8), convert(money, pp.fin_overhead * pp.overhead_percent), 1) "fin oh OH",
+		convert(char(9), pp.subcontractor, 1) "subcontractor"
 from #payroll_percent pp
 order by pp.period
 go
 
 -- totals
-select sum(billable) "billable", convert(money, sum(billable_percent
-			* payroll_amount / 100.0 - billable)) "emp overhead",
+select sum(billable) "billable",
+		convert(money, sum(billable * overhead_percent)) "emp overhead",
 		convert(money, sum(subcontractor)) "subcontractor",
-		convert(money,
-			sum(fin_overhead_percent * payroll_amount / 100.0)) "fin overhead"
+		convert(money, sum(fin_overhead
+				* (1 + overhead_percent))) "fin overhead"
 from #payroll_percent pp
 go
