@@ -8,7 +8,7 @@
 
 use strict;
 
-use Barefoot::debug;
+#use Barefoot::debug;
 
 use Getopt::Std;
 use Tie::IxHash;
