@@ -8,7 +8,7 @@
 
 use strict;
 
-use Barefoot::debug;							# comment out for production
+# use Barefoot::debug;							# comment out for production
 
 use Getopt::Std;
 use Barefoot::date;
