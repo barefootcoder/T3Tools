@@ -3,6 +3,7 @@
 use strict;
 
 use Barefoot::debug;					# comment out for production use
+#use DBIx::Profile;
 
 use Barefoot::base;
 use Barefoot::DataStore;
@@ -11,7 +12,104 @@ use Barefoot::DataStore::display;
 
 sub test_error(&@);
 
+
+# make sure display demands a DataStore for 1st arg
+test_error
+{
+	DataStore::display();
+}
+catch { /cannot display with no data store/ }
+or die("isn't checking for data store defined");
+test_error
+{
+	DataStore::display("bogus");
+}
+catch { /cannot display with no data store/ }
+or die("isn't checking for data store as first arg");
+
+
+# get a data store we can use for testing
+system("ln -sf /etc/data_store/t3test.dstore .");
+my $t3 = DataStore->open("t3test", "buddy") or die("can't open data store");
+
+
+# make sure display verifies legible file for 2nd arg
+test_error
+{
+	DataStore::display($t3, "bogus");
+}
+catch { /cannot open file bogus/ }
+or die("isn't checking for valid file as second arg");
+
+
+# try a few mini-chunks of file which we expect to have errors
+test_parse_failure("
+
+		# test semicolon before endif - should fail
+		{if END_OF_TIME}
+		;
+
+	", "found terminator before endif",
+	"semi inside conditional didn't fail"
+);
+
+test_parse_failure("
+
+		# test multi print before endif - should fail
+		{if END_OF_TIME}
+		&print
+			You're not supposed to be able to multiple-line print during ifs
+		;
+
+	", "can't call a command inside a conditional",
+	"command inside conditional didn't fail"
+);
+
+test_parse_failure("
+
+	# test single print before endif - should fail
+	{if END_OF_TIME}
+	&print You're not supposed to be able to single-line print during ifs
+	;
+
+	", "can't call a command inside a conditional",
+	"command inside conditional didn't fail"
+);
+
+test_parse_failure("
+
+		# test another if before endif - should fail
+		{if END_OF_TIME}
+			{if END_OF_TIME}
+				select 'You're not supposed to be able to nest ifs, either'
+
+	", "cannot nest conditionals",
+	"conditional inside conditional didn't fail"
+);
+
+test_parse_failure("
+
+	# test endif by itself - should fail
+	{endif}
+
+	", "endif outside of conditional",
+	"endif outside conditional didn't fail"
+);
+
+
+# now process our test file and make sure the output looks like
+# it's supposed to
+open(OUT, ">output.current") or die("can't open test output");
+print OUT DataStore::display($t3, "input.test");
+close(OUT);
+
+my $diffs = `diff output.test output.current`;
+die("output not correct:\n", $diffs) if $diffs;
+
+
 # looks okay
+unlink("output.current");
+unlink("t3test.dstore");
 print "ALL TESTS PASSED\n";
 
 
@@ -32,4 +130,24 @@ sub test_error (&@)
 		return true if &$catch;
 	}
 	return false;
+}
+
+
+sub test_parse_failure
+{
+	my ($parse_input, $expected_error, $die_msg) = @_;
+	my $error_input = "error.test";
+
+	open(TST, ">$error_input") or die("can't open file for testing");
+	print TST $parse_input;
+	close(TST);
+
+	test_error
+	{
+		DataStore::display($t3, $error_input);
+	}
+	catch { /$expected_error/ }
+	or die($die_msg);
+
+	unlink($error_input);
 }

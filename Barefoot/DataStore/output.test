@@ -74,7 +74,7 @@ Single line print
 
 		Multiple line print
 
-		Test printing DataStore variables: timer.time_log '12/31/9999'
+		Test printing DataStore variables: timer.time_log 12/31/9999
 
 TEST                                    
 ----------------------------------------
@@ -95,7 +95,46 @@ The END_OF_TIME variable is set properly
 
 (9 rows)
 
+0.50,20,10;
+0.75,20,15;
+0.75,32.5,24.38;
+1.00,20,20;
+2.00,20,40;
+1.00,20,20;
+2.00,20,40;
+5.25,20,105;
+13.75,20,275;
+
+below is default header
+=hours       ==pay_rate  ==total_pay           =
+=------------==----------==--------------------=
+=    0.50    ==20        ==                  10=
+=    0.75    ==20        ==                  15=
+=    0.75    ==32.5      ==               24.38=
+=    1.00    ==20        ==                  20=
+=    2.00    ==20        ==                  40=
+=    1.00    ==20        ==                  20=
+=    2.00    ==20        ==                  40=
+=    5.25    ==20        ==                 105=
+=   13.75    ==20        ==                 275=
+
 hours
 -----
+(0 rows returned)
+
+in this particular insert query, there were 0 rows affected
+
+admin_comm name                       sort_order
+---------- -------------------------- ----------
+ACC        Bookkeeper Commission      1         
+CEO        Executive Commission       6         
+CRD        Coordinator Commission     3         
+DSP        Dispatcher Commission      2         
+TEC        Technical Admin Commission 4         
+OMT        Office Maint Commission    5         
+(6 rows returned)
+
+admin_comm name sort_order
+---------- ---- ----------
 (0 rows returned)
 

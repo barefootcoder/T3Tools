@@ -1,6 +1,6 @@
 
 	select *
-	from {%timer}.admin_commission_type
+	from {~timer}.admin_commission_type
 	;
 
 	# comments should be ignored
@@ -21,12 +21,12 @@
 	select distinct emp_id "EMP", client_id "CLI", proj_id "PRJ",
 			phase_id "PH", pay_rate, pay_rate_type,
 			requires_payment "PAY", requires_billing "BIL"
-	from {%reporting}.pay_amount
+	from {~reporting}.pay_amount
 	order by emp_id
 	;
 
 	select hours, pay_rate, total_pay
-	from {%reporting}.pay_amount
+	from {~reporting}.pay_amount
 	where emp_id = '148'
 	order by client_id, pay_date
 	;
@@ -45,7 +45,7 @@
 	;
 
 	&print
-		Test printing DataStore variables: {%timer}.time_log {END_OF_TIME}
+		Test printing DataStore variables: {~timer}.time_log {END_OF_TIME}
 	;
 
 	{if bogusvar}
@@ -60,28 +60,93 @@
 	;
 
 
+	# test "standard" format
 	select hours, pay_rate, total_pay
-	from {%reporting}.pay_amount
+	from {~reporting}.pay_amount
 	where emp_id = '148'
 	order by client_id, pay_date
 ->format
-H-> @||||||  @>>>>>>>>>>  @<<<<<<<<<<
-H-> -------  -----------  ===========
-B->  @##.##      @##.##       @###.##
-F=>
-F=>(%R rows)
-	;
+	H-> @||||||  @>>>>>>>>>>  @<<<<<<<<<<
+	H-> -------  -----------  ===========
+	B->  @##.##      @##.##       @###.##
+	F=>
+	F=>(%R rows)
+;
+
+	# test blank format
+	select hours, pay_rate, total_pay
+	from {~reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+->format
+;
+
+	# test literal body
+	select hours, pay_rate, total_pay
+	from {~reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+->format
+	B=>%1,%2,%3;
+;
+
+	# test format in the middle of a false conditional
+{if bogus}
+	select hours, pay_rate, total_pay
+	from {~reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+->format
+	B=>%1,%2,%3;
+{endif}
+;
+
+	# test format specification shortcuts
+	# also test "default" header
+	select hours, pay_rate, total_pay
+	from {~reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+->format
+	H=>below is default header
+	H=>%default
+	B->=@|x12==@<x10==@>x20=
+;
 
 
 	# this should produce header and footer with no body
 	select hours
-	from {%reporting}.pay_amount
+	from {~reporting}.pay_amount
 	where 1 = 0
 	;
 
 	# this should produce no output whatsoever
 	select hours
-	from {%reporting}.pay_amount
+	from {~reporting}.pay_amount
 	where 1 = 0
 ->suppress_empty
+	;
+
+	# test suppress empty on non-select
+	insert {~reporting}.pay_amount
+	select * from {~reporting}.pay_amount
+	where 1 = 0
+->suppress_empty
+	;
+
+	# test format on non-select
+	insert {~reporting}.pay_amount
+	select * from {~reporting}.pay_amount
+	where 1 = 0
+->format
+	F=>in this particular insert query, there were %R rows affected
+;
+
+	# make sure everything got reset
+	select *
+	from {~timer}.admin_commission_type
+	;
+	select *
+	from {~timer}.admin_commission_type
+	where 1 = 0
 	;
