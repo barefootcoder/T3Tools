@@ -10,25 +10,25 @@ use Barefoot::DataStore;
 use Barefoot::DataStore::DataSet;
 use Barefoot::input qw<get_yn input>;
 
+use Barefoot::T3::base;
+
 
 ################
 #    main()    #
 ################
 
-my $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
-
-my $data = $t3->load_table("
+my $data = &t3->load_table('
 
 		select client_id, total_price
-		from {~reporting}.profit_item
+		from {@profit_item}
 
-") or die("database error: ", $t3->last_error());
-DataStore::dump_set($data) if DEBUG >= 3;
+') or die("database error: ", &t3->last_error());
+$data->dump_set() if DEBUG >= 3;
 
 my $num_rows = @$data;
 my $client_id = "";
 my $total_price = 0;
-DataStore::foreach_row($data, sub
+$data->foreach_row(sub
 	{
 		if ($client_id)
 		{
@@ -51,18 +51,18 @@ my $inv_num = input("\nInvoice number:");
 my $bill_date = input("Billing date:");
 die("illegal date") unless date::isValid($bill_date);
 
-$t3->begin_tran();
+&t3->begin_tran();
 update_timer("wrong number of rows returned");
-$t3->rollback();
+&t3->rollback();
 
 print "\nInitial attempt successful for invoice $inv_num, "
 		. "client $client_id,\n";
 print "    billing date $bill_date, affecting $num_rows rows\n";
 exit 1 unless get_yn("Proceed?");
 
-$t3->begin_tran();
+&t3->begin_tran();
 update_timer("theoretically impossible error occurred");
-$t3->commit();
+&t3->commit();
 
 print "\nmark was successful\n";
 
@@ -71,44 +71,48 @@ sub update_timer
 {
 	my ($message) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do('
 
-		insert {~timer}.invoice
-			(client_id, invoice_number, invoice_amount, invoice_billdate,
-					create_user, create_date)
-		values ('$client_id', '$inv_num', $total_price, '$bill_date',
-				'$ENV{T3_USER}', {&curdate})
+			insert {@invoice}
+				(client_id, invoice_number, invoice_amount, invoice_billdate,
+						create_user, create_date)
+			values ( {client}, {inv_num}, {total_price}, {bill_date},
+					{user}, {&curdate})
+	',
+			client => $client_id, inv_num => $inv_num,
+			total_price => $total_price, bill_date => $bill_date,
+			user => t3_username(),
+	) or die("can't insert into invoice: ", &t3->last_error());
+	die("$message: ", &t3->last_error()) unless $res->rows_affected() == 1;
 
-
-	") or die("can't insert into invoice: ", $t3->last_error());
-	die("$message: ", $t3->last_error()) unless $res->rows_affected() == 1;
-
-	$res = $t3->do("
+	$res = &t3->do('
 	
-		select invoice_id
-		from {~timer}.invoice
-		where invoice_number = '$inv_num'
-
-	");
-	die("can't retrieve new invoice id: ", $t3->last_error())
+			select invoice_id
+			from {@invoice}
+			where invoice_number = {inv_num}
+	',
+			inv_num => $inv_num,
+	);
+	die("can't retrieve new invoice id: ", &t3->last_error())
 			unless $res and $res->next_row();
-	my $inv_id = $res->col(0);
+	my $inv_id = $res->col('invoice_id');
 	$res->next_row();					# just to close out the result set
 
-	$res = $t3->do("
+	$res = &t3->do('
 
-		update {~timer}.time_log
-		set invoice_id = $inv_id, chguser = '$ENV{T3_USER}',
-				chgdate = {&curdate}
-		where exists
-		(
-			select 1
-			from {~reporting}.profit_item pi
-			where {~timer}.time_log.log_source = pi.log_source
-			and {~timer}.time_log.log_id = pi.log_id
-		)
-
-	") or die("can't update time_log: ", $t3->last_error());
-	die("$message: ", $t3->last_error())
+			update {@time_log}
+			set invoice_id = {inv_id}, chguser = {user},
+					chgdate = {&curdate}
+			where exists
+			(
+				select 1
+				from {@profit_item} pi
+				where {@time_log}.log_source = pi.log_source
+				and {@time_log}.log_id = pi.log_id
+			)
+	',
+			inv_id => $inv_id, user => t3_username(),
+	) or die("can't update time_log: ", &t3->last_error());
+	die("$message: ", &t3->last_error())
 			unless $res->rows_affected() == $num_rows;
 }
