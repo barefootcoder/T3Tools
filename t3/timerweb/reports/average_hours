@@ -24,7 +24,7 @@ select @start_period "start_date", @end_period "end_date", @weeks "num_weeks"
 into #parameters
 go
 
-$(build_pay_amount "
+$(build_profit_item "
 	exists
 	(
 		select 1
@@ -34,6 +34,7 @@ $(build_pay_amount "
 	)
 ")
 exec calc_pay_amount
+exec calc_total_price
 go
 
 update pay_amount
@@ -42,11 +43,14 @@ from pay_amount pa
 where pa.requires_payment = 0
 go
 
-select pa.emp, pa.client, pa.pay_rate,
+select pa.emp, pa.client, isnull(tlp.bill_rate, 0) "bill_rate",
+		pa.pay_rate, isnull(tlp.billing_ratio, 1) "billing_ratio",
 		count(distinct $(period_num pa.date 7)) "num_periods"
 into #emp_wks_worked
-from pay_amount pa
-group by pa.emp, pa.client, pa.pay_rate
+from pay_amount pa, time_log_profit tlp
+where pa.log_source *= tlp.log_source
+and pa.log_id *= tlp.log_id
+group by pa.emp, pa.client, tlp.bill_rate, pa.pay_rate, tlp.billing_ratio
 go
 
 /*
@@ -54,23 +58,31 @@ select * from #emp_wks_worked
 order by emp
 */
 
-print "                                                     weeks           weeks"
-select $(employee_name e) "employee", c.client "C",
-	convert(char(20), c.name) "client",
-	convert(numeric(5,2), pa.pay_rate) "pay",
-	convert(numeric(3), par.num_weeks) "total",
-	convert(numeric(5,2), sum(hours) / par.num_weeks) "t avg",
-	convert(numeric(3), eww.num_periods) "worked",
-	convert(numeric(5,2), sum(hours) / eww.num_periods) "w avg"
-from pay_amount pa, #parameters par, #emp_wks_worked eww, employee e, client c
-where pa.emp = eww.emp
+print "                                                                           total    weeks           weeks"
+select $(employee_name e) "employee", pa.client "C",
+		convert(char(20), c.name) "client",
+		convert(numeric(5,2), isnull(tlp.bill_rate, 0)) "rate",
+		convert(numeric(5,2), pa.pay_rate) "pay",
+		convert(numeric(4,3), isnull(tlp.billing_ratio, 1)) "ratio",
+		convert(numeric(5,2), sum(pa.hours)) "hours",
+		convert(numeric(3), par.num_weeks) "total",
+		convert(numeric(5,2), sum(pa.hours) / par.num_weeks) "t avg",
+		convert(numeric(3), eww.num_periods) "worked",
+		convert(numeric(5,2), sum(pa.hours) / eww.num_periods) "w avg"
+from pay_amount pa, time_log_profit tlp, #parameters par,
+		#emp_wks_worked eww, employee e, client c
+where pa.log_source *= tlp.log_source
+and pa.log_id *= tlp.log_id
+and pa.emp = eww.emp
 and pa.client = eww.client
+and tlp.bill_rate =* eww.bill_rate
 and pa.pay_rate = eww.pay_rate
+and tlp.billing_ratio =* eww.billing_ratio
 and pa.emp = e.emp
 and e.login = "[user]"										??user
 and pa.client = c.client
-group by $(employee_name e), c.client, convert(char(20), c.name), pa.pay_rate,
-		eww.num_periods
+group by $(employee_name e), pa.client, c.name, tlp.bill_rate, pa.pay_rate,
+		tlp.billing_ratio, eww.num_periods
 go
 
 select pa.emp, count(distinct $(period_num pa.date 7)) "num_periods"
@@ -79,12 +91,13 @@ from pay_amount pa
 group by pa.emp
 go
 
-print "                   weeks           weeks"
+print "                        total    weeks           weeks"
 select $(employee_name e) "employee",
-	convert(numeric(3), par.num_weeks) "total",
-	convert(numeric(5,2), sum(hours) / par.num_weeks) "t avg",
-	convert(numeric(3), ewwt.num_periods) "worked",
-	convert(numeric(5,2), sum(hours) / ewwt.num_periods) "w avg"
+		convert(numeric(5,2), sum(pa.hours)) "hours",
+		convert(numeric(3), par.num_weeks) "total",
+		convert(numeric(5,2), sum(pa.hours) / par.num_weeks) "t avg",
+		convert(numeric(3), ewwt.num_periods) "worked",
+		convert(numeric(5,2), sum(pa.hours) / ewwt.num_periods) "w avg"
 from pay_amount pa, #parameters par, #eww_total ewwt, employee e
 where pa.emp = ewwt.emp
 and pa.emp = e.emp
