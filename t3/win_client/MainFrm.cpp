@@ -794,7 +794,6 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 	// true once for every communication event
 	if (MessagePump->thread_finished)	
 	{
-
 		//update status bar
 		status1 = "";
 		StatBar->Refresh();
@@ -824,7 +823,7 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 	{
 		//there's messages, so application icon blinks
 		int bOn = (blink ? 1 : 0);
-		TimerIcons->GetIcon(bOn, Application->Icon);
+		MessageIcons->GetIcon(bOn, Application->Icon);
 		Contacts->Refresh();
 	}
 	else												//no messages
@@ -1240,57 +1239,6 @@ void __fastcall TMainForm::TimersListMouseDown(TObject *Sender,
 //---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
-//      SOME METHODS FOR TESTING STUFF DURING DEVELOPMENT
-//---------------------------------------------------------------------------
-
-void __fastcall TMainForm::TestButtonClick(TObject *Sender)
-{
-	//Just for Testing Stuff
-
-	//Message new_message("Jay", "", "IMON", "A very\n fine\n day");
-	//ShowMessage(new_message.toXML());
-	//Message newer_message(new_message.toXML());
-	//ShowMessage(newer_message.message_text);
-
-	//for (int i = 0; i < Application->ComponentCount; i++)
-	//	ShowMessage(Application->Components[i]->Name);
-
-	/*
-	String Testme = "Today <and> tomorrow <<< \"\" are mighty \"fine\" days";
-	ShowMessage(Testme);
-	Message mess1;
-	mess1.xmlEscape(Testme);
-	ShowMessage(Testme);
-	mess1.xmlUnEscape(Testme);
-	ShowMessage(Testme);
-	*/
-					/*
-	String TestMe = "<MESSAGE from=\"Frog\" to=\"Lizz\" location=\"here >now\">Hey<BOLD> <A a=\"cr\">xxx</A>There</MESSAGE>";
-	//String TestMe = "<MESSAGE>Hey There</MESSAGE>";
-	Message mess1;
-
-	TStringList* attrs = new TStringList;
-	String content;
-	mess1.parseXmlElement(TestMe, attrs, content);
-	for (int i = 0; i < attrs->Count; i++)
-    {
-		ShowMessage(String('*') + attrs->Strings[i] + '*');
-	}
-	ShowMessage(String('*') + content + '*');
-
-	delete attrs;  */
-
-	//ShowMessage(getScrollPosition(Contacts->Handle));
-	//setScrollPosition(Contacts->Handle, 1);
-
-	//ShowMessage("Before Thread");
-	//TransferThread *test = new TransferThread(false);
-	//ShowMessage("After Thread");
-
-}
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
 //      METHODS RELATING TO TALKER INTERFACE
 //---------------------------------------------------------------------------
 
@@ -1667,6 +1615,9 @@ void __fastcall TMainForm::OptionsClick(TObject *Sender)
 
 		delete dlg;
 	}
+	
+	// set the running dude
+	RunningDude->Visible = !!IniOpt->getValueInt("test_mode", 0);
 
 	// added this because IniOpts uses VCL stuff
 	map<string, string> options;
@@ -1674,6 +1625,7 @@ void __fastcall TMainForm::OptionsClick(TObject *Sender)
 	options["server_url"] = IniOpt->getValue("server_url");
 	options["test_mode"] = IniOpt->getValue("test_mode");
 	options["communication_timeout"] = IniOpt->getValue("communication_timeout");
+
 
 	char str[50];
 	sprintf(str, "%d", IniOpt->getValueInt("timer_ping_interval") * 60);

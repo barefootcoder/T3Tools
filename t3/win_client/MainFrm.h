@@ -57,7 +57,6 @@ __published:	// IDE-managed Components
 	TImage *AddTimer;
 	TImage *HideArrow;
 	TImage *RunningDude;
-	TButton *TestButton;
 	TImage *ImOn;
 	TImage *ImageOff;
 	TImage *ImageOn;
@@ -96,6 +95,7 @@ __published:	// IDE-managed Components
 	TMenuItem *mnuUseBars;
 	TMenuItem *mnuUpdate;
 	TMenuItem *mnuUpdate2;
+	TImageList *MessageIcons;
 	void __fastcall FormResize(TObject *Sender);
 	void __fastcall TimersListClick(TObject *Sender);
 	void __fastcall SystemTimerTimer(TObject *Sender);
@@ -110,7 +110,6 @@ __published:	// IDE-managed Components
 	void __fastcall HideContactsClick(TObject *Sender);
 	void __fastcall HideTimersClick(TObject *Sender);
 	void __fastcall RunningDudeClick(TObject *Sender);
-	void __fastcall TestButtonClick(TObject *Sender);
 	void __fastcall ContactsMouseDown(TObject *Sender, TMouseButton Button,
           TShiftState Shift, int X, int Y);
 	void __fastcall ImOnClick(TObject *Sender);
