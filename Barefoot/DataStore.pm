@@ -59,12 +59,12 @@ our $base_types =
 our $constants =
 {
 		Sybase		=>	{
-							BEGINNING_OF_TIME	=>	"'1/1/1753'",
-							END_OF_TIME			=>	"'12/31/9999'",
+							BEGINNING_OF_TIME	=>	"1/1/1753",
+							END_OF_TIME			=>	"12/31/9999",
 						},
 		Oracle		=>	{
-							BEGINNING_OF_TIME	=>	"'01-JAN-0001'",
-							END_OF_TIME			=>	"'31-DEC-9999'",
+							BEGINNING_OF_TIME	=>	"01-JAN-0001",
+							END_OF_TIME			=>	"31-DEC-9999",
 						},
 };
 
@@ -184,6 +184,7 @@ sub _transform_query
 {
 	my $this = shift;
 	my ($query) = @_;
+	my @vars = ();
 
 	# it's a bad idea to allow queries while the data store is modified.
 	# the biggest reason is that the result set returned by do() contains
@@ -201,7 +202,8 @@ sub _transform_query
 				. "run commit_configs()");
 	}
 
-	# print STDERR "about to check for curly braces in query $query\n";
+	print STDERR "about to check for curly braces in query $query\n"
+			if DEBUG >= 3;
 	# this outer if protects queries with no substitutions from paying
 	# the cost for searching for the various types of sub's
 	if ($query =~ /{/)	# if you want % to work in vi, you need a } here
@@ -209,7 +211,7 @@ sub _transform_query
 		# $this->_dump_attribs("before SQL preproc");
 
 		# schema translations
-		while ($query =~ / {% (\w+) } \. /x)
+		while ($query =~ / {~ (\w+) } \. /x)
 		{
 			my $schema = $&;
 			my $schema_name = $1;
@@ -228,7 +230,7 @@ sub _transform_query
 			my @args = ();
 			@args = split(/,\s*/, $2) if $2;
 
-			# print STDERR "translating function $func_name\n";
+			print STDERR "translating function $func_name\n" if DEBUG >= 4;
 			croak("no translation scheme defined")
 					unless exists $this->{config}->{translation_type};
 			my $func_table = $funcs->{$this->{config}->{translation_type}};
@@ -248,12 +250,29 @@ sub _transform_query
 			croak("variable/constant unknown: $varname")
 					unless exists $this->{vars}->{$varname};
 			my $value = $this->{vars}->{$varname};
-			$query =~ s/$variable/$value/g;
+
+			# if we're being called in a list context, we should use
+			# placeholders and return the var values
+			# if being called in a scalar context, do a literal
+			# substitution of the var value into the query
+			if (wantarray)
+			{
+				# can*not* do a global sub here!
+				# that would throw off the order (and number, FTM) of @vars
+				$query =~ s/$variable/\?/;
+				push @vars, $value;
+			}
+			else
+			{
+				$query =~ s/$variable/$value/g;
+			}
 		}
 	}
 
+	print STDERR "current query:\n$query\n" if DEBUG >= 4;
 	print "DataStore current query:\n$query\n" if $this->{show_queries};
 
+	#return wantarray ? ($query, @vars) : $query;
 	return $query;
 }
 
@@ -405,9 +424,11 @@ sub do
 {
 	my $this = shift;
 	my ($query) = @_;
+	my @vars;
 
 	# handle substitutions
 	$query = $this->_transform_query($query);
+	print STDERR "after transform, query is:\n$query\n" if DEBUG >= 4;
 
 	my $sth = $this->{dbh}->prepare($query);
 	unless ($sth)
@@ -415,12 +436,15 @@ sub do
 		$this->{last_err} = $this->{dbh}->errstr();
 		return undef;
 	}
-	my $rows = $sth->execute();
+	print STDERR "successfully prepared query\n" if DEBUG >= 5;
+
+	my $rows = $sth->execute(@vars);
 	unless ($rows)
 	{
 		$this->{last_err} = $sth->errstr();
 		return undef;
 	}
+	print STDERR "successfully executed query\n" if DEBUG >= 5;
 
 	my $results = {};
 	$results->{ds} = $this;
