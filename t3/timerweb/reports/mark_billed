@@ -1,0 +1,28 @@
+-- SORT GROUP: Administrative Updates
+-- TITLE: Mark Logs as Billed
+
+
+use TIMER
+go
+
+begin tran
+go
+
+set nocount on
+go
+
+update log
+set invoice_num = "[invoice]"
+from log l
+where l.client = "[client]"
+and l.proj = "[proj]"										??proj
+and l.date <= "[end_date]"
+and l.invoice_num is null
+go
+
+select "Set " + convert(varchar(10), @@rowcount)
+		+ " log entries to invoice [invoice]"
+go
+
+commit tran
+go

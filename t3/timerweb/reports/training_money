@@ -1,0 +1,23 @@
+-- SORT GROUP: Financial Reports
+-- TITLE: Training Classes Billing
+
+use TIMER
+go
+
+select tc.client "C", c.name "client",
+		convert(char(10), tc.start_time, 101) "date",
+		tc.num_students "#", tr.rate,
+		convert(numeric(4,2), datediff(minute, tc.start_time, tc.end_time)
+				/ 60.0 - tc.num_breaks * .25) "hours",
+		convert(money, tr.rate * tc.num_students * convert(numeric(4,2),
+				datediff(minute, tc.start_time, tc.end_time) / 60.0
+				- tc.num_breaks * .25)) "cost"
+from training_class tc, training_rate tr, client c
+where tc.client = c.client
+and tc.client = tr.client
+and tc.proj = tr.proj
+order by start_time
+compute sum(convert(money, tr.rate * tc.num_students * convert(numeric(4,2),
+				datediff(minute, tc.start_time, tc.end_time) / 60.0
+				- tc.num_breaks * .25)))
+go

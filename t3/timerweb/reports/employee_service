@@ -1,0 +1,30 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Service Periods of Employees
+
+use TIMER
+go
+
+print "Service periods for all employees"
+print "Period from [start_date] to [end_date]"
+print ""
+print ""
+go
+
+select l.emp "E", $(employee_name e) "employee",
+		convert(char(12), min(l.date), 107) "first worked",
+		convert(char(12), max(l.date), 107) "last worked"
+from log l, employee e
+where l.emp = e.emp
+and l.date between '[start_date]' and '[end_date]'
+and exists
+(
+	select 1
+	from pay_rate pr
+	where l.emp = pr.emp
+	and pr.rate_type = 'P'
+	and l.client = isnull(pr.client, l.client)
+	and l.proj = isnull(pr.proj, l.proj)
+	and l.date between pr.start_date and pr.end_date
+)
+group by l.emp, $(employee_name e)
+go

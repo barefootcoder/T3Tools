@@ -1,0 +1,170 @@
+-- SORT GROUP: Historical Reports
+-- TITLE: Gross Profit for 1998
+
+use TIMER
+go
+
+
+$(build_emp_comm "
+	date between '1/1/1998' and '12/31/1998'
+")
+exec emp_commission
+go
+
+print ""
+print ""
+set nocount on
+go
+
+-- gross sales (total)
+declare @gross_sales money
+select @gross_sales = (select sum(amt_billed) from #emp_comm)
+
+-- gross sales (by client)
+select c.name "client",
+		sum(amt_billed) "gross sales",
+		convert(numeric(4,2), 100 * sum(amt_billed) / @gross_sales) "% GrSls"
+from #emp_comm ec, client c
+where ec.client = c.client
+group by c.name
+compute sum(sum(amt_billed))
+
+-- things you subtract from gross sales to get simple profit
+select sum(amt_paid) "employee pay"
+from #emp_comm ec
+select sum(empcomm) "employee comm.", sum(salescomm) "sales comm.",
+		sum(refcomm) "referral comm."
+from #emp_comm ec
+
+-- save these for later
+declare @employee_pay money
+select @employee_pay = (select sum(amt_paid) from #emp_comm)
+declare @sales_comm money
+select @sales_comm = (select sum(salescomm) from #emp_comm)
+declare @ref_comm money
+select @ref_comm = (select sum(refcomm) from #emp_comm)
+declare @emp_comm money
+select @emp_comm = (select sum(empcomm) from #emp_comm)
+
+-- save and show simple profit
+declare @simple_profit money
+select @simple_profit = @gross_sales - @employee_pay - @sales_comm
+		- @ref_comm - @emp_comm
+print ""
+select @simple_profit "simple profit",
+		convert(numeric(4,2), 100 * @simple_profit / @gross_sales) "margin"
+print ""
+
+-- figure admin commissions
+update expense
+set expense_amount = @simple_profit * .06
+where expense_type = "OVERHEAD"
+and expense_name = "Admin Commissions"
+
+-- figure BOPL tax
+update expense
+set expense_amount = @gross_sales * .0019
+where expense_type = "OVERHEAD"
+and expense_name = "BOPL Tax"
+
+-- figure admin overhead
+	-- first, get bookkeeper and accountant amounts
+declare @admin_overhead money
+select @admin_overhead = (
+	select sum(ao.bookkeeper_amount) + sum(ao.accountant_amount)
+	from admin_overhead ao
+)
+	-- while we're here, subtract this from the total for professional fees
+update expense
+set expense_amount = e2.expense_amount - @admin_overhead
+from expense e, expense e2
+where e.expense_type = "YEARLY"
+and e.expense_name = "Acct / Bkkpr / Lawyer / etc"
+and e2.expense_type = "BASE"
+and e2.expense_name = e.expense_name
+	-- now get the rest (Tim's and Patti's time, including their payroll o'head)
+select @admin_overhead = @admin_overhead + (
+	select sum(eo.amount_overhead)
+	from emp_overhead eo
+)
+	-- put that in the expense table
+update expense
+set expense_amount = @admin_overhead
+from expense e
+where e.expense_type = "OVERHEAD"
+and e.expense_name = "Admin Overhead"
+
+-- employee (payroll) overhead for billable time
+declare @employee_overhead money
+select @employee_overhead = (
+	select sum(eo.amount_billable) - sum(eo.billable_base)
+	from emp_overhead eo
+)
+update expense
+set expense_amount = @employee_overhead
+from expense e
+where e.expense_type = "OVERHEAD"
+and e.expense_name = "Employee Overhead"
+
+-- show all the overhead expenses (subtracting which gets you gross profit)
+select expense_name, expense_amount
+from expense
+where expense_type = "OVERHEAD"
+compute sum(expense_amount)
+
+-- now get the gross profit
+declare @total_overhead money
+select @total_overhead = (
+		select sum(expense_amount)
+		from expense
+		where expense_type = "OVERHEAD"
+	)
+declare @gross_profit money
+select @gross_profit = @simple_profit - @total_overhead
+select @gross_profit "gross profit",
+		convert(numeric(4,2), 100 * @gross_profit / @gross_sales) "margin"
+print ""
+
+-- figure the vacation time money
+declare @vacation money
+select @vacation = (
+	select sum(amount_vacation)
+	from emp_overhead
+)
+update expense
+set expense_amount = @vacation
+where expense_type = "YEARLY"
+and expense_name = "Vacation Time"
+
+-- now figure the rest of the non-billable payroll
+declare @nonbillable money
+select @nonbillable = (
+	select sum(amount_nonbillable)
+	from emp_overhead
+)
+update expense
+set expense_amount = @nonbillable
+where expense_type = "PAYROLL"
+and expense_name = "Non-Billable Payroll"
+
+-- now show remainder of expenses
+print ""
+print ""
+select expense_name, expense_type, expense_amount
+from expense
+where expense_type not in ("OVERHEAD","BASE")
+order by expense_type, expense_name
+compute sum(expense_amount)
+
+-- subtracting which gives us net profit
+declare @monthly_expenses money
+select @monthly_expenses = (
+		select sum(expense_amount)
+		from expense
+		where expense_type not in ("OVERHEAD","BASE")
+	)
+declare @net_profit money
+select @net_profit = @gross_profit - @monthly_expenses
+select @net_profit "net profit"
+
+go

@@ -1,0 +1,55 @@
+-- SORT GROUP: Historical Reports
+-- TITLE: Complete Project History (by Client)
+
+use TIMER
+go
+
+print ""
+select "History for " + c.name
+from client c
+where c.client = "[client]"
+print ""
+go
+
+$(build_emp_comm "
+	client = '[client]'
+")
+exec emp_commission
+go
+
+-- for debugging
+/*
+select source_tbl, emp, client, proj, convert(char(10), date, 101) "date",
+	bill_hours, convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(7,2), amt_billed) "amt billed",
+	hours, convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+select p.name "Project",
+		-- convert(char(10), p.start_date, 101) "starting",
+		convert(numeric(6,2), sum(ec.bill_hours)) "total hours",
+		convert(numeric(10,2), sum(ec.amt_billed)) "total billed",
+		convert(numeric(10,2), sum(ec.amt_paid)) "paid to staff",
+		convert(numeric(10,2), sum(ec.salescomm) + sum(ec.refcomm)
+				+ sum(ec.empcomm)) "commissions",
+		convert(numeric(10,2), sum(ec.amt_paid) + sum(ec.salescomm)
+				+ sum(ec.refcomm) + sum(ec.empcomm)) "total paid",
+		convert(numeric(10,2), sum(ec.diff) - sum(ec.empcomm)) "profit",
+		convert(numeric(5,2), 100.0 * (sum(ec.diff) - sum(ec.empcomm))
+				/ (sum(ec.amt_billed) + 1)) "margin"
+from #emp_comm ec, project p
+where ec.diff is not NULL
+and ec.client = p.client
+and ec.proj = p.proj
+group by p.name, p.start_date
+order by p.start_date, p.name
+-- compute sum(sum(ec.bill_hours)), sum(sum(ec.amt_billed))
+--	by p.start_date, p.name
+go

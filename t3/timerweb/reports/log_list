@@ -1,0 +1,33 @@
+-- SORT GROUP: Employee Reports
+-- TITLE: Log Entry Listing
+
+use TIMER
+go
+
+select l.id, l.emp, e.name "employee", l.client "CLI", l.proj "PRJ",
+		l.phase "PHASE", convert(char(10), l.date, 101) "date", l.hours,
+		l.comments
+from log l, employee e, client c
+where l.emp = e.emp
+and e.login = "[user]"										??user
+and l.client = c.client
+and c.client = "[client]"									??client
+and l.proj = "[proj]"										??proj
+and l.date between "[start_date]" and "[end_date]"
+order by convert(char(8), l.date, 112)
+-- compute sum(l.hours)
+go
+
+select l.emp, e.name "employee", l.client "cli", c.name "client",
+		l.proj, l.phase, sum(l.hours)
+from log l, employee e, client c
+where l.emp = e.emp
+and e.login = "[user]"										??user
+and l.client = c.client
+and c.client = "[client]"									??client
+and l.proj = "[proj]"										??proj
+and l.date between "[start_date]" and "[end_date]"
+group by l.emp, e.name, l.client, c.name, l.proj, l.phase
+order by l.client, l.proj
+compute sum(sum(l.hours)) by l.client, l.proj
+go

@@ -1,0 +1,80 @@
+-- SORT GROUP: Customer Reports
+-- TITLE: Detailed Resource Report
+
+use TIMER
+go
+
+set nocount on
+go
+
+$(build_emp_comm "
+	invoice_num = '[invoice]'								??invoice
+	client = '[client]'										?!invoice
+	and date <= '[end_date]'								?!invoice
+	and invoice_num is NULL									?!invoice
+")
+exec billing_amounts
+go
+
+declare @client_header varchar(100)
+select distinct @client_header
+		= "<CENTER><H3>for client: " + c.name + "</H3></CENTER>"
+from #emp_comm ec, client c
+where ec.client = c.client
+print @client_header
+go
+
+print "<HR><H4>Details by Date</H4>"
+select p.name "project", ph.name "phase", rr.resource_name "resource",
+		convert(char(10), ec.date, 101) "date",
+		convert(numeric(6,2), ec.bill_hours) "hours" -- ,
+		-- convert(numeric(7,2), amt_billed) "total"
+from #emp_comm ec, log l, project p, phase ph, employee e,
+		resource_rate rr, resource_employee re
+where ec.source_tbl = 'log'
+and ec.source_id = l.id
+and ec.client = p.client
+and ec.proj = p.proj
+and l.phase = ph.phase
+and ec.emp = re.emp
+and ec.client = re.client
+and ec.date between re.start_date and re.end_date
+and re.client = rr.client
+and re.resrc = rr.resrc
+and ec.date between rr.start_date and rr.end_date
+and ec.emp = e.emp
+order by p.name, ph.name, rr.rate
+go
+
+print "<HR><H4>Totals by Project and Phase</H4>"
+select p.name "project", ph.name "phase",
+		convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+		sum(amt_billed) "total"
+from #emp_comm ec, log l, project p, phase ph, employee e
+where ec.source_tbl = 'log'
+and ec.source_id = l.id
+and ec.client = p.client
+and ec.proj = p.proj
+and l.phase = ph.phase
+and ec.emp = e.emp
+group by p.name, ph.name
+order by p.name, ph.name
+compute sum(sum(amt_billed))
+	by p.name
+go
+
+print "<HR><H4>Totals by Resource</H4>"
+select rr.resource_name "resource",
+		convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+		sum(amt_billed) "total"
+from #emp_comm ec, resource_rate rr, resource_employee re
+where ec.emp = re.emp
+and ec.client = re.client
+and ec.date between re.start_date and re.end_date
+and re.client = rr.client
+and re.resrc = rr.resrc
+and ec.date between rr.start_date and rr.end_date
+group by rr.rate, rr.resource_name
+order by rr.rate desc
+compute sum(sum(amt_billed))
+go

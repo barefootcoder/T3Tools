@@ -1,0 +1,95 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Billing/Pay Rate Spreadsheet
+
+use TIMER
+go
+
+print "Current billing and pay rates"
+go
+
+select e.emp "E", $(employee_name e) "employee", c.client "C",
+		c.name "client", p.name "project",
+		convert(numeric(5,2), br.rate) "billing",
+		convert(numeric(5,2), pr.rate) "pay",
+		isnull(brat.ratio, 1) "ratio",
+		convert(numeric(5,2), br.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
+from employee e, client c, project p, client_employee ce,
+		bill_rate br, pay_rate pr, billing_ratio brat
+where ce.emp = e.emp
+and ce.client = c.client
+and getdate() between ce.start_date and ce.end_date
+and e.emp = pr.emp
+and isnull(pr.client, c.client) = p.client
+and
+(
+	pr.proj = p.proj
+	or
+	(
+		pr.proj is null
+		and not exists
+		(
+			select 1
+			from pay_rate pr2
+			where pr2.emp = e.emp
+			and pr2.client = c.client
+			and pr2.proj = p.proj
+			and getdate() between pr2.start_date and pr2.end_date
+		)
+	)
+)
+and getdate() between pr.start_date and pr.end_date
+and p.client = c.client
+and p.proj_type != 'R'
+and c.client = br.client
+and br.proj = p.proj
+and getdate() between br.start_date and br.end_date
+and brat.emp =* e.emp
+and brat.client =* p.client
+and (brat.proj =* p.proj or brat.proj is null)
+and getdate() between brat.start_date and brat.end_date
+union
+select e.emp "E", $(employee_name e) "employee", c.client "C",
+		c.name "client", p.name "project",
+		convert(numeric(5,2), rr.rate) "billing",
+		convert(numeric(5,2), pr.rate) "pay",
+		isnull(brat.ratio, 1) "ratio",
+		convert(numeric(5,2), rr.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
+from employee e, client c, project p, client_employee ce,
+		resource_rate rr, resource_employee re, pay_rate pr, billing_ratio brat
+where ce.emp = e.emp
+and ce.client = c.client
+and getdate() between ce.start_date and ce.end_date
+and e.emp = pr.emp
+and isnull(pr.client, c.client) = c.client
+and
+(
+	pr.proj = p.proj
+	or
+	(
+		pr.proj is null
+		and not exists
+		(
+			select 1
+			from pay_rate pr2
+			where pr2.emp = e.emp
+			and pr2.client = c.client
+			and pr2.proj = p.proj
+			and getdate() between pr2.start_date and pr2.end_date
+		)
+	)
+)
+and getdate() between pr.start_date and pr.end_date
+and p.client = c.client
+and p.proj_type = 'R'
+and c.client = rr.client
+and getdate() between rr.start_date and rr.end_date
+and rr.client = re.client
+and rr.resrc = re.resrc
+and re.emp = e.emp
+and getdate() between re.start_date and re.end_date
+and brat.emp =* e.emp
+and brat.client =* p.client
+and (brat.proj =* p.proj or brat.proj is null)
+and getdate() between brat.start_date and brat.end_date
+order by e.emp, c.client
+go

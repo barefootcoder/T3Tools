@@ -1,0 +1,16 @@
+-- SORT GROUP: Database Lists
+-- TITLE: History of Pay Rates (by user)
+
+use TIMER
+go
+
+select e.name "employee", c.name "client", pr.proj, pr.rate_type "T",
+		convert(numeric(6,2), pr.rate) "rate",
+		convert(char(10), pr.start_date, 101) "start date",
+		convert(char(10), pr.end_date, 101) "end date"
+from pay_rate pr, employee e, client c
+where pr.emp = e.emp
+and e.login = "[user]"
+and pr.client *= c.client
+order by pr.client, pr.proj, pr.start_date
+go

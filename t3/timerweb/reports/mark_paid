@@ -1,0 +1,27 @@
+-- SORT GROUP: Administrative Updates
+-- TITLE: Mark Invoices as Paid
+
+
+use TIMER
+go
+
+begin tran
+go
+
+set nocount on
+go
+
+update log
+set invoice_paydate = '[inv_paydate]'
+from log l
+where l.client = '[client]'
+and l.proj = '[proj]'										??proj
+and l.invoice_num = '[invoice]'
+go
+
+select 'Set ' + convert(varchar(10), @@rowcount)
+		+ ' log entries to paid on [inv_paydate]'
+go
+
+commit tran
+go

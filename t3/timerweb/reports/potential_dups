@@ -1,0 +1,17 @@
+-- SORT GROUP: Error Checkers
+-- TITLE: Potential Duplicate Entries
+
+use TIMER
+go
+
+select l.emp "E", e.name "employee", l.client "C", c.name "client name",
+		convert(char(10), l.date, 101) "date", l.hours,
+		substring(l.comments, 1, 30) "comments", count(*) "# Dups"
+from log l, employee e, client c
+where l.emp = e.emp
+and l.client = c.client
+group by l.emp, e.name, l.client, c.name, l.proj, l.phase,
+		l.date, l.hours, substring(l.comments, 1, 30)
+having count(*) > 1
+order by convert(char(8), l.date, 112) 
+go

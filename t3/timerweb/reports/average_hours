@@ -1,0 +1,89 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Average Hours by Employee/Client/Rate
+
+use TIMER
+go
+
+set nocount on
+go
+
+print "Period from [start_date] to [end_date]"
+print ""
+print ""
+go
+
+declare @start_period int
+select @start_period = (
+	select $(period_num "'[start_date]'" 7)
+)
+declare @end_period int
+select @end_period = (
+	select $(period_num "'[end_date]'" 7)
+)
+declare @weeks int
+select @weeks = @end_period - @start_period + 1
+
+$(build_emp_comm "
+	date between $(period_start @start_period 7)
+			and $(period_end @end_period 7)
+")
+exec emp_commission
+
+update #emp_comm
+set payrate = 0
+from #emp_comm ec, project p, project_type pt
+where ec.client = p.client
+and ec.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_payment = 0
+
+select ec.emp, ec.client, ec.payrate,
+		count(distinct $(period_num ec.date 7)) "num_periods"
+into #emp_wks_worked
+from #emp_comm ec
+group by ec.emp, ec.client, ec.payrate
+
+/*
+select * from #emp_wks_worked
+order by emp
+*/
+
+print "                                                     weeks           weeks"
+select $(employee_name e) "employee", c.client "C",
+	convert(char(20), c.name) "client",
+	convert(numeric(5,2), ec.payrate) "pay",
+	convert(numeric(3), @weeks) "total",
+	convert(numeric(5,2), sum(hours) / @weeks) "t avg",
+	convert(numeric(3), eww.num_periods) "worked",
+	convert(numeric(5,2), sum(hours) / eww.num_periods) "w avg"
+from #emp_comm ec, #emp_wks_worked eww, employee e, client c
+where ec.emp = eww.emp
+and ec.client = eww.client
+and ec.payrate = eww.payrate
+and ec.emp = e.emp
+and e.login = "[user]"										??user
+and ec.client = c.client
+and ec.date between $(period_start @start_period 7)
+		and $(period_end @end_period 7)
+group by $(employee_name e), c.client, convert(char(20), c.name), ec.payrate,
+		eww.num_periods
+
+select ec.emp, count(distinct $(period_num ec.date 7)) "num_periods"
+into #eww_total
+from #emp_comm ec
+group by ec.emp
+
+print "                   weeks           weeks"
+select $(employee_name e) "employee",
+	convert(numeric(3), @weeks) "total",
+	convert(numeric(5,2), sum(hours) / @weeks) "t avg",
+	convert(numeric(3), ewwt.num_periods) "worked",
+	convert(numeric(5,2), sum(hours) / ewwt.num_periods) "w avg"
+from #emp_comm ec, #eww_total ewwt, employee e
+where ec.emp = ewwt.emp
+and ec.emp = e.emp
+and e.login = "[user]"										??user
+and ec.date between $(period_start @start_period 7)
+		and $(period_end @end_period 7)
+group by $(employee_name e), ewwt.num_periods
+go

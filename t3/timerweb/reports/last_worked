@@ -1,0 +1,17 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Last Date Worked by Employee/Current Client
+
+use TIMER
+go
+
+select ce.emp "E", $(employee_name e) "employee", ce.client "C",
+		c.name "client", max(l.date) "last worked"
+from client_employee ce, employee e, client c, log l
+where ce.emp = e.emp
+and ce.client = c.client
+and ce.emp = l.emp
+and ce.client = l.client
+and l.date between ce.start_date and ce.end_date
+and getdate() between ce.start_date and ce.end_date
+group by ce.emp, $(employee_name e), ce.client, c.name
+go

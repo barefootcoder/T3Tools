@@ -1,0 +1,77 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Hours per Week (by employee/rate)
+
+use TIMER
+go
+
+set nocount on
+go
+
+print "<H4>Hours per week</H4>"
+select "for " + $(employee_name e)								??user
+from employee e													??user
+where e.login = "[user]"										??user
+print "for all employees"										?!user
+print "Period from [start_date] to [end_date]"
+print ""
+print ""
+go
+
+
+$(build_emp_comm "
+	date between '[start_date]' and '[end_date]'
+	and emp in													??user
+	(															??user
+		select emp												??user
+		from employee											??user
+		where login = '[user]'									??user
+	)															??user
+" "1 = 0" "1 = 0")
+exec emp_commission
+go
+
+-- for debugging
+/*
+select emp, client, proj, convert(char(10), date, 101) "date", hours,
+	convert(numeric(6,2), payrate) "payrate", paytype "PayT",
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), amt_billed) "amt_billed",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+select
+		$(employee_name e) "employee",							?!user
+		convert(numeric(5,2), ec.payrate) "payrate", c.name "client",
+		$(period_name "$(period_num ec.date 7)" 7) "week",
+		sum(ec.hours) "hours"
+from #emp_comm ec, employee e, client c
+where ec.emp = e.emp
+and e.login = "[user]"											??user
+and ec.client = c.client
+group by
+		$(employee_name e),										?!user
+		convert(numeric(5,2), ec.payrate), c.name,
+		$(period_name "$(period_num ec.date 7)" 7)
+order by ec.payrate, c.name
+compute sum(sum(ec.hours)) by ec.payrate, c.name
+go
+
+select
+		$(employee_name e) "employee",							?!user
+		$(period_name "$(period_num ec.date 7)" 7) "week",
+		sum(ec.hours) "hours"
+from #emp_comm ec, employee e
+where ec.emp = e.emp
+and e.login = "[user]"											??user
+group by
+		$(employee_name e),										?!user
+		$(period_name "$(period_num ec.date 7)" 7)
+compute sum(sum(ec.hours))
+go

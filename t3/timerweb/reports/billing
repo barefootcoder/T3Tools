@@ -1,0 +1,120 @@
+-- SORT GROUP: Financial Reports
+-- TITLE: Billing Report
+
+use TIMER
+go
+
+$(build_emp_comm "
+	client = '[client]'
+	and proj = '[proj]'										??proj
+	and invoice_num = '[invoice]'							??invoice
+	and date <= '[end_date]'								?!invoice
+	and invoice_num is NULL									?!invoice
+" "
+	client = '[client]'
+	and invoice_num = '[invoice]'							??invoice
+	and date_delivered <= '[end_date]'						?!invoice
+	and invoice_num is NULL									?!invoice
+" "
+	client = '[client]'
+	and proj = '[proj]'										??proj
+	and invoice_num = '[invoice]'							??invoice
+	and start_time <= '[end_date]'							?!invoice
+	and invoice_num is NULL									?!invoice
+")
+exec billing_amounts
+go
+
+-- for debugging
+/*
+select source_tbl, emp, client, proj, convert(char(10), date, 101) "date",
+	hours, convert(numeric(6,2), payrate) "payrate", paytype "PayT",
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), amt_billed) "amt_billed",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+print ""
+print ""
+--set nocount on
+go
+
+declare @client_name varchar(30)
+select @client_name = 
+(
+	select c.name
+	from client c
+	where c.client = "[client]"
+)
+
+select @client_name "Client", convert(char(10), min(ec.date), 101) "From",
+		convert(char(10), max(ec.date), 101) "To"
+from #emp_comm ec
+go
+
+if exists
+(
+	select 1
+	from #emp_comm ec, project p, project_type pt
+	where ec.source_tbl = "log"
+	and ec.client = p.client
+	and ec.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and pt.bill_by_employee = 0
+)
+	select p.name "project",
+			-- convert(char(10), min(ec.date), 101) "from",
+			-- convert(char(10), max(ec.date), 101) "to",
+			convert(numeric(6,2), ec.billrate) "rate",
+			convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+			convert(numeric(7,2), sum(ec.amt_billed)) "total amount"
+	from #emp_comm ec, project p, project_type pt
+	where ec.source_tbl = "log"
+	and ec.client = p.client
+	and ec.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and pt.bill_by_employee = 0
+	group by p.name, convert(numeric(6,2), ec.billrate)
+	order by p.name
+	compute sum(convert(numeric(7,2), sum(ec.amt_billed)))
+go
+
+if exists
+(
+	select 1
+	from #emp_comm ec, project p, project_type pt
+	where ec.source_tbl = "log"
+	and ec.client = p.client
+	and ec.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and pt.bill_by_employee = 1
+)
+select rr.resource_name "resource",
+		-- convert(char(10), min(ec.date), 101) "from",
+		-- convert(char(10), max(ec.date), 101) "to",
+		convert(numeric(6,2), ec.billrate) "rate",
+		convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+		convert(numeric(7,2), sum(ec.amt_billed)) "total amount"
+from #emp_comm ec, project p, project_type pt,
+		resource_rate rr, resource_employee re
+where ec.source_tbl = "log"
+and ec.client = p.client
+and ec.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.bill_by_employee = 1
+and ec.emp = re.emp
+and re.resrc = rr.resrc
+and ec.client = rr.client
+and ec.date between rr.start_date and rr.end_date
+and ec.date between re.start_date and re.end_date
+group by rr.resource_name, convert(numeric(6,2), ec.billrate)
+order by convert(numeric(6,2), ec.billrate) desc, rr.resource_name
+compute sum(convert(numeric(7,2), sum(ec.amt_billed)))
+go

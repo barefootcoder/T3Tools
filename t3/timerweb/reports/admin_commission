@@ -1,0 +1,109 @@
+-- SORT GROUP: Commission Reports
+-- TITLE: Administrative Commission
+
+use TIMER
+go
+
+print ""
+print ""
+print "<H3>Period from [start_date] to [end_date]</H3>"
+print ""
+print ""
+go
+
+set nocount on
+go
+
+
+$(build_emp_comm "
+	date between '[start_date]' and '[end_date]'
+	and admin_comm_paydate is NULL
+	and exists
+	(
+		select 1
+		from project p, project_type pt
+		where l.client = p.client
+		and l.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.requires_billing = 1
+	)
+" "
+	date_delivered between '[start_date]' and '[end_date]'
+	and admin_comm_paydate is NULL
+" "
+	start_time between '[start_date]' and '[end_date]'
+	and admin_comm_paydate is NULL
+")
+exec emp_commission
+go
+
+-- for debugging
+/*
+select source_tbl, emp, client, proj, convert(char(10), date, 101) "date",
+	hours, convert(numeric(6,2), payrate) "payrate", paytype "PayT",
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), amt_billed) "amt_billed",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+select convert(char(25), c.name) "client", ec.proj,
+		convert(char(10), $(employee_name e)) "employee",
+		convert(numeric(5,2), sum(ec.hours)) "hours",
+		convert(numeric(7,2), sum(amt_billed)) "amt billed",
+		convert(numeric(6,2), sum(salescomm)) "sls comm",
+		convert(numeric(5,2), sum(refcomm)) "ref comm",
+		convert(numeric(7,2), sum(amt_paid)) "amt paid",
+		convert(numeric(6,2), sum(empcomm)) "emp comm",
+		convert(numeric(7,2), sum(diff) - sum(empcomm)) "simp prof"
+/*
+		convert(numeric(4,2), (sum(diff) - sum(empcomm))
+				/ sum(amt_billed) * 100) "margin"
+*/
+from #emp_comm ec, client c, employee e
+where ec.source_tbl != 'training_class'		-- these are handled by other rows
+and ec.diff != NULL							-- hopefully ditto
+and ec.client = c.client
+and ec.emp *= e.emp
+group by convert(char(25), c.name), ec.proj,
+		convert(char(10), $(employee_name e))
+go
+
+select convert(numeric(10,2), sum(amt_billed)) "gross sales",
+		convert(numeric(10,2), sum(amt_paid)) "COGS",
+		convert(numeric(10,2), sum(salescomm)) "sales comm",
+		convert(numeric(10,2), sum(refcomm)) "ref comm",
+		convert(numeric(10,2), sum(empcomm)) "emp comm",
+		convert(numeric(10,2), sum(salescomm) + sum(refcomm)
+				+ sum(empcomm)) "total comms",
+		convert(numeric(10,2), sum(diff) - sum(empcomm)) "simple profit"
+from #emp_comm
+where source_tbl != 'training_class'		-- same as above
+and diff != NULL
+go
+
+print ""
+print ""
+go
+
+declare @total_simple_profit money
+select @total_simple_profit =
+(
+	select sum(diff) - sum(empcomm)
+	from #emp_comm
+)
+
+select convert(numeric(7,2), @total_simple_profit) "simple profit",
+		ac.name "commission", ac.amount "percentage",
+		convert(numeric(7,2), ac.amount * @total_simple_profit / 100) "amount"
+from admin_commission ac
+where "[end_date]" between ac.start_date and ac.end_date
+order by ac.priority
+compute sum(convert(numeric(7,2), ac.amount * @total_simple_profit / 100))
+go

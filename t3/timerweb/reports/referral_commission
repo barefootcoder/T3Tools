@@ -1,0 +1,46 @@
+-- SORT GROUP: Commission Reports
+-- TITLE: Referral Commission
+
+use TIMER
+go
+
+print "Period from [start_date] to [end_date]"
+print ""
+print ""
+go
+
+$(build_emp_comm "
+	invoice_paydate between '[start_date]' and '[end_date]'
+	and ref_comm_paydate is NULL
+" "1 = 0" "1 = 0")
+-- now get all commissions (including referral) for these
+exec emp_commission
+go
+
+-- for debugging
+/*
+select emp, client, proj, convert(char(10), date, 101) "date", hours,
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(7,2), amt_paid) "amt paid"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+-- now for the actual report
+select s.name "salesman", $(employee_name e) "employee", c.name "client",
+		convert(numeric(5,2), sum(ec.hours)) "total hrs",
+		sum(ec.refcomm) "total referral comm"
+from #emp_comm ec, salesman s, referral_commission rc, employee e, client c
+where ec.emp = rc.emp
+and ec.date between rc.start_date and rc.end_date
+and rc.salesman = s.salesman
+and ec.emp = e.emp
+and ec.client = c.client
+group by s.name, $(employee_name e), c.name
+order by s.name, $(employee_name e), c.name
+compute sum(sum(ec.refcomm))
+	by s.name
+go

@@ -1,0 +1,81 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Progress So Far on Estimates
+
+use TIMER
+go
+
+set nocount on
+go
+
+print ''
+print ''
+select '<H3>Estimates for ' + c.name + '</H3>'
+from client c
+where c.client = '[client]'
+print ''
+go
+
+$(build_emp_comm "
+	client = '[client]'
+	and exists
+	(
+		select 1
+		from estimate e
+		where l.client = e.client
+		and l.proj = e.proj
+	)
+" "1 = 0" "1 = 0")
+exec billing_amounts
+go
+
+select p.name "project", ph.name "phase",
+		convert(numeric(7,2), sum(ec.hours)) "hours",
+		sum(ec.amt_billed) "total money",
+		convert(numeric(7,2),
+				sum(ec.amt_billed) / e.low_range_amount * 100) "% low",
+		convert(numeric(7,2),
+				sum(ec.amt_billed) / e.high_range_amount * 100) "% high",
+		convert(numeric(7,2),
+				sum(ec.amt_billed) / e.maximum_amount * 100) "% max"
+from #emp_comm ec, log l, estimate e, project p, phase ph
+where ec.source_tbl = 'log'
+and ec.source_id = l.id 
+and ec.client *= e.client
+and ec.proj *= e.proj
+and l.phase *= e.phase
+and ec.client = p.client
+and ec.proj = p.proj
+and l.phase = ph.phase
+group by p.name, ph.name,
+		e.low_range_amount, e.high_range_amount, e.maximum_amount
+go
+
+select e.client, e.proj, sum(e.low_range_amount) "low_range_amount",
+		sum(e.high_range_amount) "high_range_amount",
+		sum(e.maximum_amount) "maximum_amount"
+into #proj_estimates
+from estimate e
+group by e.client, e.proj
+
+select p.name "project",
+		convert(numeric(6,2), sum(ec.hours)) "hours",
+		sum(ec.amt_billed) "total money",
+		convert(numeric(5,2),
+				sum(ec.amt_billed) / pe.low_range_amount * 100) "% low",
+		convert(numeric(5,2),
+				sum(ec.amt_billed) / pe.high_range_amount * 100) "% high",
+		convert(numeric(5,2),
+				sum(ec.amt_billed) / pe.maximum_amount * 100) "% max"
+from #emp_comm ec, #proj_estimates pe, project p
+where ec.client = pe.client
+and ec.proj = pe.proj
+and ec.client = p.client
+and ec.proj = p.proj
+group by p.name,
+		pe.low_range_amount, pe.high_range_amount, pe.maximum_amount
+compute sum(sum(ec.amt_billed))
+
+select 'This report was generated on', getdate()
+select 'The latest work recorded in this report was on', max(ec.date)
+from #emp_comm ec
+go

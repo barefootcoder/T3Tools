@@ -1,0 +1,21 @@
+-- SORT GROUP: Employee Reports
+-- TITLE: Total Vacation Hours (Year To Date)
+
+use TIMER
+go
+
+declare @ytd char(10)
+select @ytd = "1/1/" + substring(convert(char(8), getdate(), 112), 1, 4)
+
+select l.emp, e.name "employee", l.proj,
+		convert(char(10), l.date, 101) "date", l.hours,
+		l.comments
+from log l, employee e
+where l.emp = e.emp
+and e.login = "[user]"
+and l.client = "001"
+and l.proj = "VAC"
+and l.date >= @ytd
+order by convert(char(8), l.date, 112)
+compute sum(l.hours)
+go

@@ -1,0 +1,39 @@
+-- SORT GROUP: Administrative Updates
+-- TITLE: Mark Payroll as Paid
+
+
+use TIMER
+go
+
+begin tran
+go
+
+set nocount on
+go
+
+update log
+set payroll_date = '[check_date]'
+from log l
+where l.date <= '[end_date]'
+and l.payroll_date is NULL
+go
+
+select 'Set ' + convert(varchar(10), @@rowcount)
+		+ ' log entries to payrolled on [check_date]'
+go
+
+update training_class
+set payroll_date = '[check_date]'
+from training_class tc, project p
+where tc.client = p.client
+and tc.proj = p.proj
+and p.end_date <= '[end_date]'
+and tc.payroll_date is NULL
+go
+
+select 'Set ' + convert(varchar(10), @@rowcount)
+		+ ' training classes to payrolled on [check_date]'
+go
+
+commit tran
+go

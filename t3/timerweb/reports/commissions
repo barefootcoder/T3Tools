@@ -1,0 +1,35 @@
+-- SORT GROUP: Database Lists
+-- TITLE: Sales and Referral Commission Rates (all clients)
+
+use TIMER
+go
+
+print ""
+print "Sales Commissions"
+print ""
+go
+select sc.salesman "S", s.name "salesman",
+		sc.client "C", c.name "client", sc.proj "P   ",
+		sc.commission_pct "comm %",
+		convert(char(10), sc.start_date, 101) "start date",
+		convert(char(10), sc.end_date, 101) "end date"
+from sales_commission sc, salesman s, client c
+where sc.salesman = s.salesman
+and sc.client = c.client
+order by sc.end_date desc, sc.start_date desc
+go
+
+print ""
+print "Rerral Commissions"
+print ""
+go
+select rc.salesman "S", s.name "salesman",
+		rc.emp "E", $(employee_name e) "employee",
+		convert(numeric(5,2), rc.commission) "commission",
+		convert(char(10), rc.start_date, 101) "start date",
+		convert(char(10), rc.end_date, 101) "end date"
+from referral_commission rc, salesman s, employee e
+where rc.salesman = s.salesman
+and rc.emp = e.emp
+order by rc.end_date desc, rc.start_date desc
+go

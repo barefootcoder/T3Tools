@@ -1,0 +1,41 @@
+-- SORT GROUP: Employee Reports
+-- TITLE: Last Week's Hours
+
+use TIMER
+go
+
+set nocount on
+go
+
+declare @this_week int, @last_week int
+select @this_week = $(period_num "getdate()" 7)
+select @last_week = @this_week - 1
+
+select $(employee_name e) "employee", c.name "client", sum(hours) "hours"
+from log l, employee e, client c
+where l.emp = e.emp
+and l.client = c.client
+and $(period_num l.date 7) = @last_week
+group by $(employee_name e), c.name
+order by $(employee_name e)
+compute sum(sum(hours)) by $(employee_name e)
+
+select c.name "client", sum(hours) "hours"
+from log l, client c
+where l.client = c.client
+and $(period_num l.date 7) = @last_week
+group by c.name
+compute sum(sum(hours))
+go
+
+/*
+print "Graphics Hours"
+select $(employee_name e) "employee", c.name "client", sum(hours) "hours"
+from log l, employee e, client c
+where l.client = "001"
+and l.proj = "WEB"
+and l.emp = e.emp
+and l.client = c.client
+and $(period_num l.date 7) = @last_week
+group by $(employee_name e), c.name
+*/

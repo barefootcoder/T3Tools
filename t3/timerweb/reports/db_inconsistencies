@@ -1,0 +1,186 @@
+-- SORT GROUP: Error Checkers
+-- TITLE: Database Consistency Errors
+
+use TIMER
+go
+
+print "projects that don't match a client"
+go
+select p.*
+from project p
+where p.client not in
+(
+	select c.client
+	from client c
+)
+go
+
+print "projects with invalid types"
+go
+select p.*
+from project p
+where p.proj_type not in
+(
+	select pt.proj_type
+	from project_type pt
+)
+go
+
+print "projects with end dates at 12/31/99"
+select *
+from project
+where end_date = '12/31/99'
+go
+
+print "projects with rate dates outside project dates"
+go
+select p.*
+from project p, bill_rate br
+where p.client = br.client
+and p.proj = br.proj
+and
+(
+	br.start_date < p.start_date
+	or br.end_date > p.end_date
+)
+go
+
+print "bill rates with end dates at 12/31/99"
+select *
+from bill_rate
+where end_date = '12/31/99'
+go
+
+print "emp/resrc assignment with dates outside resource dates"
+select rr.*
+from resource_rate rr, resource_employee re
+where rr.client = re.client
+and rr.resrc = re.resrc
+and
+(
+	re.start_date < rr.start_date
+	or re.end_date > rr.end_date
+)
+go
+
+print "resource rates with end dates at 12/31/99"
+select *
+from resource_rate
+where end_date = '12/31/99'
+go
+
+print "emp/resrc assignments with end dates at 12/31/99"
+select *
+from resource_employee
+where end_date = '12/31/99'
+go
+
+print "sales commissions that don't match any project"
+select *
+from sales_commission sc
+where sc.proj is not NULL
+and not exists
+(
+	select 1
+	from project p
+	where sc.client = p.client
+	and sc.proj = p.proj
+)
+go
+
+print "projects with sales commission dates outside project dates"
+go
+select p.*
+from project p, sales_commission sc
+where p.client = sc.client
+and p.proj = sc.proj
+and
+(
+	sc.start_date < p.start_date
+	or sc.end_date > p.end_date
+)
+go
+
+print "clients that cannot log time to Barefoot non-payable"
+go
+select e.*
+from employee e
+where not exists
+(
+	select 1
+	from client_employee ce
+	where ce.emp = e.emp
+	and ce.client = '011'
+)
+go
+
+print "log entries that don't match an employee"
+go
+select l.*
+from log l
+where l.emp not in
+(
+	select e.emp
+	from employee e
+)
+order by emp, client, proj, phase
+go
+
+print "log entries that don't match any existing project (after 1996)"
+go
+select l.*
+from log l
+where l.date >= "1/1/1997"
+and not exists
+(
+	select 1
+	from project p
+	where l.client = p.client
+	and l.proj = p.proj
+)
+order by emp, client, proj, phase
+go
+
+print "log entries with illegal employee/client combinations (from 1999 on)"
+go
+select l.*
+from log l
+where l.date >= '1/1/1999'
+and not exists
+(
+	select 1
+	from client_employee ce
+	where l.emp = ce.emp
+	and l.client = ce.client
+	and l.date between ce.start_date and ce.end_date
+)
+
+print "log entries with dates outside project dates"
+go
+select l.*
+from log l, project p
+where l.client = p.client
+and l.proj = p.proj
+and l.date not between p.start_date and p.end_date
+go
+
+set nocount on
+$(build_emp_comm "
+	date >= '1/1/1998'
+")
+exec emp_commission
+set nocount off
+go
+
+print "log entries with no determinable billing rate (from 1998 on)"
+go
+select * from #emp_comm
+where amt_billed is null
+go
+
+print "log entries with no determinable pay rate (from 1998 on)"
+go
+select * from #emp_comm
+where source_tbl = 'log'
+and amt_paid is null
+go

@@ -1,0 +1,64 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Category Percentages for Internal Projects (by user)
+
+use TIMER
+go
+
+set nocount on
+go
+
+select distinct l.id, $(employee_name e) "emp_name", b.category
+into #cp_logs
+from log l, bproj b, client c, employee e
+where l.emp = e.emp
+and l.client = c.client
+and c.type = 'I'
+and l.proj = b.proj
+and l.date between "[start_date]" and "[end_date]"
+-- exclude WEB hours
+and not (l.client = "001" and l.proj = "WEB")
+go
+
+-- do WEB hours specially
+insert #cp_logs
+select distinct l.id, $(employee_name e) + " (Web Work)", b.category
+from log l, bproj b, client c, employee e
+where l.emp = e.emp
+and l.client = c.client
+and c.type = 'I'
+and l.proj = b.proj
+and l.date between "[start_date]" and "[end_date]"
+and (l.client = "001" and l.proj = "WEB")
+go
+
+select cpl.emp_name, cpl.category, convert(numeric(5,2),
+		sum(l.hours)) "cat_hrs"
+into #cp_cathours
+from #cp_logs cpl, log l
+where l.id = cpl.id
+group by cpl.emp_name, cpl.category
+go
+
+select cpl.emp_name, convert(numeric(5,2), sum(l.hours)) "ttl_hrs"
+into #cp_emphours
+from #cp_logs cpl, log l
+where l.id = cpl.id
+group by cpl.emp_name
+go
+
+select cpct.emp_name, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
+	convert(numeric(5,2), 0) "pct"
+into #cat_pcts
+from #cp_cathours cpct, #cp_emphours cpet
+where cpct.emp_name = cpet.emp_name
+go
+
+update #cat_pcts
+set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
+go
+
+select cp.emp_name, cp.category, cp.cat_hrs, cp.ttl_hrs,
+	str(cp.pct, 6, 2) + '%' "pct"
+from #cat_pcts cp
+-- and lower(e.login) = lower("{user}")
+go

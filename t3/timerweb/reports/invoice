@@ -1,0 +1,77 @@
+-- SORT GROUP: Historical Reports
+-- TITLE: Invoice Already Billed
+
+use TIMER
+go
+
+$(build_emp_comm "
+	invoice_num = '[invoice]'
+")
+exec billing_amounts
+go
+
+-- for debugging
+/*
+select emp, client, proj, convert(char(10), date, 101) "date", hours,
+	convert(numeric(6,2), payrate) "payrate", paytype "PayT",
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), amt_billed) "amt_billed",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+print "Invoice # [invoice]"
+go
+
+select distinct c.client "C", c.name "Client:"
+from #emp_comm ec, client c
+where ec.client = c.client
+go
+
+select distinct
+		isnull(convert(char(10), l.invoice_paydate, 10), "UNPAID") "Paid On:"
+from #emp_comm ec, log l, other_profits op, training_class tc
+where ec.source_tbl = 'log' and ec.source_id = l.id
+-- or ec.source_tbl = 'other_profits' and ec.source_id = op.id
+-- or ec.source_tbl = 'training_class' and ec.source_id = tc.id
+go
+
+select p.name "project", ec.emp, -- ec.hours, ec.date,
+		convert(char(10), min(ec.date), 101) "from",
+		convert(char(10), max(ec.date), 101) "to",
+		convert(numeric(6,2), ec.billrate) "rate",
+		convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+		convert(numeric(7,2), sum(ec.amt_billed)) "total amount"
+from #emp_comm ec, project p
+where ec.client = p.client
+and ec.proj = p.proj
+group by p.name, ec.emp, convert(numeric(6,2), ec.billrate)
+order by p.name
+compute sum(convert(numeric(7,2), sum(ec.amt_billed)))
+go
+
+select rr.resource_name "resource",
+		convert(numeric(6,2), ec.billrate) "rate",
+		convert(numeric(6,2), sum(ec.bill_hours)) "hours",
+		convert(numeric(7,2), sum(ec.amt_billed)) "total amount"
+from #emp_comm ec, project p, project_type pt,
+		resource_rate rr, resource_employee re
+where ec.client = p.client
+and ec.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.bill_by_employee = 1
+and ec.emp = re.emp
+and re.resrc = rr.resrc
+and ec.client = rr.client
+and ec.date between rr.start_date and rr.end_date
+and ec.date between re.start_date and re.end_date
+group by rr.resource_name, convert(numeric(6,2), ec.billrate)
+order by rr.resource_name
+compute sum(convert(numeric(7,2), sum(ec.amt_billed)))
+go

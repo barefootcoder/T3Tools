@@ -1,0 +1,165 @@
+-- SORT GROUP: Financial Reports
+-- TITLE: Payroll Report
+
+use TIMER
+go
+
+print "Period from [start_date] to [end_date]"					?!check_date
+print ""														?!check_date
+print ""														?!check_date
+go																?!check_date
+
+print "Payroll Checks paid on [check_date]"						??check_date
+print ""														??check_date
+print ""														??check_date
+go																??check_date
+
+$(build_emp_comm "
+	payroll_date = '[check_date]'								??check_date
+	date <= '[end_date]'										?!check_date
+	and payroll_date is NULL									?!check_date
+	and proj in													?!check_date
+	(															?!check_date
+		select p.proj											?!check_date
+		from project p, project_type pt							?!check_date
+		where p.proj_type = pt.proj_type						?!check_date
+		and pt.requires_payment = 1								?!check_date
+	)															?!check_date
+" "1 = 0" "
+	payroll_date = '[check_date]'								??check_date
+	payroll_date is NULL										?!check_date
+	and exists													?!check_date
+	(															?!check_date
+		select 1												?!check_date
+		from project p											?!check_date
+		where p.client = tc.client								?!check_date
+		and p.proj = tc.proj									?!check_date
+		and p.end_date <= '[end_date]'							?!check_date
+	)															?!check_date
+")
+exec emp_commission
+go
+
+-- for debugging
+/*
+select convert(char(15), source_tbl) "source", emp, client, proj,
+	convert(char(10), date, 101) "date", hours,
+	convert(numeric(6,2), payrate) "payrate", paytype "PayT",
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), amt_billed) "amt_billed",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(6,2), amt_paid) "amt_paid",
+	convert(numeric(6,2), diff) "diff",
+	convert(numeric(6,2), empcomm) "empcomm"
+from #emp_comm
+order by source_tbl, emp, client, proj, date
+*/
+go
+
+if exists (select 1 from #emp_comm where empcomm is NULL)
+	or exists (select 1 from #emp_comm where diff < 0 and empcomm > 0)
+begin
+	print ""
+	print ""
+	print "<H1>WARNING!!! The following log entries had errors:</H1>"
+	print ""
+	select ec.emp "E", e.name "employee", ec.client "C", c.name "client",
+			ec.proj, convert(char(10), ec.date, 101) "date", ec.hours,
+			convert(numeric(6,2), ec.billrate) "billrate",
+			convert(numeric(6,2), ec.salescomm) "salescomm",
+			convert(numeric(6,2), ec.refcomm) "refcomm",
+			convert(numeric(6,2), ec.payrate) "payrate", ec.paytype "PT",
+			convert(numeric(6,2), ec.diff) "diff",
+			convert(numeric(6,2), ec.empcomm) "empcomm"
+	from #emp_comm ec, employee e, client c
+	where ec.emp = e.emp
+	and ec.client = c.client
+	and
+	(
+		ec.empcomm is NULL				-- if no empcomm, should be 0
+		or
+		(
+			ec.diff < 0					-- when diff is negative, empcomm
+			and ec.empcomm > 0			-- better be zero (can't be negative)
+		)
+	)
+	order by emp, client, proj, date
+end
+go
+
+if exists														?!check_date
+(																?!check_date
+	select 1 from #emp_comm where date < "[start_date]"			?!check_date
+)																?!check_date
+begin															?!check_date
+	print ""													?!check_date
+	print ""													?!check_date
+	print "WARNING!  The following log entries are suspicious,"	?!check_date
+	print "because they are for hours before the start date of"	?!check_date
+	print "the payroll period."									?!check_date
+	print ""													?!check_date
+	select ec.emp "E", e.name "employee", ec.client "C",		?!check_date
+			c.name "client", ec.proj,							?!check_date
+			convert(char(10), ec.date, 101) "date", ec.hours,	?!check_date
+			convert(numeric(6,2), ec.billrate) "billrate",		?!check_date
+			convert(numeric(6,2), ec.salescomm) "salescomm",	?!check_date
+			convert(numeric(6,2), ec.refcomm) "refcomm",		?!check_date
+			convert(numeric(6,2), ec.payrate) "payrate",		?!check_date
+			ec.paytype "PT",									?!check_date
+			convert(numeric(6,2), ec.diff) "diff",				?!check_date
+			convert(numeric(6,2), ec.empcomm) "empcomm"			?!check_date
+	from #emp_comm ec, employee e, client c						?!check_date
+	where ec.emp = e.emp										?!check_date
+	and ec.client = c.client									?!check_date
+	and ec.date < "[start_date]"								?!check_date
+	order by emp, client, proj, date							?!check_date
+end																?!check_date
+go																?!check_date
+
+-- after magic date, employee commission is no longer paid at payroll time
+update #emp_comm
+set empcomm = 0
+where date >= '10/4/99'
+go
+
+print ""
+print ""
+print "Employee hours by project"
+print ""
+go
+select ec.emp, $(employee_name e) "employee", c.name "client", p.name "project",
+	convert(numeric(5,2), ec.payrate) "rate",
+	convert(numeric(6,2), sum(ec.hours)) "hours",
+	convert(numeric(6,2), sum(ec.empcomm)) "emp. comm."
+from #emp_comm ec, employee e, client c, project p
+where ec.emp = e.emp
+and ec.client = c.client
+and ec.client = p.client
+and ec.proj = p.proj
+and ec.paytype != "S"
+group by ec.emp, $(employee_name e), c.name, p.name, ec.payrate
+go
+
+print ""
+print ""
+print "Employee hours by rate"
+print ""
+go
+select ec.emp, $(employee_name e) "employee",
+	convert(numeric(5,2), ec.payrate) "rate",
+	convert(numeric(6,2), sum(ec.hours)) "hours",
+	convert(numeric(7,2), sum(ec.hours * ec.payrate)) "subtotal",
+	convert(money, sum(ec.empcomm)) "emp comm",
+	convert(money, sum(ec.hours * ec.payrate + ec.empcomm)) "total"
+from #emp_comm ec, employee e
+where ec.emp = e.emp
+and ec.paytype != "S"
+group by ec.emp, $(employee_name e), ec.payrate
+order by ec.emp
+compute sum(convert(money, sum(ec.empcomm))),
+		sum(convert(money, sum(ec.hours * ec.payrate + ec.empcomm)))
+	by ec.emp
+compute sum(convert(money, sum(ec.empcomm))),
+		sum(convert(money, sum(ec.hours * ec.payrate + ec.empcomm)))
+go
