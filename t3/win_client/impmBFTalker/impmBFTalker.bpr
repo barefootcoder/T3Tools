@@ -3,8 +3,8 @@
 <PROJECT>
   <MACROS>
     <VERSION value="BCB.05.03"/>
-    <PROJECT value="impmBFTalker.dll"/>
-    <OBJFILES value="impmBFTalker.obj MessagesImp.obj"/>
+    <PROJECT value="../release\impmBFTalker.dll"/>
+    <OBJFILES value="win_obj\impmBFTalker.obj win_obj\MessagesImp.obj"/>
     <RESFILES value=""/>
     <DEFFILE value=""/>
     <RESDEPEN value="$(RESFILES)"/>
@@ -31,10 +31,10 @@
   </MACROS>
   <OPTIONS>
     <CFLAG1 value="-WD -O2 -Vx -Ve -X- -a8 -b- -k- -vi -tWD -tWM- -c"/>
-    <PFLAGS value="-$Y- -$L- -$D- -v -JPHNE -M"/>
+    <PFLAGS value="-N2win_obj -N0win_obj -$Y- -$L- -$D- -v -JPHNE -M"/>
     <RFLAGS value=""/>
     <AFLAGS value="/mx /w2 /zn"/>
-    <LFLAGS value="-D&quot;&quot; -aa -Tpd -x -Gn -Gi"/>
+    <LFLAGS value="-Iwin_obj -D&quot;&quot; -aa -Tpd -x -Gn -Gi"/>
   </OPTIONS>
   <LINKER>
     <ALLOBJ value="c0d32.obj $(OBJFILES)"/>
@@ -89,6 +89,14 @@ Item0=$(BCB)\source\vcl
 Count=1
 Item0=_DEBUG
 
+[HistoryLists\hlIntOutputDir]
+Count=1
+Item0=win_obj
+
+[HistoryLists\hlFinalOutputDir]
+Count=1
+Item0=../release
+
 [Debugging]
 DebugSourceDirs=$(BCB)\source\vcl
 
@@ -103,5 +111,10 @@ RemoteDebug=0
 ShowInfoMsgs=0
 LinkDebugVcl=0
 LinkCGLIB=0
+
+[Language]
+ActiveLang=
+ProjectLang=
+RootDir=
   </IDEOPTIONS>
 </PROJECT>
