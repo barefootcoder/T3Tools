@@ -90,6 +90,7 @@ package DataStore::DataSet;
 use strict;
 
 use Carp;
+use Data::Dumper;
 
 use Barefoot::base;
 use Barefoot::DataStore::DataRow;
@@ -187,6 +188,10 @@ sub alter_dataset
 	# having $del_cols be the column names doesn't really do us a lot of good
 	# what we really need is the column indices; so we get them here
 	$_ = $index_hash->{$_} foreach @$del_cols;
+	# it's really quite important to have the del indices in the right order
+	# otherwise, splicing out the columns throws the indices off for the
+	# remaining splices
+	$del_cols = [ reverse sort @$del_cols ];
 
 	# handle columns to add first
 	if (@$add_cols)
