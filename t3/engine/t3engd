@@ -2,85 +2,89 @@
 
 use strict;
 
+use Barefoot::debug;						# comment out for production
+
+use Fcntl;
 use FileHandle;
+use File::Basename;
 use Barefoot::exception;
+use Barefoot::T3::common;
 
 # system paths
-use constant MKNOD => '/bin/mknod';
+use constant MKFIFO => '/usr/bin/mkfifo';
 
-use constant REQUEST_FILE => 't3.request';
-use constant OUTPUT_FILE => 't3.output.';
-
-my %module =
-(
-	test	=>	\&test_module,
-);
+setup_modules();
 
 
 # main ()
 
+open(LOG, ">t3engd.log") or die("can't create log file");
+LOG->autoflush();
 log_error("starting server");
 
-if ( ! -p REQUEST_FILE )
-{
-	unlink(REQUEST_FILE) if -e REQUEST_FILE;
-	log_error($!) if system(MKNOD, REQUEST_FILE, "p");
-}
+create_pipe(T3::REQUEST_FILE);
 
+
+# the open will block until it receives a request
+T3::debug("before initial open");
+open_request_pipe();
+T3::debug("after initial open");
 while (1)
 {
-	# the open will block until it receives a request, but if we don't
-	# get a request within 10 seconds, we better give it up and start again
-	if (timeout { open(PIPE, REQUEST_FILE)
-			or die("can't open the request pipe for reading") } 10)
+	my $request = <PIPE>;
+	if (not $request)				# got EOF; close pipe and reopen
 	{
-		my $request = <PIPE>;
 		close(PIPE);
-		if (defined $request)
+		open_request_pipe();
+		next;
+	}
+
+	chomp($request);
+	T3::debug("request is $request");
+	if ($request eq "SHUTDOWN")
+	{
+		# handle shutdown requests right here
+		shutdown_server();
+	}
+	else
+	{
+		# pass off to appropriate module
+		$request =~ s/module=(\w+)//;
+		if ($1)
 		{
-			chomp($request);
-			# print STDERR "request is $request\n";
-			if ($request eq "SHUTDOWN")
+			T3::debug("module is $1");
+			if (T3::exists_module($1))
 			{
-				# handle shutdown requests right here
-				log_error("shutting down");
-				exit 0;
-			}
-			else
-			{
-				# pass off to appropriate module
-				$request =~ s/module=(\w+)//;
-				if ($1)
+				my $module = $1;
+				unless ($request =~ s/output=(\d+)//)
 				{
-					# print STDERR "module is $1\n";
-					if (exists $module{$1})
-					{
-						my $module = $1;
-						$request =~ s/output=(\d+)//;
-						my $pipe = build_output_pipe($1);
-						if ($pipe)
-						{
-							my $oldfh = select($pipe);
-							$| = 1;
-							$module{$module}->();
-							select($oldfh);
-							$pipe->close();
-						}
-						else
-						{
-							log_error("can't build output pipe [$1]");
-						}
-					}
-					else
-					{
-						log_error("unknown module [$1]");
-					}
+					log_error("output pipe name invalid or missing");
+					next;
+				}
+
+				T3::debug("pipe name is $1");
+				my $pipe = open_output_pipe($1);
+				if ($pipe)
+				{
+					my $oldfh = select($pipe);
+					$| = 1;
+					T3::execute_module($module);
+					select($oldfh);
+					$pipe->close();
 				}
 				else
 				{
-					log_error("malformed request [$request]");
+					log_error("can't build output pipe [$1]");
 				}
 			}
+			else
+			{
+				log_error("unknown module [$1]");
+			}
+		}
+		else
+		{
+			log_error("malformed request [$request]");
 		}
 	}
 }
@@ -90,23 +94,81 @@ die("popped out of infinite loop");
 
 # subs
 
+sub setup_modules
+{
+	my $mod_dir = DEBUG ? './modules'
+			: T3::config_param("SERVER", "ModulesDir");
+	die("modules directory parameter not set in config file") unless $mod_dir;
+	die("modules directory $mod_dir is not accessible") unless -d $mod_dir;
+
+	# now make sure this directory looks secure
+	# we're going to be untainting all filenames in this directory, so we
+	# better be damned sure it's okay
+	# first, make sure owner matches t3engd's owner
+	die("modules directory is not owned by t3engd owner")
+			unless (stat $0)[4] == (stat $mod_dir)[4];
+	# now make sure owner is the one running the daemon
+	die("modules directory is not owned by euid") unless -o $mod_dir;
+	# now that the owner is cool, just make sure no one else has perms
+	die("modules directory has too many permissions (should be 700 max)")
+			if (stat $mod_dir)[2] & 077;
+
+	foreach my $file (glob("$mod_dir/*.pm"))
+	{
+		# blatant untainting now that we're satisfied with the perms
+		($file) = $file =~ /^(.*)$/;
+		require $file;
+	}
+}
+
 sub log_error
 {
 	my ($msg) = @_;
 
-	print STDERR "$0: $msg at ", scalar(localtime(time())), "\n";
+	print LOG "$0: $msg at ", scalar(localtime(time())), "\n";
 }
 
-sub build_output_pipe
+sub create_pipe
+{
+	my ($pipe_file) = @_;
+
+	unlink($pipe_file) if -e $pipe_file;
+	T3::debug(-e $pipe_file ? "pipe exists" : "pipe is gone");
+	log_error($!) if system(MKFIFO, $pipe_file);
+}
+
+sub open_request_pipe
+{
+	T3::debug("about to open pipe " . T3::REQUEST_FILE);
+	T3::debug(-p T3::REQUEST_FILE ? "file is a pipe" : "file is not a pipe");
+	# T3::debug("fuser says " . `/usr/sbin/fuser -u ./t3.request`);
+
+	# a regular open wasn't working here, but I don't know why ...
+	# sysopen seems to have solved the problem (for now)
+	sysopen(PIPE, T3::REQUEST_FILE, O_RDONLY)
+			or die("can't open the request pipe for reading");
+	T3::debug("got pipe open");
+}
+
+sub shutdown_server
+{
+	unlink(T3::REQUEST_FILE) or log_error("couldn't remove input pipe");
+	log_error("shutting down");
+	exit 0;
+}
+
+sub open_output_pipe
 {
 	my ($id) = @_;
 
-	my $pipe_file = OUTPUT_FILE . $id;
-	log_error($!) if system(MKNOD, $pipe_file, "p");
-	return $id ? new FileHandle(">>$pipe_file") : undef;
-}
+	T3::debug("pipe id is $id\n");
+	if (not $id or $id ne ($id + 0))
+	{
+		log_error("output pipe name invalid");
+		return undef;
+	}
 
-sub test_module
-{
-	print "TEST OUTPUT";
+	my $pipe_file = T3::OUTPUT_FILE . $id;
+	create_pipe($pipe_file);
+	return new FileHandle(">$pipe_file");
 }
