@@ -17,6 +17,7 @@ use strict;
 
 use CGI;
 use Barefoot::file;
+use Barefoot::array;
 
 
 use constant MERROR =>
@@ -37,7 +38,7 @@ sub addToRoll;
 
 my $cgi = new CGI;			#  for CGI operations
 
-my $pquery = $::ENV{QUERY_STRING};
+my $pquery = $cgi->param('DATA');
 
 if (!$pquery)
 {
@@ -48,28 +49,36 @@ if (!$pquery)
 }
 
 my $message = qualifyString($pquery);	# Decodes string and pre-tests if valid
+my @valid_status = ('INFO','IMON','IMOFF','IMBUSY','NO_REPLY','NORMAL');
 
-unless ($message->{status} eq "INFO")	# INFO messages send no useful information
+if (Barefoot::array::in(@valid_status, $message->{status}, 's'))
 {
-	eval
+	unless ($message->{status} eq "INFO")	# INFO messages send no useful information
 	{
-		processMessage($message);
-	};
-};
-
-unless ($message->{status} eq "NO_REPLY")	# NO_REPLY messages get nothing back
-{
-	my $reply;
-
-	eval
-	{
-		$reply = generateReplyMessage($message);
+		eval
+		{
+			processMessage($message);
+		};
 	};
 
-	$reply = MERROR and chomp($@) and $reply =~ s/ERROR_TEXT/$@/ if $@;
+	unless ($message->{status} eq "NO_REPLY")	# NO_REPLY messages get nothing back
+	{
+		my $reply;
 
-	# now send string to the browser:
-	print $cgi->header(), $reply;
+		eval
+		{
+			$reply = generateReplyMessage($message);
+		};
+
+		$reply = MERROR and chomp($@) and $reply =~ s/ERROR_TEXT/$@/ if $@;
+
+		# now send string to the browser:
+		print $cgi->header(), $reply;
+	}
+}
+else
+{
+	print $cgi->header(), MERROR;
 }
 
 # <STDIN>;  # Pause Program so we can see output --- TESTING PURPOSES ONLY
@@ -81,7 +90,6 @@ sub qualifyString
 	my ($xml_string) = @_;
 
 	# also decodes space encoding
-	# (full CGI decoding may be needed later)
 
 	my $attr = getAttrs($xml_string);
 	$attr->{time} = time();
@@ -137,6 +145,10 @@ sub getAttrs
 {
 	my ($element) = @_;
 
+	# Replace %hex values with actual ASCII chars
+	# Now automatically handled by CGI library
+	#$element =~ s/%(\w\w)/chr(hex($1))/ge;
+
 	my ($open_tag) = $element =~ /<([^\/].*?)>/;
 
 	# read attributes
@@ -164,11 +176,11 @@ sub buildMessage
 	{
 		if ($attname eq "status" && $attr->{$attname} eq "NO_REPLY")
 		{
-			$message .= "+status=\"NORMAL\"";	# fool the client into displaying msg
+			$message .= " status=\"NORMAL\"";	# fool the client into displaying msg
 		}
 		else
 		{
-			$message .= "+$attname=\"$attr->{$attname}\"";
+			$message .= " $attname=\"$attr->{$attname}\"";
 		}
 	}
 	$message .= ">$data</MESSAGE>\r\n";
