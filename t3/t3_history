@@ -7,8 +7,6 @@ use Barefoot::T3;
 use Time::localtime;
 use CGI;
 
-T3::initialize("/export/usr/$::ENV{USER}");
-
 use constant MAX_MESSAGES => 200;
 
 my $from = input("Show messages from (leave blank for all):");

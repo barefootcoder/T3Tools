@@ -9,8 +9,6 @@ use Getopt::Std;
 
 my $opt={};
 
-T3::initialize("/export/usr/$::ENV{USER}");
-
 getopts('w:', $opt);
 T3::set_workgroup($opt->{w}) if $opt->{w};
 
