@@ -1,18 +1,30 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
 
 use strict;
 
-package test;
 use Barefoot::base;
 
-package main;
 die("true not correct") unless true == 1;
 die("false not correct") unless false == 0;
-die("DEBUG not correct") unless DEBUG_MODE == 0;
+die("DEBUG not correct") unless DEBUG == 0;
 
 package test;
-die("true not correct") unless ::true == 1;
-die("false not correct") unless ::false == 0;
-die("DEBUG not correct") unless ::DEBUG_MODE == 0;
+use Barefoot::base;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG == 0;
+
+package test2;
+sub DEBUG () { return "test2"; }
+use Barefoot::base;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG eq "test2";
+
+package test3;
+use Barefoot::base;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG == 0;
 
 print "ALL TESTS PASSED\n";
