@@ -52,17 +52,54 @@ END
 #
 
 
-sub send_request
+# helper subs
+
+sub _request_to_pipe
 {
 	T3::debug(2, "about to open pipe");
 	open(PIPE, ">" . T3::REQUEST_FILE)
 			or die("can't open request pipe for writing");
 	T3::debug(2, "opened pipe");
-	print PIPE @_, "\n";
+
+	if (DEBUG)
+	{
+		T3::debug(1, "request lines may not contain newlines")
+				if grep { /\n/ } @_;
+	}
+	print PIPE "$_\n" foreach @_;
 	T3::debug(2, "printed to pipe");
+
 	close(PIPE);
 	T3::debug(2, "closed pipe");
 }
+
+
+sub send_request
+{
+	my $module = shift;
+	my $output_id = shift;
+	my $request_string = "module=$module output=$output_id";
+
+	if (ref($_[0]) eq 'HASH')
+	{
+		my $options = shift;
+		foreach my $key (%$options)
+		{
+			$request_string .= " $key=$options->{$key}";
+		}
+	}
+
+	$request_string .= " lines=" . scalar(@_) if @_;
+	T3::debug("request string is $request_string\n");
+
+	_request_to_pipe($request_string, @_);
+}
+
+sub request_shutdown
+{
+	_request_to_pipe("SHUTDOWN");
+}
+
 
 sub retrieve_output
 {
@@ -89,7 +126,7 @@ sub retrieve_output
 		$success = timeout
 		{
 			open(PIPE, $pipe_file)
-					or die("can't open output pipe for reading");
+					or die("can't open output pipe for reading ($pipe_file)");
 			@output = <PIPE>;
 		} 3;
 		T3::debug(2, "read output") if $success;
