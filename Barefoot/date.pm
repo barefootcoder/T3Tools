@@ -16,8 +16,10 @@ package date;
 
 use strict;
 
+use Carp;
 use Time::Local;
 
+use Barefoot::base;
 use Barefoot::array;
 use Barefoot::string;
 
@@ -26,11 +28,34 @@ use enum qw(
 	:PART_		SEC MIN HR DAY MON YR DOW DOY DST
 );
 
-use vars qw(@DAY_NAME @MON_ABBREV);
-@DAY_NAME = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+our (@DayName, @MonAbbrev, %MonNumbers, %Options);
+
+@DayName = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
 		'Friday', 'Saturday');
-@MON_ABBREV = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+
+@MonAbbrev = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
 		'Sep', 'Oct', 'Nov', 'Dec');
+
+%MonNumbers =
+(
+	JAN		=>	0,
+	FEB		=>	1,
+	MAR		=>	2,
+	APR		=>	3,
+	MAY		=>	4,
+	JUN		=>	5,
+	JUL		=>	6,
+	AUG		=>	7,
+	SEP		=>	8,
+	OCT		=>	9,
+	NOV		=>	10,
+	DEC		=>	11,
+);
+
+%Options =
+(
+	epoch		=>	'1/1/1980',
+);
 
 
 1;
@@ -39,6 +64,38 @@ use vars qw(@DAY_NAME @MON_ABBREV);
 #
 # Subroutines:
 #
+
+
+#
+# import function
+#
+
+package Barefoot::date;
+use Carp;
+use Barefoot::base;
+
+sub import
+{
+	my $class = shift;
+	my (%opts) = @_;
+
+	print STDERR "in import for date.pm\n" if DEBUG >= 5;
+	foreach (keys %opts)
+	{
+		print STDERR "trying to set option $_\n" if DEBUG >= 4;
+		if (exists $Options{$_})
+		{
+			$Options{$_} = $opts{$_};
+		}
+		else
+		{
+			croak("cannot set unknown option $_ in date module");
+		}
+	}
+}
+
+# back to "regular" package
+package date;
 
 
 #
@@ -56,7 +113,9 @@ use vars qw(@DAY_NAME @MON_ABBREV);
 #	mm-dd-yyyy
 #	dd-Mon-yy
 #	dd-Mon-yyyy
-#	yyyymmdd			(such as is returned by sortableString()
+#	yyyymmdd			(such as is returned by sortableString())
+#	Mon dd yyyy
+#	Mon dd yyyy 12:00AM	(such as is returned by Sybase)
 # after parsing, you can get the month, day, and year, properly adjusted
 # for timelocal() or timegm() (if used in an array context), or the result
 # of timegm() with a time of midnight (if used in a scalar context)
@@ -64,24 +123,38 @@ use vars qw(@DAY_NAME @MON_ABBREV);
 sub _date_parse
 {
 	my ($date) = @_;
+	croak("call to date routine with no date given") unless $date;
 	my ($mon, $day, $year);
+
+	# don't really care if this fails
+	$date =~ s/ 12:00AM$//;
 
 	if ($date =~ /^(\d\d\d\d)(\d\d)(\d\d)$/)
 	{
-		$mon = $2;
+		$mon = $2 - 1;
 		$day = $3;
 		$year = $1;
 	}
+	elsif ($date =~ /^(...)  ?(\d?\d) (\d\d\d\d)$/)
+	{
+		return undef unless exists $MonNumbers{uc($1)};
+		$mon = $MonNumbers{uc($1)};
+		$day = $2;
+		$year = $3;
+	}
 	else
 	{
-		($mon, $day, $year) = split(?/|-?, $date);
+		($mon, $day, $year) = split(m</|->, $date);
+		# if we don't get all three parts, might as well bail now
+		return undef unless defined $mon and defined $day and defined $year;
+
 		if ($day =~ /^[A-Z][a-z][a-z]$/)
 		{
 			# this must be dd/Mon/yyyy type format
 			my $mon_abbrev = $day;
 			$day = $mon;
-			# aindex already returns zero-based for month
-			$mon = aindex(@MON_ABBREV, $mon_abbrev);
+			# this already returns zero-based for month
+			$mon = $MonNumbers{uc($mon_abbrev)};
 		}
 		else
 		{
@@ -89,7 +162,16 @@ sub _date_parse
 		}
 	}
 
-	$year -= 1900 if $year >= 100;			# account for 2 or 4 digit years;
+	if ($year >= 100)
+	{
+		$year -= 1900;						# account for 2 or 4 digit years
+	}
+	elsif ($year <= 50)
+	{
+		$year += 100;						# nice if can say 01 for 2001
+	}
+
+	print STDERR "mon $mon, day $day, year $year\n" if DEBUG >= 2;
 
 	# this will return undef if timegm vomits
 	# we use timegm instead of timelocal to avoid problems with DST
@@ -115,11 +197,16 @@ sub isValid
 	return defined(_date_parse($date));
 }
 
-sub today
+sub mdy
 {
-	my ($day, $mon, $year) = (localtime time)[3..5];
+	my ($day, $mon, $year) = (localtime $_[0])[3..5];
 	$year += 1900, ++$mon;
 	return "$mon/$day/$year";
+}
+
+sub today
+{
+	return mdy(time());
 }
 
 sub incDays
@@ -230,4 +317,35 @@ sub MondayDate
 	my ($day, $mon, $year) = (localtime $monday_time)[3..5];
 	$mon += 1, $year += 1900;
 	return "$mon/$day/$year";
+}
+
+
+###########################################################################
+#
+# the period functions
+#
+# #########################################################################
+#
+
+sub period_num
+{
+	my ($date, $period_len, $epoch) = @_;
+	$epoch = $Options{epoch} unless defined $epoch;
+	print STDERR "period_num: using epoch $epoch\n" if DEBUG >= 3;
+
+	print STDERR "period_num: ",
+			int(dayDiff($epoch, $date) / $period_len), "\n" if DEBUG >= 3;
+	return int(dayDiff($epoch, $date) / $period_len);
+}
+
+sub period_name
+{
+	my ($period_num, $period_len, $epoch) = @_;
+	$epoch = $Options{epoch} unless defined $epoch;
+	print STDERR "period_num: using epoch $epoch\n" if DEBUG >= 3;
+
+	my $start = incDays($epoch, $period_num * $period_len);
+	my $end = incDays($start, $period_len - 1);
+
+	return mdy($start) . " - " . mdy($end);
 }
