@@ -75,6 +75,11 @@ sub set_workgroup
 	$workgroup = $new_wg;
 }
 
+sub get_workgroup
+{
+	return $workgroup;
+}
+
 sub initialize
 {
 	my ($dir) = @_;
