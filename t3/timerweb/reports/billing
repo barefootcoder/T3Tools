@@ -153,7 +153,7 @@
 
 
 	select p.name as project, ct.name as "client's tracking code",
-			sum(tlp.hours) as hours, sum(pi.total_price) as "total amount"
+			sum(pi.units) as hours, sum(pi.total_price) as "total amount"
 	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
 			{~timer}.time_log tl, {~timer}.project p,
 			{~timer}.client_tracking ct
