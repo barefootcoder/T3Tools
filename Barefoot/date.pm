@@ -1,4 +1,10 @@
-#! /usr/local/bin/perl
+#! /usr/local/bin/perl -w
+
+# For CVS:
+# $Date$
+#
+# $Id$
+# $Revision$
 
 ###########################################################################
 #
@@ -7,6 +13,11 @@
 ###########################################################################
 #
 # Some generally useful date routines
+#
+# #########################################################################
+#
+# All the code herein is Class II code according to your software
+# licensing agreement.  Copyright (c) 2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -28,15 +39,25 @@ use enum qw(
 	:PART_		SEC MIN HR DAY MON YR DOW DOY DST
 );
 
-our (@DayName, @MonAbbrev, %MonNumbers, %Options);
 
-@DayName = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+our @DayName = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
 		'Friday', 'Saturday');
 
-@MonAbbrev = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+our %DayNumbers =
+(
+	SUN		=>	0,
+	MON		=>	1,
+	TUE		=>	2,
+	WED		=>	3,
+	THU		=>	4,
+	FRI		=>	5,
+	SAT		=>	6,
+);
+
+our @MonAbbrev = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
 		'Sep', 'Oct', 'Nov', 'Dec');
 
-%MonNumbers =
+our %MonNumbers =
 (
 	JAN		=>	0,
 	FEB		=>	1,
@@ -52,18 +73,15 @@ our (@DayName, @MonAbbrev, %MonNumbers, %Options);
 	DEC		=>	11,
 );
 
-%Options =
+our %Options =
 (
 	epoch		=>	'1/1/1980',
 );
 
 
-1;
-
-
-#
+###########################
 # Subroutines:
-#
+###########################
 
 
 #
@@ -98,9 +116,9 @@ sub import
 package date;
 
 
-#
+###########################
 # private "helper" routines
-#
+###########################
 
 
 # parse a date in one of many formats:
@@ -120,6 +138,7 @@ package date;
 # for timelocal() or timegm() (if used in an array context), or the result
 # of timegm() with a time of midnight (if used in a scalar context)
 # if you give it an invalid date, it will return undef or an empty list
+
 sub _date_parse
 {
 	my ($date) = @_;
@@ -171,7 +190,7 @@ sub _date_parse
 		$year += 100;						# nice if can say 01 for 2001
 	}
 
-	print STDERR "mon $mon, day $day, year $year\n" if DEBUG >= 2;
+	print STDERR "_date_parse: mon $mon, day $day, year $year\n" if DEBUG >= 2;
 
 	# this will return undef if timegm vomits
 	# we use timegm instead of timelocal to avoid problems with DST
@@ -184,9 +203,9 @@ sub _date_parse
 }
 
 
-#
+###########################
 # public routines
-#
+###########################
 
 
 # this one just tests for a valid date and returns 1 or 0
@@ -197,6 +216,7 @@ sub isValid
 	return defined(_date_parse($date));
 }
 
+
 sub mdy
 {
 	my ($day, $mon, $year) = (localtime $_[0])[3..5];
@@ -204,23 +224,29 @@ sub mdy
 	return "$mon/$day/$year";
 }
 
+
 sub today
 {
 	return mdy(time());
 }
+
 
 sub incDays
 {
 	my ($date, $inc) = @_;
 
 	my $secs = _date_parse($date);
+	print STDERR "seconds before increment: $secs\n" if DEBUG >= 3;
 	$secs += ($inc * 24 * 60 * 60);		# increment seconds by that many days
+	print STDERR "seconds after increment:  $secs\n" if DEBUG >= 3;
 
-	my ($day, $mon, $year) = (localtime $secs)[3..5];
+	my ($day, $mon, $year) = (gmtime $secs)[3..5];
 	$year += 1900, ++$mon;
+	print STDERR "incDays: new date is $mon/$day/$year\n" if DEBUG >= 2;
 
 	return $year . string::lpad($mon, 2, 0) . string::lpad($day, 2, 0);
 }
+
 
 # this returns the difference in days between two dates (older date first)
 # it will return undef if either date is invalid
@@ -243,6 +269,7 @@ sub dayDiff
 	# (by _date_parse) with no hours, minutes, or seconds
 	return $diff_secs / (24 * 60 * 60);
 }
+
 
 # this routine takes a date and an optional time, and returns the number
 # of seconds since the epoch (same as time() does for the current time)
@@ -290,6 +317,7 @@ sub dateTimeSeconds
 	}
 }
 
+
 sub sortableString
 {
 	my ($sep) = @_;
@@ -300,9 +328,10 @@ sub sortableString
 	return $date;
 }
 
+
 sub MondayTime
 {
-	my $today = (localtime(time))[PART_DOW];
+	my $today = (gmtime(time))[PART_DOW];
 
 	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
 	# now num_days will be number of days ago the last Monday was
@@ -311,10 +340,11 @@ sub MondayTime
 	return time - $num_days * 24 * 60 * 60;
 }
 
+
 sub MondayDate
 {
 	my $monday_time = MondayTime();
-	my ($day, $mon, $year) = (localtime $monday_time)[3..5];
+	my ($day, $mon, $year) = (gmtime $monday_time)[3..5];
 	$mon += 1, $year += 1900;
 	return "$mon/$day/$year";
 }
@@ -338,6 +368,7 @@ sub period_num
 	return int(dayDiff($epoch, $date) / $period_len);
 }
 
+
 sub period_name
 {
 	my ($period_num, $period_len, $epoch) = @_;
@@ -349,3 +380,10 @@ sub period_name
 
 	return mdy($start) . " - " . mdy($end);
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
