@@ -156,7 +156,7 @@ if ($command eq 'START')					# start a timer
 		my $todo_name = $1;
 
 		# don't care about history file name
-		my ($todo_file, undef) = t3_filenames("todo", $timerinfo->{user});
+		my ($todo_file, undef) = t3_filenames(TODO => $timerinfo->{user});
 
 		open(TODO, $todo_file)
 				or die("can't open todo file for $timerinfo->{user}");
