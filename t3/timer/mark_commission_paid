@@ -27,6 +27,7 @@ use strict;
 use Barefoot::date;
 use Barefoot::input qw(get_yn input);
 use Barefoot::timerdata;
+use Barefoot::range;
 
 ################
 #    main()    #
@@ -136,7 +137,7 @@ my $rows = timerdata::query_results("
      my $amount     = $row->[5];
      $amount =~ s/,//g;
 
-	 $modified_amount = sprintf ( "%10.2f", $modifier * $amount );
+	 $modified_amount = range::round ( $modifier * $amount, 'O', .01 ) ; 
 
 	 if ( $pay_to ne $old_pay_to )
 	 {
@@ -170,6 +171,7 @@ my $rows = timerdata::query_results("
 	#. Print detail.
 	printf ( "        %-8.8s %10.2f %8.8s %10.2f\n", 
 	              $comm_type, $amount, $modifier, $modified_amount ) ;
+
 
 	$modified_total += $modified_amount;
 	$old_pay_to = $pay_to ;
@@ -314,7 +316,7 @@ sub process_employee
 			sleep 1;
 			print "\nModify commission check from $modified_total\n";
 			my $changed_total = input("\nNew amount:");
-
+print "$changed_total \n";
 			if ( get_yn ( "\nNew total is \$$changed_total. Is this correct?" ) == 0 )
 			{
 				sleep 1;
@@ -366,3 +368,4 @@ sub process_employee
 }
 
 ################################################################################
+
