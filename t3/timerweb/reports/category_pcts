@@ -9,10 +9,11 @@ $(build_pay_amount "
 	and exists
 	(
 		select 1
-		from project p
+		from project p, project_type pt
 		where log.client = p.client
 		and log.proj = p.proj
-		and p.proj_type in ('I','i')
+		and p.proj_type = pt.proj_type
+		and pt.requires_billing = 0
 	)
 ")
 
@@ -50,6 +51,13 @@ and pa.log_id = cpl.log_id
 group by cpl.emp, cpl.pay_rate
 go
 
+select convert(numeric(5,2), sum(pa.hours)) "total_hrs"
+into #cp_total_hours
+from #cp_logs cpl, pay_amount pa
+where pa.log_source = cpl.log_source
+and pa.log_id = cpl.log_id
+go
+
 select cpct.emp, cpct.pay_rate, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
 		convert(numeric(5,2), 0) "pct"
 into #cat_pcts
@@ -70,8 +78,9 @@ and cp.category = cat.category
 order by cp.emp, cp.pay_rate, cat.name
 go
 
-select cat.name, sum(cp.cat_hrs) "ttl hrs"
-from #cat_pcts cp, category cat
+select cat.name, sum(cp.cat_hrs) "ttl hrs",
+		str(sum(cp.cat_hrs) / cth.total_hrs * 100, 6, 2) + '%'
+from #cat_pcts cp, category cat, #cp_total_hours cth
 where cp.category = cat.category
 group by cat.name
 go
