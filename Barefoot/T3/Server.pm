@@ -34,10 +34,6 @@ use Barefoot::T3::base;
 use constant TEST_MODULES_DIR => './test_modules';
 
 
-our $cfg_file = config_file->read(T3::CONFIG_FILE);
-our $workgroup = defined($ENV{T3_WORKGROUP})
-		? $ENV{T3_WORKGROUP} : T3::DEFAULT_WORKGROUP;
-
 our %modules;
 
 
@@ -47,22 +43,6 @@ our %modules;
 #
 # Subroutines:
 #
-
-sub config_param
-{
-	my $group = $workgroup;
-	my $directive;
-	if (@_ > 1)
-	{
-		($group, $directive) = @_;
-	}
-	else
-	{
-		($directive) = @_;
-	}
-
-	return $cfg_file->lookup($group, $directive);
-}
 
 sub register_request
 {
