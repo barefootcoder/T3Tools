@@ -6,101 +6,174 @@ print "as of the current date"							?!end_date
 print "as of [end_date]"								??end_date
 go
 
+set nocount on
+
 declare @as_of datetime
 select @as_of = getdate()								?!end_date
 select @as_of = '[end_date]'							??end_date
 
-select e.emp "E", $(employee_name e) "employee", c.client "C",
-		c.name "client", p.proj "P", p.name "project",
-		convert(numeric(5,2), br.rate) "billing",
-		convert(numeric(5,2), pr.rate) "pay",
-		isnull(brat.ratio, 1) "ratio",
-		convert(numeric(5,2), br.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
-from employee e, client c, project p, project_type pt, client_employee ce,
-		bill_rate br, pay_rate pr, billing_ratio brat
-where ce.emp = e.emp
-and ce.client = c.client
-and @as_of between ce.start_date and ce.end_date
-and e.emp = pr.emp
-and isnull(pr.client, c.client) = p.client
-and
-(
-	pr.proj = p.proj
-	or
-	(
-		pr.proj is null
-		and not exists
-		(
-			select 1
-			from pay_rate pr2
-			where pr2.emp = e.emp
-			and pr2.client = c.client
-			and pr2.proj = p.proj
-			and @as_of between pr2.start_date and pr2.end_date
-		)
-	)
-)
-and @as_of between pr.start_date and pr.end_date
+select ce.emp, ce.client, p.proj, NULL "phase", pt.resource_billing,
+		convert(numeric(4,3), 1) "ratio", convert(money, 0) "pay_rate",
+		convert(money, 0) "bill_rate"
+into #rate_spreadsheet
+from client_employee ce, project p, project_type pt
+where @as_of between ce.start_date and ce.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
 and @as_of between p.start_date and p.end_date
 and p.proj_type = pt.proj_type
-and pt.resource_billing = 0
-and c.client = br.client
-and br.proj = p.proj
-and @as_of between br.start_date and br.end_date
-and brat.emp =* e.emp
-and brat.client =* p.client
-and (brat.proj =* p.proj or brat.proj is null)
+and pt.requires_billing = 1
+union
+select ce.emp, ce.client, p.proj, re.phase, pt.resource_billing, 1, 0, 0
+from client_employee ce, project p, project_type pt, resource_employee re
+where @as_of between ce.start_date and ce.end_date
+and p.client = ce.client
+and p.proj = isnull(ce.proj, p.proj)
+and @as_of between p.start_date and p.end_date
+and p.proj_type = pt.proj_type
+and pt.requires_billing = 1
+and pt.resource_billing = 1
+and ce.emp = re.emp
+and ce.client = re.client
+and @as_of between re.start_date and re.end_date
+union
+select ce.emp, ce.client, p.proj, brat.phase, pt.resource_billing, 1, 0, 0
+from client_employee ce, project p, project_type pt, billing_ratio brat
+where @as_of between ce.start_date and ce.end_date
+and p.client = ce.client
+and p.proj = isnull(ce.proj, p.proj)
+and @as_of between p.start_date and p.end_date
+and p.proj_type = pt.proj_type
+and pt.requires_billing = 1
+and ce.emp = brat.emp
+and ce.client = brat.client
+and p.proj = isnull(brat.proj, p.proj)
 and @as_of between brat.start_date and brat.end_date
 union
-select e.emp "E", $(employee_name e) "employee", c.client "C",
-		c.name "client", p.proj "P", p.name "project",
-		convert(numeric(5,2), rr.rate) "billing",
-		convert(numeric(5,2), pr.rate) "pay",
-		isnull(brat.ratio, 1) "ratio",
-		convert(numeric(5,2), rr.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
-from employee e, client c, project p, project_type pt, client_employee ce,
-		resource_rate rr, resource_employee re, pay_rate pr, billing_ratio brat
-where ce.emp = e.emp
-and ce.client = c.client
-and @as_of between ce.start_date and ce.end_date
-and e.emp = pr.emp
-and isnull(pr.client, c.client) = c.client
-and
-(
-	pr.proj = p.proj
-	or
-	(
-		pr.proj is null
-		and not exists
-		(
-			select 1
-			from pay_rate pr2
-			where pr2.emp = e.emp
-			and pr2.client = c.client
-			and pr2.proj = p.proj
-			and @as_of between pr2.start_date and pr2.end_date
-		)
-	)
-)
-and @as_of between pr.start_date and pr.end_date
+select ce.emp, ce.client, p.proj, pr.phase, pt.resource_billing, 1, 0, 0
+from client_employee ce, project p, project_type pt, pay_rate pr
+where @as_of between ce.start_date and ce.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
 and @as_of between p.start_date and p.end_date
 and p.proj_type = pt.proj_type
-and pt.resource_billing = 1
-and c.client = rr.client
-and @as_of between rr.start_date and rr.end_date
-and rr.client = re.client
-and rr.resrc = re.resrc
-and re.emp = e.emp
-and @as_of between re.start_date and re.end_date
-and brat.emp =* e.emp
-and brat.client =* p.client
-and (brat.proj =* p.proj or brat.proj is null)
+and pt.requires_billing = 1
+and ce.emp = pr.emp
+and ce.client = isnull(pr.client, ce.client)
+and p.proj = isnull(pr.proj, p.proj)
+and @as_of between pr.start_date and pr.end_date
+
+-- get billing ratios for all phases
+update #rate_spreadsheet
+set ratio = brat.ratio
+from #rate_spreadsheet rss, billing_ratio brat
+where rss.emp = brat.emp
+and rss.client = brat.client
+and rss.proj = isnull(brat.proj, rss.proj)
 and @as_of between brat.start_date and brat.end_date
-order by e.emp, c.client
+
+-- get billing ratios specific to a phase
+update #rate_spreadsheet
+set ratio = brat.ratio
+from #rate_spreadsheet rss, billing_ratio brat
+where rss.emp = brat.emp
+and rss.client = brat.client
+and rss.proj = isnull(brat.proj, rss.proj)
+and rss.phase = brat.phase
+and @as_of between brat.start_date and brat.end_date
+
+-- get pay rates for all projects and phases
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = isnull(pr.client, rss.client)
+and pr.proj is NULL
+and pr.phase is NULL
+and @as_of between pr.start_date and pr.end_date
+
+-- get pay rates for all projects specific to a phase
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = isnull(pr.client, rss.client)
+and pr.proj is NULL
+and rss.phase = pr.phase
+and @as_of between pr.start_date and pr.end_date
+
+-- get pay rates specific to a project for all phases
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = pr.client
+and rss.proj = pr.proj
+and pr.phase is NULL
+and @as_of between pr.start_date and pr.end_date
+
+-- get pay rates specific to a project and phase
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = pr.client
+and rss.proj = pr.proj
+and rss.phase = pr.phase
+and @as_of between pr.start_date and pr.end_date
+
+-- get bill rates for project billing
+update #rate_spreadsheet
+set bill_rate = br.rate
+from #rate_spreadsheet rss, bill_rate br
+where rss.resource_billing = 0
+and rss.client = br.client
+and rss.proj = br.proj
+and @as_of between br.start_date and br.end_date
+
+-- get bill rates for resource billing (all phases)
+update #rate_spreadsheet
+set bill_rate = rr.rate
+from #rate_spreadsheet rss, resource_employee re, resource_rate rr
+where rss.resource_billing = 1
+and rss.emp = re.emp
+and rss.client = re.client
+and re.phase is NULL
+and @as_of between re.start_date and re.end_date
+and re.client = rr.client
+and re.resrc = rr.resrc
+and @as_of between rr.start_date and rr.end_date
+
+-- get bill rates for resource billing (phase specific)
+update #rate_spreadsheet
+set bill_rate = rr.rate
+from #rate_spreadsheet rss, resource_employee re, resource_rate rr
+where rss.resource_billing = 1
+and rss.emp = re.emp
+and rss.client = re.client
+and rss.phase = re.phase
+and @as_of between re.start_date and re.end_date
+and re.client = rr.client
+and re.resrc = rr.resrc
+and @as_of between rr.start_date and rr.end_date
+
+set nocount off
+
+select e.emp "E", convert(char(20), $(employee_name e)) "employee",
+		c.client "C", convert(char(20), c.name) "client",
+		p.proj "P", p.name "project", isnull(rss.phase, "*ALL*") "phase",
+		convert(numeric(5,2), rss.bill_rate) "billing",
+		convert(numeric(5,2), rss.pay_rate) "pay",
+		convert(char(5), rss.ratio) "ratio",
+		convert(numeric(5,2),
+				rss.bill_rate - rss.pay_rate * isnull(rss.ratio, 1)) "diff"
+from #rate_spreadsheet rss, employee e, client c, project p
+where rss.emp = e.emp
+and rss.client = c.client
+and rss.client = p.client
+and rss.proj = p.proj
+and @as_of between p.start_date and p.end_date
+order by rss.emp, rss.client, rss.proj, rss.phase
 
 print "projects open with no employee assignments"
 select c.client "C", c.name "client", p.proj "P", p.name "project"
