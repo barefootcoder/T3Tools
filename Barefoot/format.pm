@@ -175,7 +175,8 @@ sub swrite
 	# break up the format into lines
 	my $pos = 0;
 	my $continuation = false;
-	foreach (split(/$/m, $format))
+	my $terminator = $\ || "\n";
+	foreach (split(/(?<=$terminator)/, $format))
 	{
 		# now break each line into pieces
 		my @pieces = split(
@@ -242,16 +243,19 @@ sub swrite
 			}
 		}
 
+		my $template = join('', @pieces);
+		print STDERR "template is [[$template]]\n" if DEBUG >= 2;
 		if ($pos > $startpos)
 		{
 			print STDERR "formline with vars from $startpos to ",
 					$pos - 1, "\n" if DEBUG >= 3;
-			formline(join('', @pieces), @vars[$startpos..$pos-1]);
+			formline($template, @vars[$startpos..$pos-1]);
 		}
 		else
 		{
-			$^A .= join('', @pieces);
+			$^A .= $template;
 		}
+		print STDERR "after format, accum is [[$^A]]\n" if DEBUG >= 2;
 	}
 
 	return $^A;
@@ -260,8 +264,9 @@ sub swrite
 sub writeln
 {
 	my $format = shift;
-	my $terminator = $\ ? $\ : "\n";
+	my $terminator = $\ || "\n";
 	$format .= $terminator unless $format =~ /$terminator\Z/;
+	print STDERR "new format is [[$format]]\n" if DEBUG >= 2;
 	print swrite($format, @_);
 }
 
