@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.13  2001/01/10 17:05:25  tryan
+# Altered calc_salary_pay and calc_insurance_contribution to sync w/changes
+# (use payroll_id in salary_bank instead of start_date,check_date etc).
+#
 # Revision 1.12  2001/01/09 19:27:37  tryan
 # Added insurance_amount, calc_insurance_contribution.
 #
@@ -137,12 +141,6 @@ run_query -S$server -U$user -D$destdb <<-END
          bank_adjust                    money 		NULL,
          bank_after                     money 		NULL,
          actual_pay                     money 		NULL,
-         start_date                     datetime 	NOT NULL,
-         end_date                       datetime 	NOT NULL,
-         create_date                    datetime 	NOT NULL,
-         create_user                    varchar(20) NOT NULL,
-         chgdate                        datetime 	NULL,
-         chguser                        varchar(20) NULL,
     ")
 	print "Granting rights on table salary_amount"
 	go
