@@ -14,7 +14,7 @@ $(build_profit_item "
 	)													{?invoice}
 
 	log.client = '{client}'								{!invoice}
-	and log.date >= '{start_date}'									{?history}
+	and log.date >= '{start_date}'						{!invoice}	{?history}
 	and log.date <= '{end_date}'						{!invoice}
 	and log.proj = '{proj}'								{!invoice}	{?proj}
 	and not exists										{!invoice}	{!history}
@@ -37,7 +37,8 @@ select distinct @client_header
 from profit_item pi, client c
 where pi.client = c.client
 print @client_header
-print "<CENTER><H5>Period: {start_date} to {end_date}</H5></CENTER>"
+print "<CENTER><H5>Period: {start_date} to {end_date}</H5></CENTER>" {!invoice}
+print "<CENTER><H5>Invoice: {invoice}</H5></CENTER>"				{?invoice}
 go
 
 print "<HR><H4>Details by Date</H4>"
@@ -131,37 +132,79 @@ begin
 end
 go
 
-print "<HR><H4>Totals by Resource</H4>"
-select rr.resource_name "resource",
-		convert(numeric(6,2), sum(pi.units)) "hours",
-		sum(pi.total_price) "total"
-from profit_item pi, time_log tl, resource_rate rr, resource_employee re
-where pi.log_source = tl.log_source
-and pi.log_id = tl.log_id
-and tl.emp = re.emp
-and
+if exists
 (
-	tl.phase = re.phase
-	or
+	select 1
+	from profit_item pi, time_log tl, project p, project_type pt,
+			resource_rate rr, resource_employee re
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and tl.proj = p.proj
+	and tl.date between p.start_date and p.end_date
+	and p.proj_type = pt.proj_type
+	and pt.resource_billing = 1
+	and tl.emp = re.emp
+	and
 	(
-		re.phase is NULL
-		and not exists
+		tl.phase = re.phase
+		or
 		(
-			select 1
-			from resource_employee re2
-			where tl.client = re2.client
-			and tl.emp = re2.emp
-			and tl.phase = re2.phase
-			and tl.date between re2.start_date and re2.end_date
+			re.phase is NULL
+			and not exists
+			(
+				select 1
+				from resource_employee re2
+				where tl.client = re2.client
+				and tl.emp = re2.emp
+				and tl.phase = re2.phase
+				and tl.date between re2.start_date and re2.end_date
+			)
 		)
 	)
+	and tl.client = re.client
+	and tl.date between re.start_date and re.end_date
+	and re.client = rr.client
+	and re.resrc = rr.resrc
+	and tl.date between rr.start_date and rr.end_date
 )
-and tl.client = re.client
-and tl.date between re.start_date and re.end_date
-and re.client = rr.client
-and re.resrc = rr.resrc
-and tl.date between rr.start_date and rr.end_date
-group by rr.rate, rr.resource_name
-order by rr.rate desc
-compute sum(sum(pi.total_price))
+begin
+	print "<HR><H4>Totals by Resource</H4>"
+	select p.proj, rr.resource_name "resource",
+			convert(numeric(6,2), sum(pi.units)) "hours",
+			sum(pi.total_price) "total"
+	from profit_item pi, time_log tl, project p, project_type pt,
+			resource_rate rr, resource_employee re
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and tl.proj = p.proj
+	and tl.date between p.start_date and p.end_date
+	and p.proj_type = pt.proj_type
+	and pt.resource_billing = 1
+	and tl.emp = re.emp
+	and
+	(
+		tl.phase = re.phase
+		or
+		(
+			re.phase is NULL
+			and not exists
+			(
+				select 1
+				from resource_employee re2
+				where tl.client = re2.client
+				and tl.emp = re2.emp
+				and tl.phase = re2.phase
+				and tl.date between re2.start_date and re2.end_date
+			)
+		)
+	)
+	and tl.client = re.client
+	and tl.date between re.start_date and re.end_date
+	and re.client = rr.client
+	and re.resrc = rr.resrc
+	and tl.date between rr.start_date and rr.end_date
+	group by p.proj, rr.rate, rr.resource_name
+	order by p.proj, rr.rate desc
+	compute sum(sum(pi.total_price))
+end
 go
