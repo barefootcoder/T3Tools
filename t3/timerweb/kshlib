@@ -479,6 +479,34 @@ function build_profit_item
 		and log.date between br.start_date and br.end_date
 		group by log.client, log.proj, p.start_date, p.end_date
 
+		-- now a slightly tricky part ... we'll need to get any time logs
+		-- that apply to the class logs, so that profit can be calculated
+		-- appropriately ... of course, there's always the possibility that
+		-- they're already there, so we have to be careful
+		insert time_log_profit
+			(log_source, log_id, emp, client, proj, phase, date, hours,
+					start_date, end_date, requires_payment,
+					resource_billing, class_billing, billing_ratio, sum_by_proj)
+		select log.log_source, log.log_id, log.emp, log.client, log.proj,
+				log.phase, log.date, log.hours, log.date, log.date,
+				pt.requires_payment, pt.resource_billing,
+				pt.class_billing, 1, 0
+		from profit_item pi, time_log log, project p, project_type pt
+		where pi.log_source like 'class_log%'
+		and pi.client = log.client
+		and pi.proj = log.proj
+		and log.date between pi.start_date and pi.end_date
+		and log.client = p.client
+		and log.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and not exists
+		(
+			select 1
+			from time_log_profit tlp
+			where log.log_source = tlp.log_source
+			and log.log_id = tlp.log_id
+		)
+
 		go
 
 		set nocount off
