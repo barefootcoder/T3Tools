@@ -2,12 +2,11 @@
 
 use strict;
 
-use Barefoot::debug(1);						# comment out for production
+#use Barefoot::debug(1);						# comment out for production
 
 use Fcntl;
 use FileHandle;
 use File::Basename;
-use POSIX qw<mkfifo>;
 
 use Barefoot::base;
 use Barefoot::exception;
@@ -23,7 +22,12 @@ open(LOG, ">t3engd.log") or die("can't create log file");
 LOG->autoflush();
 log_error("starting server");
 
-my $req_pipe = create_pipe(T3::REQUEST_FILE);
+my $req_pipe = t3_create_pipe(T3::REQUEST_FILE);
+unless ($req_pipe)
+{
+	log_error("can't create request pipe: $!");
+	exit 1;
+}
 
 
 # the open will block until it receives a request
@@ -94,7 +98,11 @@ while (1)
 die("popped out of infinite loop");
 
 
-# subs
+
+###########################
+# Subroutines:
+###########################
+
 
 sub setup_modules
 {
@@ -123,6 +131,7 @@ sub setup_modules
 	}
 }
 
+
 sub log_error
 {
 	my ($msg) = @_;
@@ -130,28 +139,6 @@ sub log_error
 	print LOG "$0: $msg at ", scalar(localtime(time())), "\n";
 }
 
-BEGIN
-{
-	my $pipe_dir = t3_config(T3::REQUESTDIR_DIRECTIVE);
-
-	sub create_pipe
-	{
-		my ($pipe_file) = @_;
-		$pipe_file = "$pipe_dir/$pipe_file";
-
-		unlink($pipe_file) if -e $pipe_file;
-		T3::debug(4, -e $pipe_file ? "pipe exists" : "pipe is gone");
-		if (mkfifo($pipe_file, 0666))
-		{
-			return $pipe_file;
-		}
-		else
-		{
-			log_error($!);
-			return undef;
-		}
-	}
-}
 
 sub open_request_pipe
 {
@@ -165,6 +152,7 @@ sub open_request_pipe
 			or die("can't open the request pipe for reading");
 	T3::debug(5, "got pipe open");
 }
+
 
 sub parse_request_string
 {
@@ -192,6 +180,7 @@ sub parse_request_string
 	return $req;
 }
 
+
 sub open_output_pipe
 {
 	my ($id) = @_;
@@ -203,9 +192,12 @@ sub open_output_pipe
 		return undef;
 	}
 
-	my $pipe_file = create_pipe(T3::OUTPUT_FILE . $id);
+	my $pipe_file = t3_pipename(T3::OUTPUT_FILE . $id);
+	log_error("client didn't create pipe for $id or wrong mode on pipe")
+			unless -w $pipe_file;
 	return new FileHandle(">$pipe_file");
 }
+
 
 sub shutdown_server
 {
