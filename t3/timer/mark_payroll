@@ -2,7 +2,7 @@
 
 use strict;
 
-use Barefoot::debug;
+#use Barefoot::debug;
 
 use Barefoot::base;
 use Barefoot::date;
