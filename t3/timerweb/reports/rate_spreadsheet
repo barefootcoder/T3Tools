@@ -70,6 +70,7 @@ from #rate_spreadsheet rss, billing_ratio brat
 where rss.emp = brat.emp
 and rss.client = brat.client
 and rss.proj = isnull(brat.proj, rss.proj)
+and brat.phase is NULL
 and @as_of between brat.start_date and brat.end_date
 
 -- get billing ratios specific to a phase
