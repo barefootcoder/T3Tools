@@ -6,7 +6,7 @@
 # $Id$
 # $Revision$
 
-old_users=$(t3_who | y t3_last_ping -lo 5 | sort | uniq -d)
+old_users=$(t3_who | wye t3_last_ping -lo 5 | sort | uniq -d)
 if [ -n "$old_users" ]
 then
 	t3_logoff $old_users
