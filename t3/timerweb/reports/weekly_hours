@@ -4,14 +4,18 @@
 set nocount on
 go
 
-print "<H4>Hours per week</H4>"
-select "for " + $(employee_name e)								??user
+print '<H4>Hours per week</H4>'
+select 'for ' + $(employee_name e)								??user
 from employee e													??user
-where e.login = "[user]"										??user
-print "for all employees"										?!user
-print "Period from [start_date] to [end_date]"
-print ""
-print ""
+where e.login = '[user]'										??user
+print 'for all employees'										?!user
+select 'for ' + c.name											??client
+from client c													??client
+where c.client = '[client]'										??client
+print 'for all clients'											?!client
+print 'Period from [start_date] to [end_date]'
+print ''
+print ''
 go
 
 
@@ -24,6 +28,13 @@ $(build_pay_amount "
 		where log.emp = e.emp									??user
 		and e.login = '[user]'									??user
 	)															??user
+	and exists													??client
+	(															??client
+		select 1												??client
+		from client c											??client
+		where log.client = c.client								??client
+		and c.client = '[client]'								??client
+	)															??client
 ")
 
 calc_pay_amount
@@ -39,12 +50,12 @@ go
 
 select
 		$(employee_name e) "employee",							?!user
-		convert(char(6), pa.pay_rate, 1) "payrate", c.name "client",
+		convert(char(6), pa.pay_rate, 1) "payrate",
+		c.name "client",										?!client
 		$(period_name "$(period_num pa.date 7)" 7) "week",
 		sum(pa.hours) "hours"
 from pay_amount pa, employee e, client c
 where pa.emp = e.emp
-and e.login = "[user]"											??user
 and pa.client = c.client
 group by $(employee_name e), pa.pay_rate, c.name,
 		$(period_name "$(period_num pa.date 7)" 7)
@@ -59,7 +70,6 @@ select
 		sum(pa.hours) "hours"
 from pay_amount pa, employee e
 where pa.emp = e.emp
-and e.login = "[user]"											??user
 group by
 		$(employee_name e),										?!user
 		$(period_name "$(period_num pa.date 7)" 7)
