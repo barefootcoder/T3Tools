@@ -8,12 +8,13 @@ print ''
 print ''
 select '<H3>Estimates for ' + c.name + '</H3>'
 from client c
-where c.client = '[client]'
+where c.client = '{client}'
 print ''
 go
 
 $(build_profit_item "
-	log.client = '[client]'
+	log.client = '{client}'
+	and log.proj = '{proj}'										{?proj}
 	and exists
 	(
 		select 1
