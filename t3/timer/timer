@@ -3,6 +3,21 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.13  2000/02/05 06:49:06  buddy
+# implemented "use constant" constants
+# removed abortive effort to create -l option
+# made the choice of a "default" timer a little more intelligent
+# updated rounding rules to match new timer db
+# now uses time_log instead of log (new table in timer db)
+# moved round() function into Barefoot::range module
+# fixed obscure bug with -r trying to log default timer
+# now splits timer file lines on explicit tab rather than any whitespace
+# implemented "?" help function for employees when logging time
+# logging time now understands new client_employee table format
+# now uses client_project instead of cliproj (new table in timer db)
+# made client project message consistent with others
+# generally cleaned up code and comments
+#
 # Revision 1.12  2000/01/03 04:44:00  buddy
 # changed so that any ending time between midnight and 6am counts on the prev day
 # fixed -r function
@@ -417,12 +432,12 @@ if ($func eq 't')					# total timers by client
 	# now get log entries from the timer database
 	my $monday = date::MondayDate();
 	my $query = "
-		select tl.client, sum(l.hours)
+		select tl.client, sum(tl.hours)
 		from time_log tl, employee e
 		where tl.emp = e.emp
 		and e.login = '$timerinfo->{user}'
 		and tl.date between '$monday' and dateadd(day, 6, '$monday')
-		group by l.client
+		group by tl.client
 	";
 	my $results = timerdata::query_results($query);
 	foreach my $row (@$results)
