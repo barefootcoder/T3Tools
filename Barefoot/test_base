@@ -27,4 +27,6 @@ die("true not correct") unless true == 1;
 die("false not correct") unless false == 0;
 die("DEBUG not correct") unless DEBUG == 0;
 
+system("test_base2");
+
 print "ALL TESTS PASSED\n";
