@@ -1,9 +1,6 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Billing/Pay Rate Spreadsheet
 
-use TIMER
-go
-
 print "Current billing and pay rates"
 go
 
@@ -38,7 +35,8 @@ and
 	)
 )
 and getdate() between pr.start_date and pr.end_date
-and p.client = c.client
+and p.client = ce.client
+and p.proj = isnull(ce.proj, p.proj)
 and p.proj_type != 'R'
 and c.client = br.client
 and br.proj = p.proj
@@ -79,7 +77,8 @@ and
 	)
 )
 and getdate() between pr.start_date and pr.end_date
-and p.client = c.client
+and p.client = ce.client
+and p.proj = isnull(ce.proj, p.proj)
 and p.proj_type = 'R'
 and c.client = rr.client
 and getdate() between rr.start_date and rr.end_date
