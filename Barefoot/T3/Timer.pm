@@ -262,7 +262,7 @@ sub test_connection
 		return $connected;
 	}
 
-	$connected = &t3->_ping();
+	$connected = &t3->ping();
 	if (DEBUG >= 4)
 	{
 		print STDERR
