@@ -74,6 +74,25 @@ compute sum(sum(pi.total_price))
 	by p.name
 go
 
+print "<HR><H4>Totals by Project and End Client</H4>"
+select p.name "project", cp.name "end client",
+		convert(numeric(6,2), sum(pi.units)) "hours",
+		sum(pi.total_price) "total"
+from profit_item pi, time_log tl, project p, client_project cp, employee e
+where pi.log_source = tl.log_source
+and pi.log_id = tl.log_id
+and pi.client = p.client
+and pi.proj = p.proj
+and pi.end_date between p.start_date and p.end_date
+and tl.client = cp.client
+and tl.cliproj = cp.project_id
+and tl.emp = e.emp
+group by p.name, cp.name
+order by p.name, cp.name
+compute sum(sum(pi.total_price))
+	by p.name
+go
+
 print "<HR><H4>Totals by Resource</H4>"
 select rr.resource_name "resource",
 		convert(numeric(6,2), sum(pi.units)) "hours",
