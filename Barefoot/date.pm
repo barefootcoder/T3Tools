@@ -18,7 +18,7 @@ use strict;
 
 use Time::Local;
 
-use string;
+use Barefoot::string;
 
 
 1;
@@ -67,5 +67,6 @@ sub MondayDate
 
 	my $monday_time = time - $num_days * 24 * 60 * 60;
 	my ($day, $mon, $year) = (localtime $monday_time)[3..5];
+	$mon += 1, $year += 1900;
 	return "$mon/$day/$year";
 }
