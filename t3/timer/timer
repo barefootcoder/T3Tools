@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.7  1999/07/09 19:01:27  mike
+# Fixed active timer bug and added "working..." for when comments are being entered
+#
 # Revision 1.6  1999/05/04 17:26:41  buddy
 # changed call to timerdata::insert_log() to display error returned from Sybase
 #
@@ -433,7 +436,12 @@ if ($func eq 'd')					# done with a timer
 
 	save_history($timerinfo, "done");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	if ($timerinfo->{curtimer} eq $timerinfo->{giventimer})
+		{
+		undef($timerinfo->{curtimer});
+		}
 	print_elapsed($timerinfo);
+	
 	writefile($timerinfo);
 }
 
@@ -612,18 +620,10 @@ sub print_elapsed
 				$timerinfo->{timers}->{$timer}->{time} =~ m{/\d+-$}
 					? "HALF-TIMING" : "");
 	}
-	if ($timerinfo->{curtimer} eq $timerinfo->{giventimer})
-	{
-		print "no timer is active";
-		print "\n\n";
-	}
-	else
-	{
-	print $timerinfo->{curtimer} ? "active timer is $timerinfo->{curtimer}"
-			: "no timer is active";
 
+	print $timerinfo->{curtimer} ? "active timer is $timerinfo->{curtimer}"
+		: "no timer is active";
 	print "\n\n";
-	}
 }
 
 sub calc_time
