@@ -18,8 +18,15 @@ if ($ARGV[0])
 }
 else
 {
-	my $user = input("user to log off?");
-	$retval |= logoff($user);
+	if (-t STDIN)
+	{
+		my $user = input("user to log off?");
+		$retval |= logoff($user);
+	}
+	else
+	{
+		exit(2);
+	}
 }
 exit($retval);
 
