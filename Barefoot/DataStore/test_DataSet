@@ -1,0 +1,269 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug(1);
+
+use Barefoot::base;
+use Barefoot::DataStore;
+use Barefoot::exception;
+use Barefoot::DataStore::DataSet;
+
+sub test_error(&@);
+
+
+# get a data store we can use for testing
+system("ln -sf /etc/data_store/t3test.dstore .");
+my $t3 = DataStore->open("t3test", "buddy") or die("can't open data store");
+
+# and get a data set we can use for testing
+my $data = $t3->load_table("select * from {~timer}.category")
+		or die("can't get an initial data set from load_table");
+
+
+# test all functions
+test_foreach_row();
+test_remove_column();
+test_group();
+
+
+# looks okay
+unlink("t3test.dstore");
+print "ALL TESTS PASSED\n";
+
+
+sub test_error (&@)
+{
+	my ($try, $catch) = @_;
+
+	# print STDERR "in test_error block\n";
+	eval { &$try };
+	if ($@)
+	{
+		# print "in try: $@";
+		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/;
+		die("incorrect 'die' format: $@") unless $3;
+		local $_ = $1;
+		$__FILE__ = $2;
+		$__LINE__ = $3;
+		return true if &$catch;
+	}
+	return false;
+}
+
+
+sub test_foreach_row
+{
+	DataStore::foreach_row($data, sub
+			{
+				$_->{new_col} = substr($_->{name}, 0, 5);
+			}
+	) or die("foreach_row call failed");
+
+	foreach (@$data)
+	{
+		die("foreach_row didn't work")
+				unless $_->{new_col} eq substr($_->{name}, 0, 5);
+	}
+}
+
+sub test_remove_column
+{
+	test_error { DataStore::remove_column($data); }
+	catch { /must specify column to remove/ }
+	or die("remove_column didn't demand column name");
+
+	DataStore::remove_column($data, 'new_col')
+			or die("remove_column call failed");
+
+	foreach (@$data)
+	{
+		die("remove_column didn't work")
+				if exists $_->{new_col};
+	}
+}
+
+sub test_group
+{
+	# make sure the mechanics are working
+	my $newdata = DataStore::group($data,
+			group_by	=>	[ qw<category name> ],
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+								die("not seeing SRC correctly")
+										unless join(',', sort keys %$src)
+											eq "category,name";
+								die("group by columns not transferring")
+										unless join(',', sort keys %$dst)
+											eq "category,name";
+							},
+	);
+	die("group call failed") unless $newdata;
+	foreach my $orig_row (sort { $a->{category} cmp $b->{category} } @$data)
+	{
+		my $grouped_row = shift @$newdata;
+		my $didnt_work = sub
+		{
+			die("do-nothing group didn't work")
+		};
+
+		foreach (keys %$orig_row)
+		{
+			&$didnt_work unless exists $grouped_row->{$_}
+					and $orig_row->{$_} eq $grouped_row->{$_};
+		}
+		foreach (keys %$grouped_row)
+		{
+			&$didnt_work unless exists $orig_row->{$_}
+					and $orig_row->{$_} eq $grouped_row->{$_};
+		}
+	}
+
+	# try a simple grouping
+	DataStore::foreach_row($data, sub
+			{
+				my @words;
+				$_->{num_words} = scalar(@words = split(' ', $_->{name}));
+				print "setting $_->{name} to $_->{num_words} words\n"
+						if DEBUG >= 3;
+			}
+	);
+	my $group = DataStore::group($data,
+			group_by	=>	[ qw<num_words> ],
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+								print STDERR "adding symbol $src->{category} "
+										. "to num words $dst->{num_words}\n"
+										if DEBUG >= 3;
+								if (exists $dst->{symbols})
+								{
+									$dst->{symbols} .= "," . $src->{category};
+								}
+								else
+								{
+									$dst->{symbols} = $src->{category};
+								}
+							},
+	);
+	die("group call failed") unless $group;
+
+	# go at this from a different angle and hope we get the same results
+	my (%words, @words);
+	$words{$_->{category}} = scalar(@words = split(' ', $_->{name}))
+			foreach @$data;
+	foreach (@$group)
+	{
+		foreach my $sym (split(',', $_->{symbols}))
+		{
+			print STDERR "testing $sym with $words{$sym} words against "
+					. "$_->{num_words} in the group struct\n" if DEBUG >= 3;
+			die("group function didn't work")
+					unless $words{$sym} == $_->{num_words};
+		}
+	}
+
+	# make sure constant columns fail if not constant
+	$group = DataStore::group($data,
+			group_by	=>	[ qw<num_words> ],
+			constant	=>	[ qw<category> ],
+	);
+	die("constant columns don't fail appropriately") if $group;
+
+	# try an example with more columns to group by
+	$data = $t3->load_table("
+			select tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id,
+					tl.hours, c.name as client_name, p.name as proj_name
+			from {~timer}.time_log tl, {~timer}.client c, {~timer}.project p
+			where tl.client_id = c.client_id
+			and tl.client_id = p.client_id
+			and tl.proj_id = p.proj_id
+			and tl.log_date between p.start_date and p.end_date
+			and tl.log_date between '1/1/1999' and '12/31/1999'
+	") or die("can't load for extended test");
+	my $ds_group = DataStore::group($data,
+			group_by	=>	[ qw<emp_id client_id proj_id phase_id> ],
+			constant	=>	[ qw<client_name proj_name> ],
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+								$dst->{total_hours} += $src->{hours};
+							},
+	);
+	die("group call failed") unless $ds_group;
+
+	# now get SQL to return the same info
+	my $sql_group = $t3->load_table("
+			select tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id,
+					c.name as client_name, p.name as proj_name,
+					sum(tl.hours) as total_hours
+			from {~timer}.time_log tl, {~timer}.client c, {~timer}.project p
+			where tl.client_id = c.client_id
+			and tl.client_id = p.client_id
+			and tl.proj_id = p.proj_id
+			and tl.log_date between p.start_date and p.end_date
+			and tl.log_date between '1/1/1999' and '12/31/1999'
+			group by tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id,
+					c.name, p.name
+			order by tl.emp_id, tl.client_id, tl.proj_id, tl.phase_id
+	") or die("couldn't get SQL data for extended group test");
+
+	# now compare the two
+	# note: this relies on the fact that group() returns its data sorted
+	die("don't have the same number of rows") unless @$ds_group == @$sql_group;
+	for my $x (1..scalar(@$ds_group))
+	{
+		my $didnt_work = sub
+		{
+			print STDERR "row $x col $_ ds has $ds_group->[$x]->{$_}, "
+					. "sql has $sql_group->[$x]->{$_}\n" if DEBUG >= 3;
+			die("group data not equal");
+		};
+
+		foreach (keys %{$ds_group->[$x]})
+		{
+			if ($_ eq 'total_hours')
+			{
+				&$didnt_work unless $ds_group->[$x]->{$_}
+						== $sql_group->[$x]->{$_};
+			}
+			else
+			{
+				if (defined $ds_group->[$x]->{$_}
+						and defined $sql_group->[$x]->{$_})
+				{
+					&$didnt_work unless $ds_group->[$x]->{$_}
+							eq $sql_group->[$x]->{$_};
+				}
+				else
+				{
+					&$didnt_work unless defined $ds_group->[$x]->{$_}
+							== defined $sql_group->[$x]->{$_}
+				}
+			}
+		}
+		foreach (keys %{$sql_group->[$x]})
+		{
+			if ($_ eq 'total_hours')
+			{
+				&$didnt_work unless $ds_group->[$x]->{$_}
+						== $sql_group->[$x]->{$_};
+			}
+			else
+			{
+				if (defined $ds_group->[$x]->{$_}
+						and defined $sql_group->[$x]->{$_})
+				{
+					&$didnt_work unless $ds_group->[$x]->{$_}
+							eq $sql_group->[$x]->{$_};
+				}
+				else
+				{
+					&$didnt_work unless defined $ds_group->[$x]->{$_}
+							== defined $sql_group->[$x]->{$_}
+				}
+			}
+		}
+	}
+}
