@@ -41,7 +41,9 @@
 #		make_more_memory() and return if /out of memory/;
 #		return if /timeout/;					# this is okay (no error)
 #		rethrow;								# ran out of ideas
-#	}
+#	};
+#
+# Don't forget the ending semi-colon after your catch block; that is mandatory.
 #
 #
 # timeout
