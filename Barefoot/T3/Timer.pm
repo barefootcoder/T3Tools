@@ -57,13 +57,13 @@ our %timer_commands =
 
 sub _remove_timer
 {
-	my ($command, $timers, $timer_to_remove) = @_;
+	my ($opts, $command, $timers, $timer_to_remove) = @_;
 
 	# save to history file, get rid of timer, and reset current timer marker
 	# if the removed timer is the current one
 
-    save_history($timers, $command);
-    delete $timers->{$timer_to_remove};
+    my $del_timer = delete $timers->{$timer_to_remove};
+    save_history($command, $opts->{user}, $del_timer);
 
     if (exists $timers->{T3::CURRENT_TIMER}
 			and $timers->{T3::CURRENT_TIMER} eq $timer_to_remove)
@@ -161,6 +161,25 @@ sub writefile
 	}
 	close(TFILE);
 }
+
+
+sub save_history
+{
+	my ($command, $user, $timer) = @_;
+	print STDERR "entering save_history function\n" if DEBUG >= 5;
+
+	my $hfile = T3::hist_filename(TIMER => $user);
+	print STDERR "going to print to file $hfile\n" if DEBUG >= 3;
+	open(HFILE, ">>$hfile") or die("can't write to history file");
+
+	$timer->{phase} ||= "";
+	$timer->{todo_link} ||= "";
+	print HFILE join("\t", $ENV{USER}, time2str("%L/%e/%Y %l:%M%P", time),
+			$command, $user, timer_fields($timer)), "\n";
+
+	close(HFILE);
+}
+
 
 
 ###########################
@@ -267,7 +286,7 @@ sub start                   # start a timer
 	{
 		$timers->{$timersent}->{name} = $timersent;
 
-		foreach my $attrib ( qw<client project phase> )
+		foreach my $attrib ( qw<client project phase todo_link> )
 		{
 			$timers->{$timersent}->{$attrib} = $opts->{$attrib} || "";
 		}
@@ -319,7 +338,7 @@ sub cancel                   # cancel a timer
     }
 
 	# get rid of timer
-	_remove_timer(CANCEL => $timers, $timersent);
+	_remove_timer($opts, CANCEL => $timers, $timersent);
 
 	# need to write the file
 	return true;
@@ -340,7 +359,7 @@ sub done                   # done with a timer
 	log_time($opts, $timers);
 
 	# get rid of timer
-	_remove_timer(DONE => $timers, $timersent);
+	_remove_timer($opts, DONE => $timers, $timersent);
 
 	# need to write the file
 	return true;
