@@ -94,7 +94,7 @@ go
 
 print "                        total    weeks           weeks"
 select $(employee_name e) "employee",
-		convert(numeric(5,2), sum(pa.hours)) "hours",
+		convert(numeric(6,2), sum(pa.hours)) "hours",
 		convert(numeric(3), par.num_weeks) "total",
 		convert(numeric(5,2), sum(pa.hours) / par.num_weeks) "t avg",
 		convert(numeric(3), ewwt.num_periods) "worked",
