@@ -30,6 +30,8 @@ package T3::TimerProcs;
 use strict;
 
 use Carp;
+use Time::Local;
+use Date::Parse;
 use Data::Dumper;
 
 use Barefoot::base;
@@ -46,7 +48,11 @@ use Barefoot::date epoch => BAREFOOT_EPOCH;
 # have to "register" all procs with DataStore
 $DataStore::procs->{build_pay_amount} = \&build_pay_amount;
 $DataStore::procs->{build_profit_item} = \&build_profit_item;
+$DataStore::procs->{calc_profit} = \&calc_profit;
 $DataStore::procs->{calc_sales_commission} = \&calc_sales_commission;
+$DataStore::procs->{calc_ref_commission} = \&calc_referral_commission;
+$DataStore::procs->{calc_emp_commission} = \&calc_employee_commission;
+$DataStore::procs->{calc_admin_commission} = \&calc_admin_commission;
 $DataStore::procs->{calc_insurance_contribution}
 		= \&calc_insurance_contribution;
 $DataStore::procs->{calc_salary_bank} = \&calc_salary_bank;
@@ -100,7 +106,7 @@ sub _do_or_error
 #
 #		log			log table
 #		p			project
-#		pt			projec_type
+#		pt			project_type
 #
 # If you need any other tables, you will have to specify an "exists"
 # subquery.  In build_pay_amount (unlike build_profit_item), the log
@@ -702,6 +708,199 @@ sub build_profit_item
 
 ###########################################################################
 #
+# calc_profit
+#
+# #########################################################################
+#
+# This procedure calls calc_total_cost and all the commission procedures
+# and uses that info to figure out the total profit.  Be sure and call
+# build_profit_item (above) before calling this procedure.  After you call
+# this, you probably don't need to call anything else.
+#
+# Since this procedure uses the existing profit_item table, and none of
+# the procedures it calls require any arguments, it requires no arguments
+# of its own.
+#
+###########################################################################
+
+sub calc_profit
+{
+	my ($ds) = @_;
+	my $output = "";						# usually this will remain empty
+
+	$output .= calc_sales_commission($ds);
+	$output .= calc_referral_commission($ds);
+	$output .= calc_total_cost($ds);
+	$output .= calc_employee_commission($ds);
+
+	# fixup NULL commissions; NULL won't add properly
+	_do_or_error($ds, '
+		update {@profit_item}
+		set sales_commission = 0
+		where sales_commission is NULL
+	');
+	_do_or_error($ds, '
+		update {@profit_item}
+		set ref_commission = 0
+		where ref_commission is NULL
+	');
+	_do_or_error($ds, '
+		update {@profit_item}
+		set emp_commission = 0
+		where emp_commission is NULL
+	');
+
+	# simple profit calculation is basic subtraction
+	_do_or_error($ds, '
+
+		update {@profit_item}
+		set simple_profit = total_price - total_cost - sales_commission
+				- ref_commission - emp_commission
+	');
+
+	# fill up profit_client for some helpful reporting stuff
+	my $data = $ds->load_table('
+
+		select pi.client_id, pi.proj_id, min(pi.start_date) "start_date",
+				max(pi.end_date) "end_date", sum(pi.units) "units",
+				sum(pi.total_price) "total_price",
+				sum(pi.total_cost) "total_cost",
+				sum(pi.sales_commission) "sales_commission",
+				sum(pi.ref_commission) "ref_commission",
+				sum(pi.emp_commission) "emp_commission",
+				sum(pi.simple_profit) "simple_profit"
+		from {@profit_item} pi
+		group by pi.client_id, pi.proj_id
+
+	') or _fatal($ds);
+
+		# margin calculation is pretty basic
+		# (make sure you don't divide by zero or get negative margins
+		# or magins over 100%)
+	$data->alter_dataset({
+			add_columns		=>	[ qw<margin> ],
+			foreach_row		=>	sub
+			{
+				if ($_->{total_price} > 0 and $_->{simple_profit} > 0
+						and $_->{total_price} > $_->{simple_profit})
+				{
+					$_->{margin} = range::round(
+							$_->{simple_profit} / $_->{total_price} * 100,
+							range::ROUND_OFF, .01);
+				}
+				else
+				{
+					$_->{margin} = undef;
+				}
+			}
+
+	});
+
+	# jam it in the table
+	$ds->replace_table('{@profit_client}', $data)
+			or _fatal($ds);
+
+	# pass on any output received from subprocedures
+	return $output;
+}
+
+
+###########################################################################
+#
+# calc_total_cost
+#
+# #########################################################################
+#
+# This procedure works out the cost for each profit item so that you can
+# calculate the profit.  Most of the stuff here is pretty basic.  It sort of
+# expects build_profit_item (and, by extension, build_pay_amount) to have
+# been called already.
+#
+# Since this procedure uses the existing profit_item table, it requires
+# no arguments of its own.
+#
+###########################################################################
+
+sub calc_total_cost
+{
+	my ($ds) = @_;
+
+	# materials_log has total cost already in it
+	_fatal($ds) unless defined $ds->correlated_update(
+
+		# update
+			'{@profit_item}', 'pi',
+		# set
+			[ 'total_cost = ml.amount_paid' ],
+		'
+			from {@materials_log} ml
+			where pi.log_source = ml.log_source
+			and pi.log_id = ml.log_id
+	');
+
+	# update time_log_profit from pay_amount
+	# note that this join doesn't check log_source, but this should
+	# be okay since both time_log_profit and pay_amount should be
+	# filled up from time_log (only) ... if this ever changes,
+	# this update will no longer work properly
+	_fatal($ds) unless defined $ds->correlated_update(
+
+		# update
+			'{@time_log_profit}', 'tlp',
+		# set
+			[ 'pay_rate_type = pa.pay_rate_type', 'total_pay = pa.total_pay' ],
+		'
+			from {@pay_amount} pa
+			where tlp.log_id = pa.log_id
+	');
+
+	# can update "one to one" time logs directly
+	_fatal($ds) unless defined $ds->correlated_update(
+
+		# update
+			'{@profit_item}', 'pi',
+		# set
+			[ ' total_cost = tlp.total_pay' ],
+		'
+			from {@time_log_profit} tlp
+			where pi.log_source = tlp.log_source
+			and pi.log_id = tlp.log_id
+	');
+
+	# build a dataset for updating everything else
+	my $data = $ds->load_table(q<
+
+		select pi.profit_id, sum(tlp.total_pay) "total_cost"
+		from {@profit_item} pi, {@time_log_profit} tlp
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client_id = tlp.client_id
+		and pi.proj_id = tlp.proj_id
+		and tlp.log_date between pi.start_date and pi.end_date
+		group by pi.profit_id
+
+	>);
+
+	# and use dataset to update the profit item table
+	foreach (@$data)
+	{
+		_do_or_error($ds, '
+
+			update {@profit_item}
+			set total_cost = {total_cost}
+			where profit_id = {profit_id}
+		',
+			%$_
+		);
+	}
+
+	# no output necessary
+	return "";
+}
+
+
+###########################################################################
+#
 # calc_sales_commission
 #
 # #########################################################################
@@ -820,6 +1019,381 @@ sub calc_sales_commission
 			%$_
 		);
 	}
+
+	# no output necessary
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_referral_commission
+#
+# #########################################################################
+#
+# Use this procedure to calculate the referral commission for a given set
+# of profit items.  Be sure and call build_profit_item (above) before calling
+# this procedure.
+#
+# Since this procedure uses the existing profit_item table, it requires no
+# arguments of its own.
+#
+###########################################################################
+
+
+sub calc_referral_commission
+{
+	my ($ds) = @_;
+
+	my $data = $ds->load_table(q<
+
+		-- first get the "one-to-one" time logs
+		select pi.profit_id, rc.pay_type, rc.pay_to, tlp.emp_id, tlp.hours,
+				rc.commission
+		from {@profit_item} pi, {@time_log_profit} tlp,
+				{@referral_commission} rc
+		where pi.log_source = tlp.log_source
+		and pi.log_id = tlp.log_id
+		and tlp.emp_id = rc.emp_id
+		and tlp.log_date between rc.start_date and rc.end_date
+
+		-- next, everything else (except the materials logs)
+		union
+		select pi.profit_id, rc.pay_type, rc.pay_to, tlp.emp_id, tlp.hours,
+				rc.commission
+		from {@profit_item} pi, {@time_log_profit} tlp,
+				{@referral_commission} rc
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client_id = tlp.client_id
+		and pi.proj_id = tlp.proj_id
+		and tlp.log_date between pi.start_date and pi.end_date
+		and tlp.emp_id = rc.emp_id
+		and tlp.log_date between rc.start_date and rc.end_date
+
+	>) or _fatal($ds);
+
+		# now figure the amounts of the commissions (not too tough)
+		# also take advantage of this opportunity to transform the dataset
+		# into the form we want (i.e., to match the referral_comm_amount table)
+	$data->alter_dataset({
+			add_columns		=>	[ qw<name amount> ],
+			foreach_row		=>	sub
+			{
+				$_->{amount} = range::round(
+						$_->{hours} * $_->{commission}, range::ROUND_OFF, .01);
+			}
+	});
+
+	# jam it in the table
+	$ds->replace_table('{@referral_comm_amount}', $data)
+			or _fatal($ds);
+
+		# get the name of the commission payee if an employee
+	_do_or_error($ds, q<
+
+		update {@referral_comm_amount}
+		set name = pe.first_name
+		from {@referral_comm_amount} sca, {@employee} e, {@person} pe
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp_id
+		and e.person_id = pe.person_id
+	>);
+
+		# get the name of the commission payee if a salesman
+	_do_or_error($ds, q<
+
+		update {@referral_comm_amount}
+		set name = s.name
+		from {@referral_comm_amount} sca, {@salesman} s
+		where sca.pay_type = 'S'
+		and sca.pay_to = s.salesman_id
+	>);
+
+		# create a grouped dataset we can use to update the profit_item table
+	$data = $data->group(
+
+			group_by	=>	[ qw<profit_id> ],
+			new_columns	=>	[ qw<profit_id total_ref_comm> ],
+			on_new_group=>	sub
+							{
+								$_->{total_ref_comm} = 0;
+							},
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+
+								$dst->{total_ref_comm} += $src->{amount};
+							},
+	);
+	return "couldn't group commissions by profit_id for some reason\n"
+			unless $data;
+
+	# finally update the profit item table
+	foreach (@$data)
+	{
+		_do_or_error($ds, '
+
+			update {@profit_item}
+			set ref_commission = {total_ref_comm}
+			where profit_id = {profit_id}
+		',
+			%$_
+		);
+	}
+
+	# no output necessary
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_employee_commission
+#
+# #########################################################################
+#
+# Use this procedure to calculate the employee commission for a given set
+# of profit items.  Be sure and call build_profit_item (above) before calling
+# this procedure.
+#
+# Since this procedure uses the existing profit_item table, it requires no
+# arguments of its own.
+#
+###########################################################################
+
+
+sub calc_employee_commission
+{
+	my ($ds) = @_;
+
+	my $data = $ds->load_table(q<
+
+		-- get the "one on one" time logs
+		select pi.profit_id, tlp.emp_id "pay_to", tlp.log_date "comm_date",
+				tlp.total_pay "pay_to_employee", pi.total_cost "total_pay",
+				pi.total_price, pi.sales_commission, pi.ref_commission
+		from {@profit_item} pi, {@time_log_profit} tlp
+		where pi.log_source = tlp.log_source
+		and pi.log_id = tlp.log_id
+		and tlp.requires_payment = 1
+		and tlp.pay_rate_type != 'S'
+
+		-- now the other time logs
+		union
+		select pi.profit_id, tlp.emp_id "pay_to", tlp.log_date "comm_date",
+				sum(tlp.total_pay) "pay_to_employee", pi.total_cost "total_pay",
+				pi.total_price, pi.sales_commission, pi.ref_commission
+		from {@profit_item} pi, {@time_log_profit} tlp
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client_id = tlp.client_id
+		and pi.proj_id = tlp.proj_id
+		and tlp.log_date between pi.start_date and pi.end_date
+		and tlp.requires_payment = 1
+		and tlp.pay_rate_type != 'S'
+		group by pi.profit_id, tlp.emp_id, tlp.log_date, pi.total_cost
+
+	>) or _fatal($ds);
+
+		# now figure the amounts of the commissions (pretty complicated)
+		# also take advantage of this opportunity to transform the dataset
+		# into the form we want (i.e., to match the employee_comm_amount table)
+	$data->alter_dataset({
+			add_columns		=>	[ qw<pay_type name amount> ],
+			remove_columns	=>	[ qw<total_price
+									sales_commission ref_commission> ],
+			foreach_row		=>	sub
+			{
+				# employee commission is always paid to employees
+				$_->{pay_type} = 'E';
+
+				# now figure the percent of total pay that applies to
+				# this employee (note that for the "one to one" logs,
+				# this will always be 100%)
+				my $employee_percent = $_->{pay_to_employee} / $_->{total_pay};
+
+				# these might be NULL (i.e., undef), so zero them if necessary
+				$_->{sales_commission} ||= 0;
+				$_->{ref_commission} ||= 0;
+
+				# now figure the adjusted price (i.e., total price -
+				# (sales comm + ref comm)) and the difference between
+				# adjusted cost and total cost; for historical reasons,
+				# these are called the gross and diff
+				my $gross = $employee_percent * ($_->{total_price}
+						- $_->{sales_commission} - $_->{ref_commission});
+				my $diff = $gross - $_->{pay_to_employee};
+
+				# turn the dates we need into Perl numbers
+				my $comm_change_date = timelocal(0,0,0,7,9,98);		# 9/7/98
+				my $comm_date = str2time($_->{comm_date});
+
+				# now the commission itself:
+				# no diff, no comm
+				if ($diff <= 0)
+				{
+					$_->{amount} = 0;
+				}
+				# old formula (previous to magic date of 9/7/98) is easy
+				elsif ($comm_date < $comm_change_date)
+				{
+					$_->{amount} = $diff * .04;
+				}
+				# new formula is somewhat bitchy
+				else
+				{
+					my $rate_factor = 12.0;
+					my $breakeven_factor = 3.0;
+					my $flare_factor = 20.0;
+					$_->{amount} = $diff * $diff / (
+								($gross / $rate_factor) -
+										($diff - $gross / $breakeven_factor)
+												/ $flare_factor
+							) / 100.0
+				}
+
+				# round it off
+				$_->{amount} = range::round($_->{amount},
+						range::ROUND_OFF, .01);
+			}
+	});
+
+	# jam it in the table
+	$ds->replace_table('{@employee_comm_amount}', $data)
+			or _fatal($ds);
+
+		# get the name of the commission payee (it's always an employee)
+	_do_or_error($ds, q<
+
+		update {@employee_comm_amount}
+		set name = pe.first_name
+		from {@employee_comm_amount} sca, {@employee} e, {@person} pe
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp_id
+		and e.person_id = pe.person_id
+	>);
+
+		# create a grouped dataset we can use to update the profit_item table
+	$data = $data->group(
+
+			group_by	=>	[ qw<profit_id> ],
+			new_columns	=>	[ qw<profit_id total_emp_comm> ],
+			on_new_group=>	sub
+							{
+								$_->{total_emp_comm} = 0;
+							},
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+
+								$dst->{total_emp_comm} += $src->{amount};
+							},
+	);
+	return "couldn't group commissions by profit_id for some reason\n"
+			unless $data;
+
+	# finally update the profit item table
+	foreach (@$data)
+	{
+		_do_or_error($ds, '
+
+			update {@profit_item}
+			set emp_commission = {total_emp_comm}
+			where profit_id = {profit_id}
+		',
+			%$_
+		);
+	}
+
+	# no output necessary
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_admin_commission
+#
+# #########################################################################
+#
+# Use this procedure to calculate the administrative commission for a given
+# set of profit items.  You have to call calc_profit before calling this.
+#
+# Like all the commission calculation procedures, this procedure uses the
+# existing profit_item table and requires no arguments of its own.
+#
+###########################################################################
+
+
+sub calc_admin_commission
+{
+	my ($ds) = @_;
+
+	# for admin_commission, *everything* in the profit_item table is
+	# applicable, so we don't track the profit_id ...  this is also
+	# important to insure that admin commissions (which are often
+	# pretty small) don't lose anything from overenthusiastic
+	# rounding ... if you need to know which profit_id's apply (e.g.,
+	# for the mark_commission script), the answer is easy: all of them
+	my $data = $ds->load_table(q<
+
+		select ac.admin_comm, ac.pay_type, ac.pay_to,
+				ac.start_date "comm_start_date", ac.end_date "comm_end_date",
+				ac.commission_percent, sum(pi.simple_profit) "simple_profit"
+		from {@profit_item} pi, {@admin_commission} ac
+		where pi.end_date between ac.start_date and ac.end_date
+		group by ac.admin_comm, ac.pay_type, ac.pay_to, ac.start_date,
+				ac.end_date, ac.commission_percent
+
+	>) or _fatal($ds);
+
+	# calculate commission amount
+	$data->alter_dataset({
+			add_columns		=>	[ qw<amount> ],
+			foreach_row		=>	sub
+			{
+				$_->{amount} = range::round(
+						$_->{simple_profit} * $_->{commission_percent} / 100,
+						range::ROUND_OFF, .01);
+			}
+	});
+
+	# jam it in the table
+	$ds->replace_table('{@admin_comm_amount}', $data)
+			or _fatal($ds);
+
+		# get the name of the commission payee if an employee
+	_do_or_error($ds, q<
+
+		update {@admin_comm_amount}
+		set name = pe.first_name
+		from {@admin_comm_amount} sca, {@employee} e, {@person} pe
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp_id
+		and e.person_id = pe.person_id
+	>);
+
+		# get the name of the commission payee if an employee
+	_do_or_error($ds, q<
+
+		update {@admin_comm_amount}
+		set name = pe.first_name
+		from {@admin_comm_amount} sca, {@employee} e, {@person} pe
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp_id
+		and e.person_id = pe.person_id
+	>);
+
+		# get the name of the commission payee if a salesman
+	_do_or_error($ds, q<
+
+		update {@admin_comm_amount}
+		set name = s.name
+		from {@admin_comm_amount} sca, {@salesman} s
+		where sca.pay_type = 'S'
+		and sca.pay_to = s.salesman_id
+	>);
 
 	# no output necessary
 	return "";
