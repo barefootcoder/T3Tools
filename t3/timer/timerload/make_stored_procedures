@@ -3,8 +3,11 @@
 # For RCS:
 # $Date$
 # $Log$
-# Revision 1.1  1999/01/04 19:46:09  buddy
+# Revision 1.1  1999/09/01 17:52:13  buddy
 # Initial revision
+#
+# Revision 1.1  1999/01/04 19:46:09  buddy
+# Initial revision (of make_rates, where this was originally)
 #
 # $Id$
 # $Revision$
@@ -18,197 +21,14 @@ destdb=TIMER
 
 run_query -S$server -U$user -D$destdb <<-END
 
-	-- make the project type table
-	$(overwrite_table project_type "
-		proj_type				char(1)				NOT NULL,
-		requires_phase			bit					NOT NULL,
-		requires_cliproj		bit					NOT NULL,
-		requires_comments		bit					NOT NULL,
-		requires_billing		bit					NOT NULL,
-		requires_payment		bit					NOT NULL,
-		bill_by_employee		bit					NOT NULL,
-	")
-
-	-- and fill it up
-	insert project_type
-	values ('I', 0, 0, 1, 0, 1, 0)	-- internal, payable
-	insert project_type
-	values ('i', 0, 0, 1, 0, 0, 0)	-- internal, non-payable
-	insert project_type
-	values ('D', 1, 0, 1, 1, 1, 0)	-- standard development project
-	insert project_type
-	values ('R', 1, 0, 1, 1, 1, 1)	-- development billed by resource
-	insert project_type
-	values ('C', 0, 0, 0, 1, 1, 0)	-- standard consulting project
-	insert project_type
-	values ('T', 0, 1, 0, 1, 1, 0)	-- consulting, tracking client projects
-	insert project_type
-	values ('N', 0, 0, 1, 1, 1, 0)	-- network (i.e., occasional) consulting
-	go
-
-
-	-- make the table of rates for specific resources (i.e., employees)
-	$(overwrite_table resource_rate "
-		client					char(3)				NOT NULL,
-		resrc					char(3)				NOT NULL,
-		resource_name			varchar(30)			NOT NULL,
-		rate					money				NOT NULL,
-		start_date				datetime			NOT NULL,
-		end_date				datetime			NOT NULL,
-	")
-
-	create unique index resource
-	on resource_rate (client, resrc)
-	go
-
-	-- and fill it up
-	-- (these are all ILJ rates)
-	insert resource_rate						-- Buddy
-	values ('509', 'SRD', 'Sr. Developer/Project Manager', 125,
-			'9/15/1998', $END_OF_TIME)
-	insert resource_rate						-- Gregg
-	values ('509', 'SAT', 'System Administrator/Tester', 70,
-			'9/15/1998', $END_OF_TIME)
-	insert resource_rate						-- Gene S.
-	values ('509', 'WID', 'Windows Interface Developer', 105,
-			'9/15/1998', $END_OF_TIME)
-	insert resource_rate						-- Marcus
-	values ('509', 'AD1', 'Application Developer (1)', 85,
-			'10/19/1998', $END_OF_TIME)
-	insert resource_rate						-- Claudio, Joanne, Phaedo
-	values ('509', 'DBA', 'Database Architect/DBA', 125,
-			'11/1/1998', $END_OF_TIME)
-	insert resource_rate						-- Christy
-	values ('509', 'TW', 'Technical Writer/Report Writer', 60,
-			'12/1/1998', $END_OF_TIME)
-	insert resource_rate						-- Keith
-	values ('509', 'JUI', 'Jr. User Interface Designer', 60,
-			'12/1/1998', $END_OF_TIME)
-	insert resource_rate						-- Tim
-	values ('509', 'WEB', 'Web Designer', 50,
-			'2/15/1999', $END_OF_TIME)
-	insert resource_rate						-- Jim
-	values ('509', 'AD2', 'Application Developer (2)', 75,
-			'2/16/1999', $END_OF_TIME)
-	insert resource_rate						-- Mike and Chip
-	values ('509', 'JRD', 'Junior Developer', 45,
-			'6/14/99', $END_OF_TIME)
-	go
-
-
-	-- make the linking table between resources and employees
-	$(overwrite_table resource_employee "
-		resrc					char(3)				NOT NULL,
-		emp						char(3)				NOT NULL,
-		start_date				datetime			NOT NULL,
-		end_date				datetime			NOT NULL,
-	")
-
-	create unique index resemp
-	on resource_employee (resrc, emp)
-	go
-	create unique index empres
-	on resource_employee (emp, resrc)
-	go
-
-	-- and fill it up
-	insert resource_employee
-	values ('SRD', '101', '9/15/98', $END_OF_TIME)			-- Buddy
-	insert resource_employee
-	values ('SAT', '125', '9/15/98', $END_OF_TIME)			-- Gregg
-	insert resource_employee
-	values ('WID', '126', '9/15/98', $END_OF_TIME)			-- Gene S.
-	insert resource_employee
-	values ('AD1', '112', '10/19/98', $END_OF_TIME)			-- Marcus
-	insert resource_employee
-	values ('DBA', '130', '11/1/98', $END_OF_TIME)			-- Claudio
-	insert resource_employee
-	values ('TW', '134', '12/1/98', $END_OF_TIME)			-- Christy
-	insert resource_employee
-	values ('JUI', '135', '12/1/98', $END_OF_TIME)			-- Keith
-	insert resource_employee
-	values ('WEB', '119', '2/15/99', $END_OF_TIME)			-- Tim
-	insert resource_employee
-	values ('AD2', '131', '2/16/99', $END_OF_TIME)			-- Jim
-	insert resource_employee
-	values ('DBA', '120', '5/13/99', $END_OF_TIME)			-- Joanne
-	insert resource_employee
-	values ('SAT', '133', '5/6/99', $END_OF_TIME)			-- Todd
-	insert resource_employee
-	values ('SAT', '136', '5/18/99', '6/13/99')				-- Mike
-	insert resource_employee
-	values ('DBA', '137', '5/11/99', $END_OF_TIME)			-- Paul K. (Phaedo)
-	insert resource_employee
-	values ('SAT', '138', '5/19/99', $END_OF_TIME)			-- Bubble (Phaedo)
-	insert resource_employee
-	values ('JRD', '136', '6/14/99', $END_OF_TIME)			-- Mike
-	insert resource_employee
-	values ('JRD', '107', '6/14/99', $END_OF_TIME)			-- Chip
-	insert resource_employee
-	values ('SRD', '139', '7/13/99', $END_OF_TIME)			-- Wayne
-	go
-
-
-	-- make a table with the admin commission rates in it
-	$(overwrite_table admin_commission "
-		name					varchar(35)			NOT NULL,
-		priority				tinyint				NOT NULL,
-		amount					numeric(3,2)		NOT NULL,
-		start_date				datetime			NOT NULL,
-		end_date				datetime			NOT NULL,
-	")
-
-	-- and fill it up
-	insert admin_commission
-	values ('Bookkeeper Commission', 1, .2, $BAREFOOT_EPOCH, '12/31/1998')
-	insert admin_commission
-	values ('Dispatcher Commission', 2, .5, $BAREFOOT_EPOCH, '12/31/1998')
-	insert admin_commission
-	values ('Coordinator Commission', 3, 1.3, $BAREFOOT_EPOCH, '12/31/1998')
-	insert admin_commission
-	values ('CEO Commission', 4, 4, $BAREFOOT_EPOCH, '12/31/1998')
-	go
-	insert admin_commission
-	values ('Bookkeeper Commission', 1, .5, '1/1/1999', $END_OF_TIME)
-	insert admin_commission
-	values ('Dispatcher Commission', 2, 1.5, '1/1/1999', $END_OF_TIME)
-	insert admin_commission
-	values ('Coordinator Commission', 3, 0, '1/1/1999', '3/31/1999')
-	insert admin_commission
-	values ('Technical Administrator Commission', 4, .5,
-		'1/1/1999', $END_OF_TIME)
-	insert admin_commission
-	values ('Executive Commission', 5, 4, '1/1/1999', $END_OF_TIME)
-	go
-	insert admin_commission
-	values ('Coordinator Commission', 3, 2.5, '4/1/1999', $END_OF_TIME)
-	go
-
-
 	-- stored procedures for figuring billing / commission information
 
-	-- the procs will require a temp table built for them; it looks like this:
-	create table #emp_comm
-	(
-		id          numeric(6,0)    identity,   -- for the cursor
-		emp         char(3)         NOT NULL,   -- employee code
-		client      char(3)         NOT NULL,   -- client code
-		proj        char(3)         NOT NULL,   -- project code
-		date        datetime        NOT NULL,   -- date of work done
-		hours       numeric(6,2)    NOT NULL,   -- how many hours
-		payrate     money           NULL,       -- how much emp gets paid
-		paytype     char(1)         NULL,       -- employee or subcontr?
-		billrate    money           NULL,       -- billing rate per hour
-		bill_hours	numeric(6,2)	NULL,		-- hours adj for billing ratio
-		amt_billed  money           NULL,       -- how much client billed total
-		salescomm   smallmoney      NULL,       -- sales commission (total)
-		refcomm     smallmoney      NULL,       -- referral commission (total)
-		amt_paid    money           NULL,       -- how much employee paid total
-		gross       money           NULL,       -- amt_billed - sales - ref
-		diff        money           NULL,       -- 'simple' profit
-		empcomm     money           NULL        -- how much employee comm
-	)
-	go
+
+	-- we have to create the temp table so that the stored procedures
+	-- will compile ... since we don't need any records, we'll use
+	-- a where clause that will always be false
+	$(build_emp_comm "1 = 0")
+
 
 	-- stored procedure to calculate how much to bill
 	drop procedure billing_amounts
@@ -234,6 +54,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		and p.proj_type = pt.proj_type
 		and pt.requires_billing = 1
 		and pt.bill_by_employee = 0
+		and pt.use_training_rates = 0
 		and ec.client = br.client
 		and ec.proj = br.proj
 		and br.fixed_price_days is NULL
@@ -249,11 +70,34 @@ run_query -S$server -U$user -D$destdb <<-END
 		and p.proj_type = pt.proj_type
 		and pt.requires_billing = 1
 		and pt.bill_by_employee = 1
+		and pt.use_training_rates = 0
 		and ec.emp = re.emp
 		and re.resrc = rr.resrc
 		and ec.client = rr.client
 		and ec.date between rr.start_date and rr.end_date
 		and ec.date between re.start_date and re.end_date
+
+		-- and likewise for training rates
+		update #emp_comm
+		set billrate = tr.rate * tc.num_students
+		from #emp_comm ec, training_class tc, training_rate tr
+		where ec.source_tbl = 'training_class'
+		and ec.client = tc.client
+		and ec.proj = tc.proj
+		and ec.date = tc.start_time
+		and tc.client = tr.client
+		and tc.proj = tr.proj
+		and tc.start_time between tr.start_date and tr.end_date
+		-- while we're here, may as well zero out the log entries
+		-- attached to training projects
+		update #emp_comm
+		set billrate = 0
+		from #emp_comm ec, project p, project_type pt
+		where ec.source_tbl != 'training_class'
+		and ec.client = p.client
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.use_training_rates = 1
 
 		-- now figure bill hours (including billing ratios)
 		-- first general client billing ratios
@@ -462,18 +306,40 @@ run_query -S$server -U$user -D$destdb <<-END
 		and p.proj_type = pt.proj_type
 		and pt.requires_payment = 0
 		-- blank employee is special signal that this came from
-		-- 'other profits' (and gets no employee comm)
+		-- some table other than log (and thus gets no employee comm)
 		update #emp_comm
 		set payrate = 0, empcomm = 0
 		from #emp_comm ec
 		where ec.emp = ''
+
+		-- if we have any training classes in here, we'll figure
+		-- employee commission based on *all* work done for the
+		-- corresponding project ... so let's get those entries now
+		-- (we use a special source_tbl value so we can find them later)
+		insert #emp_comm
+			(source_tbl, source_id, emp, client, proj, date, hours)
+		select 'training work', l.id, l.emp, l.client, l.proj, l.date, l.hours
+		from log l, project p, project_type pt
+		where l.client = p.client
+		and l.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.use_training_rates = 1
+		and l.date between p.start_date and p.end_date
+		and exists
+		(
+			select 1
+			from #emp_comm ec
+			where l.client = ec.client
+			and l.proj = ec.proj
+		)
 
 		-- now figure out pay rates
 		-- general employee rates
 		update #emp_comm
 		set payrate = pr.rate, paytype = pr.rate_type
 		from #emp_comm ec, pay_rate pr
-		where ec.emp = pr.emp
+		where ec.payrate is NULL
+		and ec.emp = pr.emp
 		and pr.client is NULL
 		and pr.proj is NULL
 		and ec.date between pr.start_date and pr.end_date
@@ -481,7 +347,6 @@ run_query -S$server -U$user -D$destdb <<-END
 		update #emp_comm
 		set payrate = pr.rate, paytype = pr.rate_type
 		from #emp_comm ec, pay_rate pr
-		--where ec.payrate is NULL
 		where ec.emp = pr.emp
 		and ec.client = pr.client
 		and pr.proj is NULL
@@ -490,7 +355,6 @@ run_query -S$server -U$user -D$destdb <<-END
 		update #emp_comm
 		set payrate = pr.rate, paytype = pr.rate_type
 		from #emp_comm ec, pay_rate pr
-		--where ec.payrate is NULL
 		where ec.emp = pr.emp
 		and ec.client = pr.client
 		and ec.proj = pr.proj
@@ -505,6 +369,11 @@ run_query -S$server -U$user -D$destdb <<-END
 		-- it has its own stored procedure
 		execute billing_amounts
 
+		-- if, after that, the bill rates still aren't there, no emp comm
+		update #emp_comm
+		set empcomm = 0
+		where billrate = 0
+
 		-- referral commissions aren't so tough
 		update #emp_comm
 		set refcomm = rc.commission * ec.hours
@@ -516,6 +385,88 @@ run_query -S$server -U$user -D$destdb <<-END
 		update #emp_comm
 		set amt_paid = payrate * hours
 		where payrate > 0
+
+		-- now get totals for any training projects
+		-- first, totals for paid out
+		insert #emp_comm
+			(source_tbl, emp, client, proj, date, hours,
+					amt_paid, refcomm)
+		select 'training intermediate', ec.emp, ec.client, ec.proj,
+				p.end_date, sum(ec.hours),
+				sum(ec.amt_paid), sum(ec.refcomm)
+		from #emp_comm ec, project p, project_type pt
+		where ec.source_tbl = 'training work'
+		and ec.client = p.client
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.use_training_rates = 1
+		group by ec.emp, ec.client, ec.proj, p.end_date
+		-- gotta save total hours in a temp table
+		create table #training_total_paid
+		(
+			client			char(3)			NOT NULL,
+			proj			char(3)			NOT NULL,
+			total_hours		numeric(6,2)	NOT NULL,
+			total_paid		money			NOT NULL,
+		)
+		insert #training_total_paid
+		select ec.client, ec.proj, sum(ec.hours), sum(ec.amt_paid)
+		from #emp_comm ec
+		where ec.source_tbl = 'training intermediate'
+		and ec.emp != ''
+		group by ec.client, ec.proj
+		-- now totals for billed out
+		insert #emp_comm
+			(source_tbl, emp, client, proj, date, hours,
+					amt_billed, salescomm)
+		select 'training intermediate', '', ec.client, ec.proj, p.end_date, 0,
+				sum(ec.amt_billed), sum(ec.salescomm)
+		from #emp_comm ec, project p, project_type pt
+		where ec.source_tbl = 'training_class'
+		and ec.client = p.client
+		and ec.proj = p.proj
+		and p.proj_type = pt.proj_type
+		and pt.use_training_rates = 1
+		group by ec.client, ec.proj, p.end_date
+		/*
+		-- and get the total paid from our temp table
+		-- (this is technically unnecessary--comment out unless debugging)
+		update #emp_comm
+		set hours = ttp.total_hours, amt_paid = ttp.total_paid
+		from #emp_comm ec, #training_total_paid ttp
+		where ec.source_tbl = 'training intermediate'
+		and ec.emp = ''
+		and ec.client = ttp.client
+		and ec.proj = ttp.proj
+		*/
+		-- now put 'em together (ec1 is total billed, ec2 is total paid)
+		-- note that the ec2.amt_paid / ttp.total_paid just gives a convenient
+		-- percentage to apply to total billed amounts
+		-- also note we assign a paytype (otherwise payroll query kicks it out)
+		insert #emp_comm
+			(source_tbl, emp, client, proj, date, hours, paytype,
+					amt_paid, refcomm, amt_billed, salescomm)
+		select 'training total', ec2.emp, ec1.client, ec1.proj, ec1.date,
+				ec2.hours, 'T', ec2.amt_paid, ec2.refcomm,
+				ec1.amt_billed * (convert(real, ec2.amt_paid) / ttp.total_paid),
+				ec1.salescomm * (convert(real, ec2.amt_paid) / ttp.total_paid)
+		from #emp_comm ec1, #emp_comm ec2, #training_total_paid ttp
+		where ec1.source_tbl = 'training intermediate'
+		and ec1.emp = ''
+		and ec2.source_tbl = 'training intermediate'
+		and ec2.emp != ''
+		and ec1.client = ec2.client
+		and ec1.proj = ec2.proj
+		and ec2.client = ttp.client
+		and ec2.proj = ttp.proj
+		-- have to get rid of intermediate steps, because they look like errors
+		-- (comment this part out when debugging)
+		delete #emp_comm
+		where source_tbl = 'training intermediate'
+		-- have to get rid of work rows, because they look like payroll
+		-- (comment this part out when debugging too)
+		delete #emp_comm
+		where source_tbl = 'training work'
 
 		-- get gross take (simple subtraction)
 		update #emp_comm
@@ -534,15 +485,14 @@ run_query -S$server -U$user -D$destdb <<-END
 		and date < '9/7/98' 
 		 
 		-- after that, it gets bitchier:
-		declare @rate_factor numeric(5,2), @breakeven_factor numeric(5,2),
-				@flare_factor numeric(5,2)
+		declare @rate_factor real, @breakeven_factor real, @flare_factor real
 		select @rate_factor = 12.0
 		select @breakeven_factor = 3.0
 		select @flare_factor = 20.0
 		update #emp_comm
 		set empcomm = convert(money, 
 		 		diff * diff / (
-					(amt_billed / @rate_factor) -
+					(gross / @rate_factor) -
 							(diff - gross / @breakeven_factor) / @flare_factor
 				) / 100.0
 			)
