@@ -21,11 +21,18 @@
 #
 ###########################################################################
 
-package format;
+package Barefoot::format;
 
 ### Private ###############################################################
 
 use strict;
+
+use base qw(Exporter);
+use vars qw(@EXPORT);
+@EXPORT = qw(swrite writeln);
+
+sub swrite;
+sub writeln;
 
 1;
 
@@ -35,3 +42,19 @@ use strict;
 #
 
 
+sub swrite
+{
+	my ($format, @vars) = @_;
+	$^A = "";
+	formline($format, @vars);
+	return $^A;
+}
+
+sub writeln
+{
+	my ($format, @vars) = @_;
+	$format .= $\ ? $\ : "\n";
+	$^A = "";
+	formline($format, @vars);
+	print $^A;
+}
