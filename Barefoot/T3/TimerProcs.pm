@@ -766,7 +766,7 @@ sub calc_salary_bank
 			from {~timer}.salary_bank sb2, {~timer}.payroll pay2
 			where sb.emp_id = sb2.emp_id
 			and sb2.payroll_id = pay2.payroll_id
-			and pay2.period_end < '{start_date}'
+			and pay2.period_end < {start_date}
 		)
 
 	") or _fatal($ds);

@@ -20,12 +20,12 @@ Payroll Checks paid on {check_date}
 			select 1
 			from {~timer}.payroll pay
 			where log.payroll_id = pay.payroll_id
-			and pay.check_date = '{check_date}'
+			and pay.check_date = {check_date}
 		)
 	{endif}
 
 	{if !check_date}
-		log.log_date <= '{end_date}'
+		log.log_date <= {end_date}
 		and log.payroll_id is NULL
 		and exists
 		(
@@ -104,7 +104,7 @@ Payroll Checks paid on {check_date}
 	and e.person_id = pe.person_id
 	and pa.client_id = c.client_id
 	and pa.pay_rate_type != 'S'
-	and pa.pay_date < '{start_date}'
+	and pa.pay_date < {start_date}
 	order by pa.emp_id, pa.client_id, pa.proj_id, pa.pay_date
 ->suppress_empty
 ->format
@@ -155,7 +155,7 @@ Payroll Checks paid on {check_date}
 
 	{if !check_date}
 
-		'{start_date}' between sd.start_date and sd.end_date
+		{start_date} between sd.start_date and sd.end_date
 
 	{endif}
 
@@ -165,7 +165,7 @@ Payroll Checks paid on {check_date}
 		(
 			select 1
 			from {~timer}.payroll pay
-			where pay.check_date = '{check_date}'
+			where pay.check_date = {check_date}
 			and pay.period_start between sd.start_date and sd.end_date
 		)
 
