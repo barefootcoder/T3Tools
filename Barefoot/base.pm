@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -27,7 +27,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2001 Barefoot Software.
+# licensing agreement.  Copyright (c) 2001-2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -37,21 +37,35 @@ package Barefoot::base;
 
 use strict;
 
-use base qw(Exporter);
-use vars qw(@EXPORT);
-@EXPORT = qw(true false);
+use base qw<Exporter>;
+use vars qw<@EXPORT>;
+@EXPORT = qw<true false>;
+
+
+=comment
+use Filter::Simple;
+
+FILTER_ONLY
+	code	=>	sub
+				{
+					print STDERR;
+					s/
+						\%\% DEBUG \s* \( (.*?) \) \s* ;
+					/
+						print STDERR $1, "\n" if DEBUG >= 2;
+					/gx;
+					print STDERR;
+				};
+=cut
 
 
 sub true();
 sub false();
 
 
-1;
-
-
-#
+###########################
 # Subroutines:
-#
+###########################
 
 sub import
 {
@@ -65,16 +79,19 @@ sub import
 	# print STDERR "my calling package is $caller_package\n";
 	unless (defined eval "${caller_package}::DEBUG()")
 	{
-		my $main_debug_value = eval "main::DEBUG()";
-		if (defined $main_debug_value)
+		my $master_debug_value = eval "Barefoot::DEBUG()";
+		if (defined $master_debug_value)
 		{
-			# pass through DEBUG value from main package
+			# print STDERR "passing through value $master_debug_value\n";
+			# pass through DEBUG value from Barefoot package
 			eval "sub ${caller_package}::DEBUG () "
-					. "{ return $main_debug_value; }";
+					. "{ return $master_debug_value; }";
 		}
 		else
 		{
 			eval "sub ${caller_package}::DEBUG () { return 0; }";
+			# better put this master area so won't be not found next time
+			eval "sub Barefoot::DEBUG () { return 0; }";
 		}
 	}
 }
@@ -88,3 +105,10 @@ sub false ()
 {
 	return 0;
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
