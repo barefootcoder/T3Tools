@@ -1000,8 +1000,8 @@ sub calc_insurance_contribution
 	my $new_data = [ @$fixed_data, @$calc_data ];
 
 	# and put it in the table
-	$ds->replace_table("{~reporting}.insurance_amount", $new_data)
-			or _fatal($ds);
+	$ds->replace_table("{~reporting}.insurance_amount", $new_data,
+			DataStore::EMPTY_SET_OKAY) or _fatal($ds);
 
 	# no output necessary
 	return "";
