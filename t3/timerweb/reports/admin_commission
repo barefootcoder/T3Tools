@@ -17,14 +17,17 @@ $(build_profit_item "
 	and not exists
 	(
 		select 1
-		from commission com
-		where log.log_source = com.log_source
-		and log.log_id = com.log_id
+		from log_commission lc, commission com
+		where log.log_source = lc.log_source
+		and log.log_id = lc.log_id
+		and lc.commission_id = com.commission_id
 		and com.comm_type = 'A'
 	)
 ")
 
 calc_profit
+go
+calc_admin_commission
 go
 
 -- for debugging
@@ -41,36 +44,17 @@ order by client, proj, date
 */
 go
 
-select c.name "client", pi.proj, sum(pi.units) "units",
-		sum(pi.total_price) "total_price",
-		sum(pi.sales_commission) "sales_comm",
-		sum(pi.ref_commission) "ref_comm",
-		sum(pi.total_cost) "total_cost",
-		sum(pi.emp_commission) "emp_comm",
-		sum(pi.simple_profit) "simple_profit",
-		convert(numeric(4,2), NULL) "margin"
-into #profits
-from profit_item pi, client c
-where pi.client = c.client
-group by c.name, pi.proj
-go
-
-update #profits
-set margin = convert(numeric(4,2), 100.0 * simple_profit / total_price)
-where simple_profit > 0
-and total_price > simple_profit
-go
-
-select convert(char(25), client) "client", isnull(proj, '') "proj",
+select convert(char(25), c.name) "client", isnull(proj, '') "proj",
 		convert(numeric(6,2), units) "units",
 		convert(char(10), total_price, 1) "amt billed",
-		convert(char(8), sales_comm, 1) "sls comm",
-		convert(char(8), ref_comm, 1) "ref comm",
+		convert(char(8), sales_commission, 1) "sls comm",
+		convert(char(8), ref_commission, 1) "ref comm",
 		convert(char(10), total_cost, 1) "amt paid",
-		convert(char(8), emp_comm, 1) "emp comm",
+		convert(char(8), emp_commission, 1) "emp comm",
 		convert(char(10), simple_profit, 1) "simp prof", margin
-from #profits
-order by client, proj
+from profit_client pc, client c
+where pc.client = c.client
+order by pc.client, pc.proj
 go
 
 select convert(char(13), sum(total_price), 1) "gross sales",
@@ -81,60 +65,31 @@ select convert(char(13), sum(total_price), 1) "gross sales",
 		convert(char(13), sum(sales_commission + ref_commission
 				+ emp_commission), 1) "total comms",
 		convert(char(13), sum(simple_profit), 1) "simple profit"
-from profit_item
+from profit_client
 go
 
 print ""
 print ""
 go
 
-select sum(pi.simple_profit) "simple_profit", act.name "comm_name",
-		act.sort_order, ac.pay_type, ac.pay_to,
-		convert(varchar(30), NULL) "pay_name", ac.commission_percent,
-		ac.start_date, ac.end_date, convert(money, NULL) "amount"
-into #admin_comm_amount
-from profit_item pi, admin_commission ac, admin_commission_type act
-where pi.end_date between ac.start_date and ac.end_date
-and ac.admin_comm = act.admin_comm
-group by act.name, act.sort_order, ac.pay_type, ac.pay_to,
-		ac.commission_percent, ac.start_date, ac.end_date
+update admin_comm_amount
+set comm_end_date = '[end_date]'
+where comm_end_date > '[end_date]'
 go
 
-update #admin_comm_amount
-set pay_name = s.name
-from #admin_comm_amount aca, salesman s
-where aca.pay_type = 'S'
-and aca.pay_to = s.salesman
-go
-
-update #admin_comm_amount
-set pay_name = $(employee_name e)
-from #admin_comm_amount aca, employee e
-where aca.pay_type = 'E'
-and aca.pay_to = e.emp
-go
-
-update #admin_comm_amount
-set amount = simple_profit * commission_percent / 100
-go
-
-update #admin_comm_amount
-set end_date = '[end_date]'
-where end_date > '[end_date]'
-go
-
-select comm_name "commission", pay_name "paid to",
-		convert(char(10), end_date, 101) "until",
-		convert(numeric(8,2), simple_profit) "simple profit",
-		commission_percent "percentage",
-		convert(numeric(7,2), amount) "amount"
-from #admin_comm_amount
-order by sort_order, start_date
+select act.name "commission", aca.name "paid to",
+		convert(char(10), aca.comm_end_date, 101) "until",
+		convert(numeric(8,2), aca.simple_profit) "simple profit",
+		aca.commission_percent "percentage",
+		convert(numeric(7,2), aca.amount) "amount"
+from admin_comm_amount aca, admin_commission_type act
+where aca.admin_comm = act.admin_comm
+order by act.sort_order, aca.comm_start_date
 --compute sum(convert(numeric(7,2), ac.amount * @total_simple_profit / 100))
 go
 
-select pay_name "paid to", sum(amount) "total amount"
-from #admin_comm_amount
-group by pay_name
+select name "paid to", sum(amount) "total amount"
+from admin_comm_amount aca
+group by name
 compute sum(sum(amount))
 go

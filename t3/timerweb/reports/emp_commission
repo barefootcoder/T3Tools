@@ -6,16 +6,71 @@ print ""
 print ""
 go
 
+-- why this rigamarole with the temp table is necessary, I have no idea
+-- the exist/not exists trick (commented out below) works fine for the other
+-- commission reports (hell, some of them have three, while this one only
+-- needs two), but for this one, it bogs down so long that the browser times
+-- out .... I tried fiddling with the showplan and forcing indices, but I
+-- still couldn't make it perform satisfactorily, so I took the brute force
+-- approach ... thus the lovely temp table below
+
+select distinct tl.log_source, tl.log_id
+into #emp_comm_logs
+from time_log tl, pay_rate pr
+where tl.emp = pr.emp
+and tl.client = isnull(pr.client, tl.client)
+and tl.proj = isnull(pr.proj, tl.proj)
+and tl.date between pr.start_date and pr.end_date
+and pr.rate_type = 'P'
+go
+
+insert #emp_comm_logs
+select cl.log_source, cl.log_id
+from class_log cl
+go
+
+create unique index log
+on #emp_comm_logs (log_source, log_id)
+go
+
+delete #emp_comm_logs
+from #emp_comm_logs ecl, log_commission lc, commission com
+where ecl.log_source = lc.log_source
+and ecl.log_id = lc.log_id
+and lc.commission_id = com.commission_id
+and com.comm_type = 'E'
+go
+
 $(build_profit_item "
 	log.date <= '[end_date]'
+	and exists
+	(
+		select 1
+		from #emp_comm_logs ecl
+		where log.log_source = ecl.log_source
+		and log.log_id = ecl.log_id
+	)
+	/*
+	and exists
+	(
+		select 1
+		from pay_rate pr
+		where log.emp = pr.emp
+		and log.client = isnull(pr.client, log.client)
+		and log.proj = isnull(pr.proj, log.proj)
+		and log.date between pr.start_date and pr.end_date
+		and pr.rate_type = 'P'
+	)
 	and not exists
 	(
 		select 1
-		from commission com
-		where log.log_source = com.log_source
-		and log.log_id = com.log_id
+		from log_commission lc, commission com
+		where log.log_source = lc.log_source
+		and log.log_id = lc.log_id
+		and lc.commission_id = com.commission_id
 		and com.comm_type = 'E'
 	)
+	*/
 ")
 go
 
@@ -32,7 +87,7 @@ go
 
 -- for debugging
 --/*
-select eca.emp, pi.client, pi.proj,
+select eca.pay_to, pi.client, pi.proj,
 		convert(char(10), end_date, 101) "date",
 		convert(numeric(6,2), price_per_unit) "billrate",
 		convert(numeric(7,2), total_price) "amt billed",
@@ -42,12 +97,12 @@ select eca.emp, pi.client, pi.proj,
 		convert(numeric(7,2), amount) "empcomm"
 from profit_item pi, employee_comm_amount eca
 where pi.profit_id = eca.profit_id
-order by emp, client, proj, date
+order by pay_to, client, proj, date
 --*/
 go
 
 -- now for the actual report
-select eca.emp "E", convert(char(15), $(employee_name e)) "employee",
+select eca.pay_to "E", convert(char(15), $(employee_name e)) "employee",
 		pi.client "C", convert(char(25), c.name) "client",
 		convert(numeric(6,2), sum(tlp.hours)) "ttl hrs",
 		convert(numeric(8,2),
@@ -60,10 +115,10 @@ from profit_item pi, employee_comm_amount eca, time_log_profit tlp,
 where pi.profit_id = eca.profit_id
 and pi.log_source *= tlp.log_source
 and pi.log_id *= tlp.log_id
-and eca.emp = e.emp
+and eca.pay_to = e.emp
 and pi.client = c.client
-group by eca.emp, $(employee_name e), pi.client, c.name
-order by eca.emp, pi.client
-compute sum(sum(eca.amount)) by eca.emp
+group by eca.pay_to, $(employee_name e), pi.client, c.name
+order by eca.pay_to, pi.client
+compute sum(sum(eca.amount)) by eca.pay_to
 compute sum(sum(eca.amount))
 go

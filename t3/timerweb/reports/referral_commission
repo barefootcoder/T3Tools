@@ -10,6 +10,12 @@ $(build_profit_item "
 	exists
 	(
 		select 1
+		from referral_commission rc
+		where log.emp = rc.emp
+	)
+	and exists
+	(
+		select 1
 		from invoice i
 		where log.invoice_id = i.invoice_id
 		and i.invoice_paydate < '[end_date]'
@@ -17,9 +23,10 @@ $(build_profit_item "
 	and not exists
 	(
 		select 1
-		from commission com
-		where log.log_source = com.log_source
-		and log.log_id = com.log_id
+		from log_commission lc, commission com
+		where log.log_source = lc.log_source
+		and log.log_id = lc.log_id
+		and lc.commission_id = com.commission_id
 		and com.comm_type = 'R'
 	)
 ")
