@@ -6,7 +6,7 @@ use CGI;
 use Barefoot::input qw(input);
 use Barefoot::format;
 
-use T3;
+use Barefoot::T3;
 
 # user "statuses" (offline, online, etc)
 my @SYMBOL = (" ", "*", "/", "=", "?");
