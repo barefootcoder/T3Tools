@@ -1,38 +1,39 @@
 -- SORT GROUP: Financial Reports
 -- TITLE: Payroll Report
 
-print "Period from [start_date] to [end_date]"					?!check_date
-print ""														?!check_date
-print ""														?!check_date
-go																?!check_date
+print "Period from {start_date} to {end_date}"					{!check_date}
+print ""														{!check_date}
+print ""														{!check_date}
+go																{!check_date}
 
-print "Payroll Checks paid on [check_date]"						??check_date
-print ""														??check_date
-print ""														??check_date
-go																??check_date
+print "Payroll Checks paid on {check_date}"						{?check_date}
+print ""														{?check_date}
+print ""														{?check_date}
+go																{?check_date}
 
 $(build_pay_amount "
-	exists														??check_date
-	(															??check_date
-		select 1												??check_date
-		from payroll pay										??check_date
-		where log.payroll_id = pay.payroll_id					??check_date
-		and pay.check_date = '[check_date]'						??check_date
-	)															??check_date
+	exists														{?check_date}
+	(															{?check_date}
+		select 1												{?check_date}
+		from payroll pay										{?check_date}
+		where log.payroll_id = pay.payroll_id					{?check_date}
+		and pay.check_date = '{check_date}'						{?check_date}
+	)															{?check_date}
 
-	log.date <= '[end_date]'									?!check_date
-	and log.payroll_id is NULL									?!check_date
-	and exists													?!check_date
-	(															?!check_date
-		select 1												?!check_date
-		from pay_rate pr										?!check_date
-		where log.emp = pr.emp									?!check_date
-		and log.client = isnull(pr.client, log.client)			?!check_date
-		and log.proj = isnull(pr.proj, log.proj)				?!check_date
-		and log.date between pr.start_date and pr.end_date		?!check_date
-		and pr.rate_type != 'S'									?!check_date
-	)															?!check_date
+	log.log_date <= '{end_date}'								{!check_date}
+	and log.payroll_id is NULL									{!check_date}
+	and exists													{!check_date}
+	(															{!check_date}
+		select 1												{!check_date}
+		from pay_rate pr										{!check_date}
+		where log.emp = pr.emp									{!check_date}
+		and log.client = isnull(pr.client, log.client)			{!check_date}
+		and log.proj = isnull(pr.proj, log.proj)				{!check_date}
+		and log.log_date between pr.start_date and pr.end_date	{!check_date}
+		and pr.rate_type != 'S'									{!check_date}
+	)															{!check_date}
 ")
+print "done building"
 
 exec calc_pay_amount
 go
@@ -42,11 +43,11 @@ go
 
 -- for debugging
 /*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
+select emp, client, proj, convert(char(10), pay_date, 101) "pay_date", hours,
 	convert(char(6), pay_rate) "payrate", pay_rate_type "PayT",
 	convert(char(12), total_pay, 1) "total_pay"
 from pay_amount
-order by emp, client, proj, date
+order by emp, client, proj, pay_date
 */
 go
 
@@ -62,7 +63,7 @@ begin
 	print "<H1>WARNING!!! The following log entries had errors:</H1>"
 	print ""
 	select pa.emp "E", e.fname "employee", pa.client "C", c.name "client",
-			pa.proj, convert(char(10), pa.date, 101) "date", pa.hours,
+			pa.proj, convert(char(10), pa.pay_date, 101) "pay_date", pa.hours,
 			convert(char(6), pa.pay_rate) "payrate", pa.pay_rate_type "PT",
 			convert(char(12), pa.total_pay)
 	from pay_amount pa, employee e, client c
@@ -73,35 +74,35 @@ begin
 		pa.pay_rate_type is NULL		-- this should never happen
 		or pa.total_pay = 0				-- there better be some pay there
 	)
-	order by pa.emp, pa.client, pa.proj, pa.date
+	order by pa.emp, pa.client, pa.proj, pa.pay_date
 end
 go
 
-if exists														?!check_date
-(																?!check_date
-	select 1 from pay_amount where date < '[start_date]'		?!check_date
-)																?!check_date
-begin															?!check_date
-	print ""													?!check_date
-	print ""													?!check_date
-	print "WARNING!  The following log entries are suspicious,"	?!check_date
-	print "because they are for hours before the start date of"	?!check_date
-	print "the payroll period."									?!check_date
-	print ""													?!check_date
-	select pa.emp "E", e.fname "employee", pa.client "C",		?!check_date
-			c.name "client", pa.proj,							?!check_date
-			convert(char(10), pa.date, 101) "date", pa.hours,	?!check_date
-			convert(char(6), pa.pay_rate) "payrate",			?!check_date
-			pa.pay_rate_type "PT",								?!check_date
-			convert(char(12), pa.total_pay) "pay"				?!check_date
-	from pay_amount pa, employee e, client c					?!check_date
-	where pa.emp = e.emp										?!check_date
-	and pa.client = c.client									?!check_date
-	and pa.pay_rate_type != 'S'									?!check_date
-	and pa.date < '[start_date]'								?!check_date
-	order by pa.emp, pa.client, pa.proj, pa.date				?!check_date
-end																?!check_date
-go																?!check_date
+if exists														{!check_date}
+(																{!check_date}
+	select 1 from pay_amount where pay_date < '{start_date}'	{!check_date}
+)																{!check_date}
+begin															{!check_date}
+	print ""													{!check_date}
+	print ""													{!check_date}
+	print "WARNING!  The following log entries are suspicious,"	{!check_date}
+	print "because they are for hours before the start date of"	{!check_date}
+	print "the payroll period."									{!check_date}
+	print ""													{!check_date}
+	select pa.emp "E", e.fname "employee", pa.client "C",		{!check_date}
+			c.name "client", pa.proj,							{!check_date}
+			convert(char(10), pa.pay_date, 101) "pay_date",		{!check_date}
+			pa.hours, convert(char(6), pa.pay_rate) "payrate",	{!check_date}
+			pa.pay_rate_type "PT",								{!check_date}
+			convert(char(12), pa.total_pay) "pay"				{!check_date}
+	from pay_amount pa, employee e, client c					{!check_date}
+	where pa.emp = e.emp										{!check_date}
+	and pa.client = c.client									{!check_date}
+	and pa.pay_rate_type != 'S'									{!check_date}
+	and pa.pay_date < '{start_date}'							{!check_date}
+	order by pa.emp, pa.client, pa.proj, pa.pay_date			{!check_date}
+end																{!check_date}
+go																{!check_date}
 
 print ""
 print ""
@@ -117,14 +118,15 @@ where pa.emp = e.emp
 and pa.client = c.client
 and pa.client = p.client
 and pa.proj = p.proj
-and pa.date between p.start_date and p.end_date
+and pa.pay_date between p.start_date and p.end_date
 and pa.pay_rate_type != 'S'
 group by pa.emp, $(employee_name e), c.name, p.name, pa.pay_rate
 go
 
 -- Add calc_salary_pay here
-exec calc_salary_pay @start_date = '[start_date]', @end_date = '[end_date]'                  ?!check_date
-exec calc_salary_pay @check_date = '[check_date]'                                            ??check_date
+exec calc_salary_pay @start_date = '{start_date}',				{!check_date}
+		@end_date = '{end_date}'								{!check_date}
+exec calc_salary_pay @check_date = '{check_date}'				{?check_date}
 
 print ""
 print ""
@@ -166,6 +168,30 @@ set nocount off
 
 --------------------------------------------------------------------------------
 
+set nocount on
+print ""
+print ""
+print "Insurance Contributions for Employees"
+print ""
+go
+
+calc_insurance_contribution @start_date = '{start_date}'		{!check_date}
+calc_insurance_contribution @check_date = '{check_date}'		{?check_date}
+
+set nocount off
+
+select ia.emp Emp,
+       $(employee_name e) 'Employee',
+       ia.total_hours 'Total Hours',
+       ia.applicable_hours 'Applicable Hrs',
+       ia.barefoot_contribution 'Barefoot Contribution'
+from insurance_amount ia, employee e
+where ia.emp = e.emp
+order by ia.emp
+go
+
+--------------------------------------------------------------------------------
+
 print ""
 print "Summary for Salary/Draw Employees"
 print ""
@@ -189,28 +215,4 @@ else
 begin
 	print "*** There are no currently employees on salary/draw ***"
 end
-
---------------------------------------------------------------------------------
-
-set nocount on
-print ""
-print ""
-print "SAL3 (Insurance Adjustments) for Employees"
-print ""
-go
-
-calc_insurance_contribution @start_date = '[start_date]'                      ?!check_date
-calc_insurance_contribution @check_date = '[check_date]'                      ??check_date
-
-set nocount off
-
-select ia.emp Emp,
-       $(employee_name e) 'Employee',
-       ia.total_hours 'Total Hours',
-       ia.applicable_hours 'Applicable Hrs',
-       ia.barefoot_contribution 'Barefoot Contribution',
-       ia.insurance_adjustment 'SAL3 Adjustment'
-from insurance_amount ia, employee e
-where ia.emp = e.emp
-order by ia.emp
 go
