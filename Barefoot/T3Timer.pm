@@ -15,7 +15,7 @@ package Barefoot::T3Timer;
 
 use strict;
 
-#use Barefoot::debug;							# comment out for production
+#use Barefoot::debug(4);							# comment out for production
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
@@ -482,6 +482,7 @@ sub save_history
 sub save_to_db
 {
 	my ($timerinfo) = @_;
+	print STDERR "Entered save_to_db\n" if DEBUG >= 4;
 
 	my $posted_timers = $t3->do("
 			select t.timer_name
@@ -491,24 +492,28 @@ sub save_to_db
 	");
 	return false unless $posted_timers;
 
-	my $old_timernames = [];
+	# change db_timernames to a hash
+	my $db_timernames = [];
 	while ($posted_timers->next_row())
 	{
-		push @$old_timernames, $posted_timers->col(0);
+		push @$db_timernames, $posted_timers->col(0);
 	}
 
 	foreach my $timer (keys %{$timerinfo->{timers}})
 	{
+		print STDERR "Calling db_post_timer for $timer\n" if DEBUG >= 3;
 		my $timerstuff = $timerinfo->{timers}->{$timer};
 		return false unless db_post_timer($timerinfo->{user}, $timer,
-				$timerstuff, $old_timernames);
+				$timerstuff, $db_timernames);
 	}
 
-	foreach my $timer (@$old_timernames)
+	foreach my $timer (@$db_timernames)
 	{
+		print STDERR "Deleting leftover db timer $timer\n" if DEBUG >= 3;
 		db_delete_timer($timerinfo->{user}, $timer);
 	}
 
+	print STDERR "Leaving save_to_db w/o error\n" if DEBUG >= 4;
 	return true;
 }
 
@@ -516,15 +521,19 @@ sub save_to_db
 sub db_post_timer
 {
 	my ($user, $name, $timer, $timernames) = @_;
+	print STDERR "Entered db_post_timer, processing $name\n" if DEBUG >= 4;
 
 	my $element_num = aindex(@$timernames, $name);
 	# if the name was found in the list ...
 	if ( $element_num >= $[ )
 	{
+		print STDERR "Removing old timer $name from list\n" if DEBUG >= 3;
 		# if it hasn't been posted ...
 		if (not $timer->{posted})
 		{
 			# try to delete it from the db
+			print STDERR "Deleting old timer $name from db before posting\n"
+					if DEBUG >= 2;
 			return false unless db_delete_timer($user, $name);
 		}
 		# remove it from the list
@@ -539,6 +548,8 @@ sub db_post_timer
 	# if it hasn't been posted ...
 	if (not $timer->{posted})
 	{
+		print STDERR "Posting unposted timer $name\n" if DEBUG >= 2;
+
 		my $client = exists $timer->{client} ? "'$timer->{client}'" : "NULL";
 		my $proj = exists $timer->{project} ? "'$timer->{project}'" : "NULL";
 		my $phase = exists $timer->{phase} ? "'$timer->{phase}'" : "NULL";
@@ -577,6 +588,7 @@ sub db_post_timer
 		$timer->{posted} = true unless substr($timer->{time}, -1) eq '-';
 	}
 
+	print STDERR "Leaving db_post_timer w/o error\n" if DEBUG >= 4;
 	return true;
 }
 
@@ -584,19 +596,21 @@ sub db_post_timer
 sub db_delete_timer
 {
 	my ($user, $name) = @_;
+	print STDERR "Entered db_delete_timer, timer $name, user $user\n" if DEBUG >= 4;
 
 	my $result = $t3->do("
-			delete {%timer}.timer_chunk
+			delete {%timer}.timer_chunk 
 			where timer_name = '$name'
 			and exists
 			(
 				select 1
-				from {%t3}.workgroup_user
-				where wu.wuser_id = tc.wuser_id
+				from {%t3}.workgroup_user wu
+				where wu.wuser_id = {%timer}.timer_chunk.wuser_id
 				and wu.nickname = '$user'
 			)
 	");
 	return false unless $result;
+	print STDERR "First delete (timer_chunk) finished w/o error\n" if DEBUG >= 4;
 
 	$result = $t3->do("
 			delete {%timer}.timer
@@ -604,13 +618,14 @@ sub db_delete_timer
 			and exists
 			(
 				select 1
-				from {%t3}.workgroup_user
-				where wu.wuser_id = tc.wuser_id
+				from {%t3}.workgroup_user wu
+				where wu.wuser_id = {%timer}.timer.wuser_id
 				and wu.nickname = '$user'
 			)
 	");
 	return false unless $result and $result->rows_affected() == 1;
 
+	print STDERR "Leaving db_delete_timer w/o error\n" if DEBUG >= 4;
 	return true;
 }
 
