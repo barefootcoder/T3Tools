@@ -36,20 +36,26 @@ use Barefoot::config_file;
 use constant CONFIG_FILE => '/etc/t3.conf';
 use constant DEFAULT_WORKGROUP => 'Barefoot';
 
-use constant INI_FILE => 'timer.ini';
+use constant INI_FILE => 't3client.ini';
 
 use constant SERVER_URL_DIRECTIVE => 'server_url';
 use constant USERNAME_DIRECTIVE => 'user_name';
 use constant CLIENT_TIMEOUT_DIRECTIVE => 'server_refresh_interval';
 use vars qw($server_url $username $client_timeout);
 
-use constant LOGON_MESSAGE => 'IMON';
-use constant LOGOFF_MESSAGE => 'IMOFF';
-use constant BUSY_MESSAGE => 'IMBUSY';
-use constant TALKER_MESSAGE => 'NORMAL';
-use constant ERROR_MESSAGE => 'ERROR';
-use constant INFO_MESSAGE => 'INFO';
-use constant NOREPLY_MESSAGE => 'NO_REPLY';
+use constant LOGON_MESSAGE		=> 'LOGON';
+use constant LOGOFF_MESSAGE		=> 'LOGOFF';
+use constant ID_MESSAGE			=> 'ID';
+use constant USER_ON_MESSAGE	=> 'IMON';
+use constant USER_OFF_MESSAGE	=> 'IMOFF';
+use constant BUSY_MESSAGE		=> 'IMBUSY';
+use constant TALKER_MESSAGE		=> 'NORMAL';
+use constant NOREPLY_MESSAGE	=> 'NO_REPLY';
+use constant ERROR_MESSAGE		=> 'ERROR';
+use constant INFO_MESSAGE		=> 'INFO';
+use constant DELIVERED_MESSAGE	=> 'NORMAL_DLVD';
+use constant READ_MESSAGE		=> 'NORMAL_READ';
+use constant RECEIVED_MESSAGE	=> 'NORMAL_RCVD';
 
 my $cfg_file = config_file->read(CONFIG_FILE);
 my $workgroup = defined($::ENV{T3_WORKGROUP})
@@ -108,7 +114,7 @@ sub config_param
 
 sub build_message
 {
-	my ($from, $to, $status, @messages) = @_;
+ 	my ($status, $from, $to, $id, $location, $subject, @messages) = @_;
 
 	# put the lines together
 	my $message = join('', @messages);
@@ -135,10 +141,14 @@ sub build_message
 	# Ok, now HMTL encode the special chars for the server CGI.
 	$message = html_menu::_escape_uri_value($message);
 
-	my $url = $server_url . 'DATA=<MESSAGE+subject=""+location=""+from="'
-			. $from . '"+to="' . $to . '"+status="' . $status . '">'
-			. $message . '</MESSAGE>';
-
+ 	my $url = $server_url . 'DATA=<MESSAGE'
+ 			. '+status="' . $status . '"'
+ 			. '+from="' . $from . '"'
+ 			. '+to="' . $to . '"'
+ 			. '+id="' . $id . '"'
+ 			. '+location="' . $location . '"'
+ 			. '+subject="' . $subject . '"'
+ 			. '>' . $message . '</MESSAGE>';
 	return $url;
 }
 
