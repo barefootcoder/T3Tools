@@ -70,6 +70,8 @@ namespace barefoot
 		bool executeCommand (map<string, string>& attr, 
 							 const string & content);
 
+		Timer getTimer (const string& name) const;
+
 	private:
 
 		#ifdef __WIN32__
@@ -84,6 +86,9 @@ namespace barefoot
 		map<string, string> m_options;
 
 		string m_errmsg; 
+
+		void lockMutex () const;
+		void unlockMutex () const;
 	};
 
 	// singleton function

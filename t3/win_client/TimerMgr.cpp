@@ -90,6 +90,9 @@ bool TimerMgr::startTimer (const string& name, bool halftime)
 {
 	bool rc = false;
 
+	// lock the list
+	lockMutex();
+
 	TimerMap::iterator it = m_timers.find(name);
 	if ( it != m_timers.end() )
 	{
@@ -103,6 +106,9 @@ bool TimerMgr::startTimer (const string& name, bool halftime)
 		m_errmsg = "Timer " + name + 
 					" is not in the list of available timers.";
 	}
+
+	// release 
+	unlockMutex();
 
 	return rc;
 }
@@ -184,14 +190,9 @@ bool TimerMgr::doneTimer (const Timer& timer)
 bool TimerMgr::executeCommand (map<string, string>& attr,
 							   const string& content)
 {
-	#ifdef __WIN32__
-		// get access to this critical section
-		::WaitForSingleObject(m_mutex, INFINITE);
-	#endif
+	// lock access
+	lockMutex();
 	
-	// DEBUG
-	//::MessageBox(NULL, "In Execute Command.", "DEBUG", MB_OK);
-
 	bool rc = false;
 	m_errmsg = "";
 
@@ -228,6 +229,10 @@ bool TimerMgr::executeCommand (map<string, string>& attr,
 					// set the error message (skip FAIL:)
 					m_errmsg = it->second.getContent().substr(5);
 				}
+
+				// update timer list
+				theTimerMgr().updateTimers(rcvmsgs);
+
 				break;
 			}
 		}
@@ -238,8 +243,6 @@ bool TimerMgr::executeCommand (map<string, string>& attr,
 			m_errmsg = "Protocol Error: Server failed to send an (n)ack.";
 		}
 
-		// update timer list 
-		theTimerMgr().updateTimers(rcvmsgs);
 	}
 	else
 	{
@@ -247,15 +250,34 @@ bool TimerMgr::executeCommand (map<string, string>& attr,
 		m_errmsg = "There was a communication problem at the HTTP layer.";
 	}
 
-	// DEBUG
-	//::MessageBox(NULL, "Out Execute Command.", "DEBUG", MB_OK);
-
-	#ifdef __WIN32__
-		// we're done
-		::ReleaseMutex(m_mutex);
-	#endif
+	// release access
+	unlockMutex();
 
 	return rc;
+}
+//------------------------------------------------------------------------------
+void TimerMgr::lockMutex () const
+{
+	#ifdef __WIN32__
+	
+		// get access to this critical section
+		::WaitForSingleObject(m_mutex, INFINITE);
+
+	#endif
+
+	return;
+}
+//------------------------------------------------------------------------------
+void TimerMgr::unlockMutex () const
+{
+	#ifdef __WIN32__
+
+		// release access to critical section
+		::ReleaseMutex(m_mutex);
+
+	#endif
+
+	return;
 }
 //------------------------------------------------------------------------------
 void TimerMgr::setPingInterval (unsigned int seconds)
@@ -354,24 +376,25 @@ void TimerMgr::pingServerInThread ()
 //------------------------------------------------------------------------------
 void TimerMgr::updateTimers (T3MultiMap& msgs)
 {
-	T3MultiMap::iterator it;
-	TimerMap::iterator tt;
+	StringList tmrlist = getTimerNames();
 
 	// delete any timers that are no longer pertinent 
-	for ( tt = m_timers.begin(); tt != m_timers.end(); ++tt )
+	for ( int i = 0; i < tmrlist.Count(); ++i )
 	{
-		if ( msgs.find(tt->first) == msgs.end() ) 
+		if ( msgs.find(tmrlist.String(i)) == msgs.end() ) 
 		{
-			m_timers.erase(tt);
-			--tt;
+			TimerMap::iterator tt = m_timers.find(tmrlist.String(i));
+			if ( tt != m_timers.end() )
+				m_timers.erase(tt);
 		}
 	}
 
 	// add any timers not in our list
+	T3MultiMap::iterator it;
 	for (it = msgs.begin(); it != msgs.end(); it++)
 	{
 		string name = it->first;
-		tt = m_timers.find(name);
+		TimerMap::iterator tt = m_timers.find(name);
 		if ( tt == m_timers.end() )
 		{
 			// add timer
@@ -390,8 +413,30 @@ void TimerMgr::updateTimers (T3MultiMap& msgs)
 	return;
 }
 //---------------------------------------------------------------------------
+Timer TimerMgr::getTimer (const string& name) const
+{
+	// lock access
+	lockMutex();
+
+	Timer timer("", "");
+	TimerMap::const_iterator it = m_timers.find(name);
+	if ( it != m_timers.end() )
+	{
+		// create a copy
+		timer = it->second;
+	}
+
+	// unlock
+	unlockMutex();
+
+	return timer;
+}
+//---------------------------------------------------------------------------
 void TimerMgr::addMinute ()
 {
+	// lock mutex
+    lockMutex();
+
 	// find the active timer
 	TimerMap::iterator it = m_timers.begin();
 	for ( ; it != m_timers.end(); ++it )
@@ -403,12 +448,16 @@ void TimerMgr::addMinute ()
 		}
 	}
 
+    unlockMutex();
+
 	return;
 }
 //---------------------------------------------------------------------------
 string TimerMgr::getActiveTimer () const
 {
 	string rc = "";
+
+	lockMutex();
 
 	// find the active timer
 	TimerMap::const_iterator it = m_timers.begin();
@@ -421,6 +470,8 @@ string TimerMgr::getActiveTimer () const
 		}
 	}
 
+	unlockMutex();
+
 	return rc;
 }
 //---------------------------------------------------------------------------
@@ -428,9 +479,9 @@ string TimerMgr::getTimerClient (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getClient();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getClient();
 
 	return rc;
 }
@@ -439,9 +490,9 @@ string TimerMgr::getTimerPhase (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getPhase();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getPhase();
 
 	return rc;
 }
@@ -450,9 +501,9 @@ string TimerMgr::getTimerProject (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getProject();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getProject();
 
 	return rc;
 }
@@ -461,9 +512,9 @@ string TimerMgr::getTimerDescription (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getDescription();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getDescription();
 
 	return rc;
 }
@@ -472,9 +523,9 @@ string TimerMgr::getTimerDate (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getDate();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getDate();
 
 	return rc;
 }
@@ -483,9 +534,9 @@ string TimerMgr::getElapsedTime (const string& name) const
 {
 	string rc = "";
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.getElapsedTime();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.getElapsedTime();
 
 	return rc;
 }
@@ -494,9 +545,9 @@ int TimerMgr::getTimerMinutes (const string& name) const
 {
 	int min = 0;
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		min = it->second.getMinutes();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		min = timer.getMinutes();
 
 	return min;
 }
@@ -505,9 +556,9 @@ int TimerMgr::getTimerHours (const string& name) const
 {
 	int hours = 0;
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		hours = it->second.getHours();
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		hours = timer.getHours();
 
 	return hours;
 }
@@ -516,10 +567,9 @@ bool TimerMgr::isTimerActive (const string& name) const
 {
 	bool rc = false;
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.isActive();
-
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.isActive();
 
 	return rc;
 }
@@ -528,21 +578,24 @@ bool TimerMgr::isTimerHalfTime (const string& name) const
 {
 	bool rc = false;
 
-	TimerMap::const_iterator it = m_timers.find(name);
-	if ( it != m_timers.end() )
-		rc = it->second.isHalfTime();
-
+	Timer timer(getTimer(name));
+	if ( !timer.getName().empty() )
+		rc = timer.isHalfTime();
 
 	return rc;
 }
 //---------------------------------------------------------------------------
 StringList TimerMgr::getTimerNames () const
 {
+	lockMutex();
+
 	StringList rc;
 
 	TimerMap::const_iterator it = m_timers.begin();
 	for ( ; it != m_timers.end(); ++it )
 		rc.Add(it->second.getName());
+
+	unlockMutex();
 
 	return rc;
 }
