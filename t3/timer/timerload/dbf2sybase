@@ -1,0 +1,66 @@
+#! /bin/ksh
+
+# $Header$
+# $Log$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+db=TIMERLOAD
+
+for dbf in "$@"
+do
+	table=$(echo "$dbf" | perl -pe '$_ = lc; s/\.dbf//')
+	dat="$table.dat"
+
+	echo "\nconverting $dbf to $dat"
+	dbfdump --fs '	' --nomemo $dbf >$dat
+
+	echo "building $table in Sybase"
+	fields=$(dbfdump --info $dbf | perl -ane '
+
+		if ($F[0] =~ /^[0-9]+\.$/)				# column info begins with #.
+		{
+			$column = lc $F[1];
+			if ($F[2] eq 'C')					# char field in xBASE
+			{
+				$type = "char($F[3])";
+			}
+			elsif ($F[2] eq 'D')				# date field in xBASE
+			{
+				$type = "datetime";
+			}
+			elsif ($F[2] eq 'L')				# logical field in xBASE
+			{
+				# we would really like to use the Sybase "bit" type here,
+				# but there is a problem: our xBASE file might leave some
+				# of these values blank, but bit columns in Sybase cannot
+				# be NULL ... so we have to compromise ...
+				$type = "smallint";
+			}
+			elsif ($F[2] eq 'N')				# numeric field in xBASE
+			{
+				$type = "numeric($F[3],$F[4])";
+			}
+			elsif ($F[2] eq 'M')
+			{
+				$type = "varchar(255)";
+			}
+			else
+			{
+				print STDERR "unsupported xBASE type! ($F[2])\n";
+			}
+			print "$column $type NULL, ";
+		}
+	')
+	run_query -S$server -D$db -U$user <<-END
+
+		$(overwrite_table $table "$fields")
+
+	END
+
+	echo "adding data to $table"
+	bcp_file $db $table $dat in
+
+done
