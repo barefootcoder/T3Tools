@@ -377,5 +377,31 @@ run_query -S$server -U$user -D$destdb <<-END
 	select * from $srcdb..log_commission
 	go
 
+	-- salary_bank
+
+	print "building salary_bank"
+	go
+
+	insert salary_bank
+	select * from $srcdb..salary_bank
+	go
+
+	-- salary_amount
+
+	print "building salary_amount"
+	go
+
+	insert salary_amount
+	select * from $srcdb..salary_amount
+	go
+
+	-- salary_draw
+
+	print "building salary_draw"
+	go
+
+	insert salary_draw
+	select * from $srcdb..salary_draw
+	go
 
 END
