@@ -61,16 +61,30 @@ $vars = {
 };
 @admin_users = ('christy', 'buddy');
 
+my $debug_user;
+($debug_user) = $ENV{SCRIPT_FILENAME} =~ m@/([^/]*?)test/@ if DEBUG;
+
 $title = 'TIMER Reports';
-$basepath = DEBUG ? "/home/buddy/proj/timerweb/reports"
+$basepath = DEBUG ? "/proj/$debug_user/t3/timerweb/reports"
 		: "/home/httpd/sybase/timer_reports";
 
 							debug("env has cookies $ENV{HTTP_COOKIE}");
+
+
+if ($cgi->param('Clear Variables'))
+{
+	foreach $var (keys %$vars)
+	{
+		$cgi->param($var,"");
+	}
+}
+							
 foreach $var (keys %$vars)
 {
 	$vars->{$var}->{value} = $cgi->cookie($var);
-							debug("$var is $var->{$var} from cookie");
+						debug("$var is $var->{$var} from cookie");
 }
+
 
 if ($cgi->request_method() eq 'POST')
 {
@@ -176,6 +190,7 @@ sub param_to_cookie
 sub text_form
 {
 	print $cgi->startform(), "<P>\n";
+
 	foreach $var (
 			sort {$vars->{$a}->{sort} <=> $vars->{$b}->{sort}} keys %$vars
 		)
@@ -195,6 +210,8 @@ sub text_form
 		print "</NOBR>\n";
 	}
 	print "\n<BR>", $cgi->submit('Set Variables');
+	print "\n    ", $cgi->submit('Clear Variables');
+
 	print "</P>\n";
 	print $cgi->endform(), "\n";
 }
