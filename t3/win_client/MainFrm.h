@@ -11,17 +11,14 @@
 #include <CheckLst.hpp>
 #include <Graphics.hpp>
 #include <ImgList.hpp>
-//#include <NMURL.hpp>
 #include <ComCtrls.hpp>
-//#include <NMHttp.hpp>
-//#include <Psock.hpp>
 #include <MPlayer.hpp>
 
 #include <map>
 #include <vector>
 
 #include "TimersImp.h"
-#include "MessagesImp.h"
+#include "T3Message.h"
 
 using namespace std;
 
@@ -144,9 +141,9 @@ public:		// User declarations
 	__fastcall TMainForm(TComponent* Owner);
 
 			//TO REMOVE
-	multimap<string, Message>* pMessageBuffer;	//collection of unread messages
-	multimap<string, Message>* pStatusBuffer;	//collectn of unprocessed status
-	map<string, Message>* pUserCollection;	//collection of ON/OFF mssgs = Users
+	multimap<string, T3Message>* pMessageBuffer;	//collection of unread messages
+	multimap<string, T3Message>* pStatusBuffer;	//collectn of unprocessed status
+	map<string, T3Message>* pUserCollection;	//collection of ON/OFF mssgs = Users
 	vector<string>* puser_list;
 
 	String hist_filename;					//full-path name of history file
@@ -162,10 +159,11 @@ public:		// User declarations
 	void cancelTimer (bool transmit = true);
 	void setOptions (int item_index);
 	void manageTimerButtons ();
-	void sendTimerMessage (String timername, String client, String command);
+	void sendTimerMessage (const map<string, string>& attr, 
+						   const string& content);
 
 	//Messages management methods
-	void ferryMessage(Message what_messg);		//the only message-out gateway
+	void ferryMessage(T3Message what_messg);		//the only message-out gateway
 
 	void openMessageForm (int what_item);
 	void readMessage (TMessageActionForm* MessageActionForm);

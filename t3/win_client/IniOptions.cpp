@@ -1,16 +1,14 @@
 //---------------------------------------------------------------------------
 #include <vcl.h>
+#pragma hdrstop
 
 #include <sstream>
-
+using namespace std;
 
 #include "IniOptions.h"
 
 //---------------------------------------------------------------------------
-
 //---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-
 IniOptions::IniOptions (const string& ini_filename)
 {
 	//this constructor associates an ini file with the persistent option values
@@ -23,7 +21,6 @@ IniOptions::IniOptions (const string& ini_filename)
 										
 }
 //---------------------------------------------------------------------------
-
 IniOptions::~IniOptions ()
 {
 	//on destroy, save the persistent values
@@ -34,7 +31,6 @@ IniOptions::~IniOptions ()
 	delete tmp_values;
 }
 //---------------------------------------------------------------------------
-
 string IniOptions::getValue (const string& name, string default_val) const
 {
 	//if getValue() does not find the value in ini_values, it searches
@@ -53,7 +49,6 @@ string IniOptions::getValue (const string& name, string default_val) const
 		return value;
 }
 //---------------------------------------------------------------------------
-
 int IniOptions::getValueInt (const string& name, int default_val) const
 {
 	//equivalent to getValue() but returns an int
@@ -67,7 +62,6 @@ int IniOptions::getValueInt (const string& name, int default_val) const
 		return default_val;
 }
 //---------------------------------------------------------------------------
-
 void IniOptions::setValue (const string& name, const string& value, bool ini)
 {
 	if (ini)
@@ -76,7 +70,6 @@ void IniOptions::setValue (const string& name, const string& value, bool ini)
 		tmp_values->Values[name.c_str()] = value.c_str();
 }
 //---------------------------------------------------------------------------
-
 void IniOptions::setValueInt (const string& name, const int int_val, bool ini)
 {
 	//equivalent to setValue() but accepts an int for the value

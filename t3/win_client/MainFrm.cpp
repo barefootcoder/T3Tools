@@ -2,10 +2,11 @@
 #include <vcl.h>
 #pragma hdrstop
 
+#include <iostream>
 #include <fstream>
-
-#include <time.h>
 #include <sstream>
+#include <ctime>
+using namespace std;
 
 #include "MainFrm.h"
 #include "IniOptions.h"
@@ -63,7 +64,7 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 	puser_list = &(MessagePump->user_list);
 
 	//seed initial user names from values read from ini file
-	for (int i = 0; i < puser_list->size(); i++)
+	for (int i = 0; i < (int) puser_list->size(); i++)
 		Contacts->Items->Add((*puser_list)[i].c_str());
 
 	if (hidden_timer_panes[0])  HideTimerNames->Picture = ShowArrow->Picture;
@@ -335,21 +336,21 @@ void __fastcall TMainForm::ContactsDrawItem(TWinControl *Control,
 	  int Index, TRect &Rect, TOwnerDrawState State)
 {
 
-	map<string, Message>::iterator it;				//who is on?
+	map<string, T3Message>::iterator it;				//who is on?
 	it = pUserCollection->find(Contacts->Items->Strings[Index].c_str());
 
-	multimap<string, Message>::iterator mess_it;	//who has sent messages?
+	multimap<string, T3Message>::iterator mess_it;	//who has sent messages?
 	mess_it = pMessageBuffer->find(Contacts->Items->Strings[Index].c_str());
 	bool has_message = (mess_it != pMessageBuffer->end());
 
 
 	int i;
-	if (it->second.status == "IMON")
+	if (it->second.getAttribute("status") == "IMON" )
 	{
 		i = (has_message && blink) ? 2 : 0;
 		if (i != 2 && !online) i = 3;		//!=2 so it will still blink offline
 	}
-	else if (it->second.status == "IMBUSY")
+	else if (it->second.getAttribute("status") == "IMBUSY" )
 	{
 		i = (has_message && blink) ? 2 : 4;
 		if (i != 2 && !online) i = 3;
@@ -654,7 +655,7 @@ void __fastcall TMainForm::Splitter1Moved(TObject *Sender)
 
 bool TMainForm::canNixWidth (bool caller_is_talker)
 {
-	bool can = true;
+	bool can;
 
 	if (caller_is_talker)
 	{
@@ -682,7 +683,7 @@ void __fastcall TMainForm::TimersListMouseMove(TObject *Sender,
 	TListBox* WhatList = (TListBox*) Sender;
 
 	int item_number = (Y / WhatList->ItemHeight) +
-										getScrollPosition(WhatList->Handle);
+								getScrollPosition(WhatList->Handle);
 
 	String empty = "";
 	String temp_str = empty;
@@ -693,10 +694,10 @@ void __fastcall TMainForm::TimersListMouseMove(TObject *Sender,
 			temp_str = WhatList->Items->Strings[item_number];
 		else	//if contacts
 		{
-			map<string, Message>::iterator it;
+			map<string, T3Message>::iterator it;
 			it = pUserCollection->find(Contacts->Items->Strings[item_number].c_str());
 			if (it != pUserCollection->end())
-				temp_str = it->second.message_text;
+				temp_str = it->second.getContent().c_str();
 		}
 	}
 	else
@@ -730,13 +731,14 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 	//process any status messages that may exist
 	if (!pStatusBuffer->empty())
 	{
-		map<string, Message>::iterator it;
+		map<string, T3Message>::iterator it;
 		for (it = pStatusBuffer->begin(); it != pStatusBuffer->end(); )
 		{
 			//if we still don't have first message id, get it now if available
-			if (message_base_id == 0x0ui64 && it->second.status == "ID")
+			if (message_base_id == 0x0ui64 && 
+				it->second.getAttribute("status") == "ID")
 			{
-				string id_value = it->second.message_id.c_str();
+				string id_value = it->second.getAttribute("id");
 				if (id_value.empty())
 					id_value = "0";
 
@@ -923,14 +925,14 @@ void TMainForm::startTimer ()
 
 	updateClocks();
 
-	sendTimerMessage(timer_name, CurrTimer->second.client, "start");
+	//sendTimerMessage(timer_name, CurrTimer->second.client, "start");
 
 }
 //---------------------------------------------------------------------------
 
 void TMainForm::stopTimer ()
 {
-	sendTimerMessage(CurrTimer->second.name, CurrTimer->second.client, "pause");
+	//sendTimerMessage(CurrTimer->second.name, CurrTimer->second.client, "pause");
 
 	CurrTimer = TimerCollection.end();
 
@@ -944,7 +946,7 @@ void TMainForm::stopTimer ()
 
 void TMainForm::doneWithTimer ()
 {
-               ShowMessage("Note: Communication with server is not currently implemented for this action.");
+    ShowMessage("Note: Communication with server is not currently implemented for this action.");
 	map<String, Timer>::iterator it;
 	it = TimerCollection.find(TimersList->Items->Strings[item_number]);
 
@@ -982,8 +984,11 @@ void TMainForm::cancelTimer (bool transmit)
 	if (it == CurrTimer)	//we're deleting a timer, but might be current timer
 		CurrTimer = TimerCollection.end();			//if so CurrTimer is no more
 
-	if (transmit)			//send request to server
-		sendTimerMessage(it->second.name, it->second.client, "cancel");
+	if (transmit)			
+	{
+		//send request to server
+		//sendTimerMessage(it->second.name, it->second.client, "cancel");
+	}
 
 	TimerCollection.erase(it);						//delete from collection
 
@@ -992,18 +997,15 @@ void TMainForm::cancelTimer (bool transmit)
 }
 //---------------------------------------------------------------------------
 
-void TMainForm::sendTimerMessage (String timername, String client, String command)
+void TMainForm::sendTimerMessage (const map<string, string>& attr, 
+								  const string& content)
 {
 	//call this function to issue a Timer command to the server
 	//this uses the messaging system for transport
 
-	Message trans_out(timername, IniOpt->getValue("user_name").c_str(), "",
-					"TIMER", client, command);
+	T3Message trans_out("MESSAGE", attr, content);
 
-	trans_out.location = IniOpt->getValue("user_location").c_str();
-							
 	ferryMessage(trans_out);
-
 }
 //---------------------------------------------------------------------------
 
@@ -1307,7 +1309,8 @@ void TMainForm::openMessageForm (int what_item)
 	}
 	else
 	{
-		what_item = -1;							//clicked, but not on a contact
+		//clicked, but not on a contact
+		//what_item = -1;							
 		MessageActionForm->user = "";
 		MessageActionForm->Caption = " ";
 	}
@@ -1319,25 +1322,27 @@ void TMainForm::openMessageForm (int what_item)
 
 void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 {
-	multimap<string, Message>::iterator it;
+	multimap<string, T3Message>::iterator it;
 	it = pMessageBuffer->find(MessageActionForm->user.c_str());
 
 	if (it != pMessageBuffer->end())	//if there's a message from this user
 	{
-		MessageActionForm->TheMessage->Text = it->second.message_text;
+		MessageActionForm->TheMessage->Text = it->second.getContent().c_str();
 		MessageActionForm->last_read_message = it->second;
 
 		//display info about this message on the message form title bar -- this
 		//code must come after TheMessage->Text is set (above) to prevent it
 		//being overriden by the TheMessage control OnChange event
 		String title_bar = "Message from ";
-		title_bar += MessageActionForm->last_read_message.from;
+		title_bar += MessageActionForm->
+							last_read_message.getAttribute("from").c_str();
 		title_bar += " to ";
-		title_bar += MessageActionForm->last_read_message.to;
+		title_bar += MessageActionForm->
+							last_read_message.getAttribute("to").c_str();
 
 		//format time
 		time_t t;
-		stringstream(MessageActionForm->last_read_message.time.c_str()) >> t;
+		stringstream(MessageActionForm->last_read_message.getAttribute("time")) >> t;
 		String messg_time = ctime(&t);
 		messg_time.Delete(messg_time.Length(), 1);	//delete '\n' at the end
 		title_bar += ", sent on ";
@@ -1347,16 +1352,22 @@ void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 
 		//send confirmation that message has been read
 		//build status message to send out (the 'from' of received will now be 'to')
-		Message trans_out(it->second.message_id, IniOpt->getValue("user_name").c_str(),
-					it->second.from, "NORMAL_READ", "", "");
-		trans_out.location = IniOpt->getValue("user_location").c_str();
+		map<string, string> attr;
+		attr["id"] = it->second.getAttribute("id");
+		attr["from"] = IniOpt->getValue("user_name").c_str();
+		attr["to"] = it->second.getAttribute("from");
+		attr["status"] = "NORMAL_READ";
+		attr["location"] = IniOpt->getValue("user_location").c_str();
+
+		T3Message trans_out("MESSAGE", attr, "");
 		ferryMessage(trans_out);
 
 		pMessageBuffer->erase(it);
 	}
 
 	//display the message subject/thread:
-	String tempstr = MessageActionForm->last_read_message.thread;
+	String tempstr = MessageActionForm->
+							last_read_message.getAttribute("subject").c_str();
 
 	if (int loc = tempstr.Pos(">>"))
 		tempstr.Insert(" ", loc);
@@ -1401,28 +1412,33 @@ bool TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 
 	if (MessageActionForm->ReplyLED->Visible)	//is a reply to another message
 	{
+		AnsiString str = MessageActionForm->
+								last_read_message.getContent().c_str();
 		subject += ">>";
-		subject += MessageActionForm->makeTag(
-							MessageActionForm->last_read_message.message_text);
+		subject += MessageActionForm->makeTag(str);
 	}
 
-	Message trans_out("", IniOpt->getValue("user_name").c_str(), send_to,
-					"NORMAL", subject, MessageActionForm->TheMessage->Text);
+	// create an attribute list
+	map<string, string> attr;
+	attr["status"] = "NORMAL";
+	attr["subject"] = subject.c_str();
+	attr["from"] = IniOpt->getValue("user_name").c_str();
+	attr["to"] = send_to.c_str();
+	attr["location"] = IniOpt->getValue("user_location").c_str();
 
-	trans_out.location = IniOpt->getValue("user_location").c_str();
-
+	// set the message_id
 	stringstream mess_id;
 	mess_id << hex << ++message_base_id;
-	trans_out.message_id = mess_id.str().c_str();
+	attr["id"] = mess_id.str().c_str();
 
-	//assign now-time if the time is empty
-	if (!trans_out.time.Length())
-	{
-		time_t t;
-		time(&t);
-		trans_out.time = t;
-	}
+	// set the time to now
+	time_t t;
+	char tstr[50];
+	sprintf(tstr, "%ld", time(&t));
+	attr["time"] = tstr;
 
+	T3Message trans_out("MESSAGE", attr, 
+						MessageActionForm->TheMessage->Text.c_str());
 	ferryMessage(trans_out);
 
 	return true;
@@ -1441,14 +1457,18 @@ void TMainForm::broadcastMessage (TMessageActionForm* MessageActionForm)
 void TMainForm::sendStatusMessage (String what_status)
 {
 	//called by other functions to send any kind of content-free status message
+	map<string, string> attr;
+	//attr["id"] = "";
+	//attr["to"] = "";
+	attr["from"] = IniOpt->getValue("user_name").c_str();
+	//attr["subject"] = "";
+	attr["status"] = what_status.c_str();
+	attr["location"] = IniOpt->getValue("user_location").c_str();
+	T3Message trans_out("MESSAGE", attr, 
+						IniOpt->getValue("user_status").c_str());
 
-	Message trans_out("", IniOpt->getValue("user_name").c_str(), "",
-					what_status, "", IniOpt->getValue("user_status").c_str());
-
-	trans_out.location = IniOpt->getValue("user_location").c_str();
-							
 	ferryMessage(trans_out);
-
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -1502,20 +1522,21 @@ void __fastcall TMainForm::ImOnMouseDown(TObject *Sender,
 
 void __fastcall TMainForm::MessageTimerTimer(TObject *Sender)
 {
+	// check to resend messages
+	MessagePump->resendMessages();
+
 	//if user is on-line, periodically issue IMON message to server
-
-	MessagePump->resendMessages();	//check for resends - will also go now, if any
-
-	if (online)			//if is redundant since offline disables MessageTimer
+	//it is redundant since offline disables MessageTimer
+	if (online)			
 	{
 		String status;
 		status = available ? "IMON" : "IMBUSY";
 
 		//but if there's no id, just keep sending LOGON
-		if (!message_base_id) status = "LOGON";
+		if (!message_base_id) 
+			status = "LOGON";
 
 		sendStatusMessage(status);
-
 	}
 
 
@@ -1523,9 +1544,10 @@ void __fastcall TMainForm::MessageTimerTimer(TObject *Sender)
 	MessageTimer->Interval =
 					IniOpt->getValueInt("server_refresh_interval", 30) * 1000;
 
+	return;
 }
 //---------------------------------------------------------------------------
-void TMainForm::ferryMessage(Message what_messg)
+void TMainForm::ferryMessage(T3Message what_messg)
 {
 	//this is the output gateway for messages of any status that need to
 	//go out.  all functions with messages to go out must call ferryMessage()
@@ -1546,7 +1568,7 @@ void TMainForm::doContactMaintenance ()
 {
 	//maintemance of Contacts list to catch up with received messages, etc.
 
-	map<string, Message>::const_iterator it;
+	map<string, T3Message>::const_iterator it;
 
 	//delete from display any contacts that are no longer in collection
 	for (int i = 0; i < Contacts->Items->Count; i++)
@@ -1586,7 +1608,11 @@ void TMainForm::doContactMaintenance ()
 
 void __fastcall TMainForm::OptionsClick(TObject *Sender)
 {
-	OptionsForm->ShowModal();
+	TOptionsForm* dlg = new TOptionsForm(this);
+	dlg->ShowModal();
+	delete dlg;
+
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -1598,6 +1624,8 @@ void TMainForm::initApp ()
 {
 	//reads ini file and sets values accordingly
 
+	// this should be done somewhere else
+	// checked somewhere else
 	String ini_filename;
 
 	//add HOME path to filename if it exists
@@ -1618,7 +1646,12 @@ void TMainForm::initApp ()
 	}
 	catch(...)
 	{
+		IniOpt = NULL;
 		ShowMessage(String("Unable to read ") + INIFILENAME );
+
+		// can't continue
+		::PostQuitMessage(0);
+		return;
 	}
 
 	//General Options, other forms positions, etc. are done in respective
@@ -1666,6 +1699,10 @@ void TMainForm::cleanupApp ()
 		if (Contacts->Items->Count > i + 1)
 			user_list += ',';
 	}
+
+	// we may be in here because the Ini file failed to initialize
+	if ( !IniOpt )
+		return;
 
 	bool save_to_ini = true;
 	IniOpt->setValue("contact_order", user_list.c_str(), save_to_ini);

@@ -1,6 +1,6 @@
 object MessageActionForm: TMessageActionForm
-  Left = 707
-  Top = 343
+  Left = 617
+  Top = 453
   Width = 435
   Height = 293
   BorderIcons = [biSystemMenu]

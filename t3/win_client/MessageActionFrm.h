@@ -12,7 +12,7 @@
 #include <Dialogs.hpp>
 
 //class Message;	//fwd decl
-#include "MessagesImp.h"
+#include "T3Message.h"
 
 //---------------------------------------------------------------------------
 class TMessageActionForm : public TForm
@@ -73,8 +73,8 @@ private:	// User declarations
 public:		// User declarations
 	__fastcall TMessageActionForm(TComponent* Owner);
 	String user;		//each Message form usually has an associated user name
-	Message last_read_message;	//so we have full info about a displayed messg
-	String makeTag (String& what_message);	//creates a message identifier
+	T3Message last_read_message;	//so we have full info about a displayed messg
+	String makeTag (const String& what_message);	//creates a message identifier
 };
 //---------------------------------------------------------------------------
 extern PACKAGE TMessageActionForm *MessageActionForm;

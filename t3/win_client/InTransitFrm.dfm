@@ -1,6 +1,6 @@
 object InTransitForm: TInTransitForm
-  Left = 252
-  Top = 302
+  Left = 51
+  Top = 459
   Width = 600
   Height = 365
   Caption = 'Messages In Transit'

@@ -40,21 +40,23 @@ void __fastcall TInTransitForm::RefresherTimer(TObject *Sender)
 
 	int idx = 0;
 
-	map<string, Message>::const_iterator it;
+	map<string, T3Message>::const_iterator it;
 	for (it = MessagePump->UnconfCollection.begin();
 							it != MessagePump->UnconfCollection.end(); it++)
 	{
-		string status = it->second.status.c_str();
+		string status = it->second.getAttribute("status");
 		if  (status == "NORMAL")
 			DeliveryStatus->Items->Add("Unacknowledged");
 		else if (status == "NORMAL_RCVD")
 			DeliveryStatus->Items->Add("Received by Server");
 		else if (status == "NORMAL_DLVD")
 			DeliveryStatus->Items->Add("Delivered but Not Read");
+		else if ( !status.empty() )
+        	DeliveryStatus->Items->Add(status.c_str());
 		else
 			continue;		//nothing to add to in-transit display
 
-		MessageList->Items->Add(it->second.message_text);
+		MessageList->Items->Add(it->second.getContent().c_str());
 		unconf_id_list[idx++] = it->first;
 	}
 

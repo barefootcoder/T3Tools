@@ -1,6 +1,6 @@
 object UtilityDialog: TUtilityDialog
-  Left = 406
-  Top = 357
+  Left = 55
+  Top = 586
   BorderIcons = []
   BorderStyle = bsDialog
   Caption = 'Closing T3Client...'

@@ -1,6 +1,6 @@
 object NewTimer: TNewTimer
-  Left = 150
-  Top = 417
+  Left = 307
+  Top = 500
   HorzScrollBar.Visible = False
   VertScrollBar.Visible = False
   BorderIcons = []

@@ -13,7 +13,6 @@ using namespace user_options;
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
 #pragma resource "*.dfm"
-TOptionsForm *OptionsForm;
 //---------------------------------------------------------------------------
 __fastcall TOptionsForm::TOptionsForm(TComponent* Owner)
 	: TForm(Owner)
@@ -96,7 +95,7 @@ void TOptionsForm::scatterOptions()
 		MessageFont->Font->Name = IniOpt->getValue("messagefont_name").c_str();
 		MessageFont->Text = MessageFont->Font->Name;
 		MessageFont->Font->Size = IniOpt->getValueInt("messagefont_size", 8);
-		MessageFont->Font->Color = IniOpt->getValueInt("messagefont_color", clBlack); //OK for 32-bit int
+		MessageFont->Font->Color = (TColor) IniOpt->getValueInt("messagefont_color", clBlack); //OK for 32-bit int
 		if (IniOpt->getValueInt("messagefont_bold", 0))
 			MessageFont->Font->Style = MessageFont->Font->Style << fsBold;
 		if (IniOpt->getValueInt("messagefont_italic", 0))
@@ -188,14 +187,13 @@ void TOptionsForm::readWavFilenames()
 	{
 		struct _finddata_t fileinfo;
 		long handle = _findfirst(filespec.c_str(), &fileinfo);
-		bool theresmore;
 		do
 		{
 			String filename = fileinfo.name;
 			filename.Delete(filename.Pos("."), 4);
 			MessageSound->Items->Add(filename);
 		}
-		while (theresmore = !_findnext(handle, &fileinfo));
+		while (!_findnext(handle, &fileinfo));
 	}
 	catch(...)
 	{

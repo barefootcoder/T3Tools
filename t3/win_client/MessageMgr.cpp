@@ -1,20 +1,24 @@
 //---------------------------------------------------------------------------
 #include <vcl.h>	//Builder IDE development only -- used for ShowMessage()
+#pragma hdrstop
+
+#include <iostream>
+#include <string>
 #include <fstream>
 #include <sstream>
+using namespace std;
+
+#include "stringlist.h"
+using namespace arinbe;
 
 #include "MessageMgr.h"
 #include "TransThread.h"
 #include "IniOptions.h"
 #include "TestFrm.h"	//included only for debugging -- otherwise can hide
 
-
 using namespace user_options;
 
 //---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
-
 MessageMgr::MessageMgr (const string& history_filename)
 {
 	hist_filename = history_filename;
@@ -23,28 +27,27 @@ MessageMgr::MessageMgr (const string& history_filename)
 	loadUnconfirmed();			//recharge UnconfCollection from persistent store
 
 	//initialize user collections and order using names stored in ini
-	String users = IniOpt->getValue("contact_order").c_str();
-	int pos;
-	Message temp_mess;
-	do
+	StringList usrlist;
+	usrlist.CommaText(IniOpt->getValue("contact_order").c_str());
+	for ( int i = 0; i < usrlist.Count(); ++i )
 	{
-		pos = users.Pos(",");
-		String next = pos ? users.SubString(1, pos - 1) : users;
-		users.Delete(1, pos);
-		temp_mess.from = next;
-		user_list.push_back(temp_mess.from.c_str());			//keeps order
-		UserCollection[temp_mess.from.c_str()] = temp_mess;		//reorders
-	}
-	while (pos);
+		string user = usrlist.String(i);
 
+		map<string, string> attr;
+		attr["from"] = user;
+		T3Message temp_mess("MESSAGE", attr, "");
+
+		user_list.push_back(user);			//keeps order
+		UserCollection[user] = temp_mess;		//reorders
+	}
 
 	thread_active = false;
 	thread_finished = false;
-
+	m_should_resend_now = false;
 }
 //---------------------------------------------------------------------------
 
-void MessageMgr::initTransfer (const Message& what_messg)
+void MessageMgr::initTransfer (const T3Message& what_messg)
 {
 	//MessageMgr clients call this function when they want to send any message.
 	//it calls doTransfer() to start a communication thread -- if the thread is
@@ -53,13 +56,15 @@ void MessageMgr::initTransfer (const Message& what_messg)
 	// the communication dll used by the thread always uses the same data space)
 
 	SendBuffer.push_back(what_messg);
-                          
 	addToHistory(what_messg);
 
 	if (thread_active)
 		return;
 
+	// transfer new messages
 	doTransfer();
+
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -104,15 +109,22 @@ void MessageMgr::doTransfer ()
 	Transfer->pTempStatusBuffer = &TempStatusBuffer;
 	Transfer->pTempUserCollection = &TempUserCollection;
 
+	//start thread execution now
+	Transfer->Resume();			
 
-	Transfer->Resume();			//start thread execution now
-
-	//no need to delete Transfer since TransferThread frees itself
+	return;
 }
 //---------------------------------------------------------------------------
 
 void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 {
+	// DEBUG
+	if ( IniOpt->getValue("test_mode") == "1" )
+	{
+		// show the form
+		TestForm->Show();
+	}
+
 	//note:  called by trans thread but runs in the main execution thread, not
 	//in TransferThread's, so we can safely update callers collections
 
@@ -121,55 +133,72 @@ void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 
 	//collect newly arrived status message
 	StatusBuffer.insert(TempStatusBuffer.begin(), TempStatusBuffer.end());
-	confirmMessages();			//process any confirmations received
+
+	//process any confirmations received
+	confirmMessages();
 
 	if (!TempUserCollection.empty())
 	{
 		//if there's a new user set, empty old user set, fill w/ new one
 		UserCollection.clear();
-		UserCollection.insert(TempUserCollection.begin(), TempUserCollection.end());
+		UserCollection.insert(TempUserCollection.begin(),
+							  TempUserCollection.end());
 	}
 
-	map<string, Message>::const_iterator it;
-	map<string, Message>::iterator pit;
 	//for each received message:  if this message was not already received,
 	//collect in message buffer, add to history, and issue delivery confirmation
-	for (it = TempMessageBuffer.begin(); it != TempMessageBuffer.end(); it++)
+	multimap<string, T3Message>::const_iterator it = TempMessageBuffer.begin();
+	for ( ; it != TempMessageBuffer.end(); it++)
 	{
 		//check if we already have this message
-		string who_from = it->second.from.c_str();
+		string who_from = it->second.getAttribute("from");
 		bool already_have = false;
-		for (pit = MessageBuffer.lower_bound(who_from);
-					pit != MessageBuffer.upper_bound(who_from); ++pit)
-			if (it->second.message_id == pit->second.message_id)
+
+		multimap<string, T3Message>::iterator pit =
+        								MessageBuffer.lower_bound(who_from);
+		for ( ; pit != MessageBuffer.upper_bound(who_from); ++pit)
+		{
+			if (it->second.getAttribute("id") == pit->second.getAttribute("id"))
 			{
 				already_have = true;		//already have this message
 				break;
 			}
-		if (already_have) continue;			//so, do nothing with it
+		}
+
+		if (already_have)
+			continue;			//so, do nothing with it
 
 		MessageBuffer.insert(*it);
 		addToHistory(it->second);
 		confirmDelivery(it->second);
 	}
 
+	// allow a resend if necessary
+	thread_active = false;					
 
-	thread_active = false;					//thread is finished
+	// check for resends
+	if ( m_should_resend_now )
+	{
+		// resend messages as necessary
+		resendMessages();
+	}
+
+	//thread is finished
 	transfer_active = thread_active;
 	thread_finished = true;
 
-		//ShowMessage("Thread terminated OK");
+	//ShowMessage("Thread terminated OK");
 }
 //---------------------------------------------------------------------------
 
-void MessageMgr::addToHistory (const Message& what_messg)
+void MessageMgr::addToHistory (const T3Message& what_messg)
 {
 	//currently only messages with "NORMAL" status are added to history
-	if (what_messg.status != "NORMAL")
+	if (what_messg.getAttribute("status") != "NORMAL")
 		return;
 
 	//copy to history
-	string mess_rec = what_messg.toXML().c_str();
+	string mess_rec = what_messg.toXML();
 
 	ofstream history(hist_filename.c_str(), ios_base::app);
 
@@ -207,12 +236,12 @@ void MessageMgr::loadUnconfirmed ()
 	string tempstr;
 	while (getline(unconf, tempstr))
 	{
-		Message nxt(tempstr.c_str());
+		T3Message nxt("MESSAGE", tempstr.c_str());
 		//now add each to collection
-		if (nxt.from == IniOpt->getValue("user_name").c_str())
-		{				//this is always true except for blank or garbage lines
-
-			UnconfCollection[nxt.message_id.c_str()] = nxt;
+		//this is always true except for blank or garbage lines
+		if (nxt.getAttribute("from") == IniOpt->getValue("user_name").c_str())
+		{				
+			UnconfCollection[nxt.getAttribute("id")] = nxt;
 		}
 	}
 
@@ -223,27 +252,30 @@ void MessageMgr::loadUnconfirmed ()
 void MessageMgr::addToUnconfirmed ()
 {
 	//copies all NORMAL from SendBuffer to UnconfCollection
-
-	vector<Message>::const_iterator it;
-
+	vector<T3Message>::const_iterator it;
 	for (it = SendBuffer.begin(); it != SendBuffer.end(); it++)
 	{
-		if (it->status == "NORMAL")
-			UnconfCollection.insert(make_pair(it->message_id.c_str(), *it));
+		if (it->getAttribute("status") == "NORMAL")
+		{
 			//note: it's not added if it is already there
+			UnconfCollection.insert(make_pair(it->getAttribute("id"), *it));
+		}
 	}
 
 }
 //---------------------------------------------------------------------------
 
-void MessageMgr::confirmDelivery (const Message& what_messg)
+void MessageMgr::confirmDelivery (const T3Message& what_messg)
 {
-	//sents out confirmation of a message that was received
-
+	//sends out confirmation of a message that was received
 	//build status message to send out (the 'from' of received will now be 'to')
-	Message trans_out(what_messg.message_id, IniOpt->getValue("user_name").c_str(),
-					what_messg.from, "NORMAL_DLVD", "", "");
-	trans_out.location = IniOpt->getValue("user_location").c_str();
+	map<string, string> attr;
+	attr["id"] = what_messg.getAttribute("id");
+	attr["to"] = IniOpt->getValue("user_name").c_str(); 
+	attr["from"] = what_messg.getAttribute("from");
+	attr["status"] = "NORMAL_DLVD";
+	attr["location"] = IniOpt->getValue("user_location").c_str();
+	T3Message trans_out("MESSAGE", attr, "");
 
 	//put it out for the mailman to pick up on next go round
 	SendBuffer.push_back(trans_out);
@@ -252,26 +284,44 @@ void MessageMgr::confirmDelivery (const Message& what_messg)
 
 void MessageMgr::confirmMessages ()
 {
+
 	//process message confirmations received from others
 	// -- later may also want to clean up status codes not currently recognized
 
-	map<string, Message>::iterator loc;
-	map<string, Message>::iterator it;
+	multimap<string, T3Message>::iterator it;
 
 	for (it = StatusBuffer.begin(); it != StatusBuffer.end(); )
 	{
-		string status = it->second.status.c_str();
+		string status = it->second.getAttribute("status");
+        string id = it->second.getAttribute("id");
 
-		//Debug only, to see what we're actually getting
-		//TestForm->Show();
-		//TestForm->ShowWhatever->Lines->Add(String("Received status ") + status.c_str() + " on message " + it->second.message_id);
+		map<string, T3Message>::iterator loc = UnconfCollection.find(id);
+
+		// DEBUG
+		if ( IniOpt->getValue("test_mode") == "1" )
+		{
+			TestForm->ShowWhatever->Lines->Add(String("Received status ") +
+								String(status.c_str()) + String(" on message ") +
+								String(id.c_str()) );
+		}
 
 		if (status == "NORMAL_RCVD")
 		{
 			//replace in UnconfCollection
-			loc = UnconfCollection.find(it->second.message_id.c_str());
-			if (loc != UnconfCollection.end() && loc->second.status == "NORMAL")
-				loc->second.status = status.c_str();
+			if (loc != UnconfCollection.end() &&
+						loc->second.getAttribute("status") == "NORMAL")
+			{
+				loc->second.setAttribute("status", status);
+
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string str = "Changing status to " + status + 
+								" from NORMAL for message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+			}
+
 			//delete in StatusBuffer
 			StatusBuffer.erase(it++);
 			//ShowMessage("Confirmed:  RCVD");
@@ -279,9 +329,19 @@ void MessageMgr::confirmMessages ()
 		else if (status == "NORMAL_DLVD")
 		{
 			//replace in UnconfCollection
-			loc = UnconfCollection.find(it->second.message_id.c_str());
 			if (loc != UnconfCollection.end())
-				loc->second.status = status.c_str();
+			{
+				loc->second.setAttribute("status", status);
+
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string str = "Changing status to " + status + 
+								" from NORMAL_DLVD for message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+			}
+
 			//delete in StatusBuffer
 			StatusBuffer.erase(it++);
 			//ShowMessage("Confirmed:  DLVD");
@@ -289,80 +349,145 @@ void MessageMgr::confirmMessages ()
 		else if (status == "NORMAL_READ")
 		{
 			//delete in UnconfCollection
-			loc = UnconfCollection.find(it->second.message_id.c_str());
 			if (loc != UnconfCollection.end())
+			{
 				UnconfCollection.erase(loc);
+
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string str = "Deleting unconfirmed message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+			}
+
 			//delete in StatusBuffer
 			StatusBuffer.erase(it++);
 			//ShowMessage("Confirmed:  READ");
 		}
 		else
+        {
+        	// go to next one
 			++it;
+        }
 	}
-		//Debug only
-		//TestForm->ShowWhatever->Lines->Add("-----------------------");
 
+    //to keep latest updates of UnconfCollection persistent
+	saveUnconfirmed();
 
-	saveUnconfirmed();	//to keep latest updates of UnconfCollection persistent
-
+    return;
 }
 //---------------------------------------------------------------------------
 
 void MessageMgr::resendMessages ()
 {
-	//go through each of all unconfirmed messages and resend based on elapsed time
-	//this method should be called by a UI ticker (currently the ping)
+	// This function is called from the ping timer
+	// However, if the ping timer goes off before the TransThread has
+	// finished then this function will start to stack messages that
+	// may get confirmed by the TransThread.  This will cause duplicate
+	// messages to be sent.  
+	
+	// Therefore, we need to do some mutex-like checking.
+
+	// if thread active set some flags to call this fcn from ThreadDone fcn
+	if ( thread_active )
+	{
+		// set flag
+		m_should_resend_now = true;
+
+		// get out here
+		return;
+	}
+
+	// reset flag
+	m_should_resend_now = false;
 
 	time_t t1;		//the current time
 	time_t t0;		//the message's time (most recent time update)
 	time(&t1);		//read the current time
+	char t1str[50];
+	sprintf(t1str, "%ld", t1);
 
-	map<string, Message>::iterator it;
+	map<string, T3Message>::iterator it;
 
 	for (it = UnconfCollection.begin(); it != UnconfCollection.end(); it++)
 	{
-		istringstream(it->second.time.c_str()) >> t0;	//read message's time
+		//read message's time
+		istringstream(it->second.getAttribute("time")) >> t0;
 
 		//check if addressee has on-line status (so it will not resend undelivd)
-		map<string, Message>::iterator usrit;
-		usrit = UserCollection.find(it->second.to.c_str());
+		map<string, T3Message>::iterator usrit;
+		usrit = UserCollection.find(it->second.getAttribute("to"));
+
 		bool isonline = false;
-		if (usrit != UserCollection.end() && usrit->second.status != "IMOFF")
-			isonline = true;
-
-		string status = it->second.status.c_str();
-
-		if (status == "NORMAL")				//means NORMAL_RCVD was not received
+		string status = it->second.getAttribute("status");
+		if (usrit != UserCollection.end() && status != "IMOFF")
 		{
+			isonline = true;
+		}
+
+		if (status == "NORMAL")				
+		{
+			//means NORMAL_RCVD was not received
 			int defvalue = IniOpt->getValueInt("resend_if_no_rcvd_interval");
 			if ( defvalue > 0 && (t1 - t0) > defvalue )
 			{
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string id = it->second.getAttribute("id");
+					string str = "Resend (no NORMAL_RCVD) for message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+
 				//update time and resend
-				it->second.time = t1;
+				it->second.setAttribute("time", t1str);
 				SendBuffer.push_back(it->second);
 			}
 		}
-		else if (status == "NORMAL_RCVD")	//means NORMAL_DLVD was not received
+		else if (status == "NORMAL_RCVD")	
 		{
+			//means NORMAL_DLVD was not received
 			int defvalue = 60 * IniOpt->getValueInt("resend_if_no_dlvd_interval");
 			if ( isonline && defvalue > 0 && (t1 - t0) > defvalue )
 			{
 				//update time and resend
-				it->second.time = t1;
-				Message temp_msg = it->second;	//need a copy to recreate NORMAL
-				temp_msg.status = "NORMAL";
+				it->second.setAttribute("time", t1str);
+
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string id = it->second.getAttribute("id");
+					string str = "Resend (no NORMAL_DLVD) for message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+
+				//need a copy to recreate NORMAL
+				T3Message temp_msg(it->second);	
+				temp_msg.setAttribute("status", "NORMAL");
 				SendBuffer.push_back(temp_msg);
 			}
 		}
-		else if (status == "NORMAL_DLVD")	//means NORMAL_READ was not received
+		else if (status == "NORMAL_DLVD")	
 		{
+			//means NORMAL_READ was not received
 			int defvalue = 3600 * IniOpt->getValueInt("resend_if_no_read_interval");
 			if ( isonline && defvalue > 0 && (t1 - t0) > defvalue )
 			{
 				//update time and resend
-				it->second.time = t1;
-				Message temp_msg = it->second;	//need a copy to recreate NORMAL
-				temp_msg.status = "NORMAL";
+				it->second.setAttribute("time", t1str);
+
+				// DEBUG
+				if ( IniOpt->getValue("test_mode") == "1" )
+				{
+					string id = it->second.getAttribute("id");
+					string str = "Resend (no NORMAL_READ) for message " + id;
+					TestForm->ShowWhatever->Lines->Add(str.c_str());
+				}
+
+				//need a copy to recreate NORMAL
+				T3Message temp_msg(it->second);	
+				temp_msg.setAttribute("status", "NORMAL");
 				SendBuffer.push_back(temp_msg);
 			}
 		}
@@ -376,14 +501,22 @@ void MessageMgr::resendMessages ()
 void MessageMgr::saveUnconfirmed ()
 {
 	//add each message in unconfirmed collection to file
-
 	ofstream unconfs(unconf_filename.c_str());
-	if (!unconfs) return;
+	if (!unconfs)
+    	return;
 
-	map<string, Message>::const_iterator it;
+	map<string, T3Message>::const_iterator it;
 	for (it = UnconfCollection.begin(); it != UnconfCollection.end(); it++)
 	{
-		unconfs << it->second.toXML().c_str() << '\n';
+		unconfs << it->second.toXML() << '\n';
+
+		// DEBUG
+		if ( IniOpt->getValue("test_mode") == "1" )
+		{
+			string id = it->second.getAttribute("id");
+			string str = "Saving unconfirmed message " + id;
+			TestForm->ShowWhatever->Lines->Add(str.c_str());
+		}
 	}
 
 	unconfs.close();

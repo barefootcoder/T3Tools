@@ -46,7 +46,7 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 
 	TheMessage->Font->Name = IniOpt->getValue("messagefont_name").c_str();
 	TheMessage->Font->Size = IniOpt->getValueInt("messagefont_size", 8);
-	TheMessage->Font->Color = IniOpt->getValueInt("messagefont_color", clBlack);
+	TheMessage->Font->Color = (TColor) IniOpt->getValueInt("messagefont_color", clBlack);
 	if (IniOpt->getValueInt("messagefont_bold", 0))
 		TheMessage->Font->Style = TheMessage->Font->Style << fsBold;
 	else
@@ -87,7 +87,7 @@ void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 	//when form is created, if there's a message from
 	//corresponding user, show it immediately:
 
-	multimap<string, Message>::iterator it;
+	multimap<string, T3Message>::iterator it;
 	it = MainForm->pMessageBuffer->find(user.c_str());	//locate a message from user
 
 	if (it != MainForm->pMessageBuffer->end())	//if there's one,
@@ -172,11 +172,13 @@ void __fastcall TMessageActionForm::SendMessgClick(TObject *Sender)
 
 	//send to each selected user
 	for (int i = 0; i < UserList->Items->Count; i++)
+    {
 		if (UserList->Selected[i])
 		{
 			if (who_to.Length() > 0) who_to += ',';
 			who_to += UserList->Items->Strings[i];
 		}
+    }
 
 	if (MainForm->sendMessage(this, -2, who_to))	//-2 means who_to arg is read
 	{
@@ -195,19 +197,24 @@ void __fastcall TMessageActionForm::ReplyMessgClick(TObject *Sender)
 
 	String tempstr;
 
-	tempstr = last_read_message.thread;
+	tempstr = last_read_message.getAttribute("subject").c_str();
 	int lkpos = tempstr.Pos(">>");
 	if (lkpos)
+	{
 		tempstr = tempstr.SubString(1, lkpos - 1);
+	}
+
+	AnsiString str = last_read_message.getContent().c_str();
 	tempstr += " >>";
-					
-	tempstr += makeTag(last_read_message.message_text);
+	tempstr += makeTag(str);
 
 	Topic->Text = tempstr;
 
 	ReplyMessg->Enabled = false;
 	ClearMessageClick(ClearMessage);
 	ReplyLED->Visible = true;
+
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -282,9 +289,11 @@ void TMessageActionForm::manageMessageButtons(int state)
 			break;
 		case 2:							//after Read
 			{
-			multimap<string, Message>::iterator it;
-			it = MainForm->pMessageBuffer->find(user.c_str());	//locate message from user
-			//enable ReadNext button if there's still another message from this user:
+			multimap<string, T3Message>::iterator it;
+			// locate message from user
+			it = MainForm->pMessageBuffer->find(user.c_str());	
+			// enable ReadNext button if there's still another 
+			// message from this user:
 			GetMessg->Enabled = (it != MainForm->pMessageBuffer->end());
 			}
 			break;
@@ -404,15 +413,17 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 	String last_thread;		//needs to persist from one for-iteration to next
 	for (int i = temp_history1->size() - 1; i >= 0 ; i--)	//read messgs in reverse order
 	{
-		Message mess((*temp_history1)[i].c_str());			//next message
+		T3Message mess("MESSAGE", (*temp_history1)[i].c_str());			//next message
+		ShowMessage((*temp_history1)[i].c_str());
 
-		if (UserList->Items->IndexOf(mess.from) == -1 ||
-			!UserList->Selected[UserList->Items->IndexOf(mess.from)])
+		AnsiString from = mess.getAttribute("from").c_str();
+		if (UserList->Items->IndexOf(from) == -1 ||
+			!UserList->Selected[UserList->Items->IndexOf(from)])
 			continue;	//do not select this message if sender is either
 						//not in the list or not selected
 
 		//since there can be multiple recipients, check each one
-		String recipients = mess.to;
+		String recipients = mess.getAttribute("to").c_str();
 		bool found_one = false;
 		do
 		{
@@ -434,8 +445,10 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 			continue;   	//recipients is selected
 						
 
-		String subject = mess.thread;				//for subject part of thread
-		String curr_thread = mess.thread;			//for the true thread
+		//for subject part of thread
+		String subject = mess.getAttribute("subject").c_str();
+		//for the true thread
+		String curr_thread = mess.getAttribute("subject").c_str();
 
 		//to display subject, we only want subject part of thread, if any
 		if (int pos = subject.Pos(">>"))
@@ -445,7 +458,7 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 		}
 
 		//format time
-		String messg_time = mess.time;
+		String messg_time = mess.getAttribute("time").c_str();
 		time_t t;
 		stringstream(messg_time.c_str()) >> t;
 
@@ -464,31 +477,38 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 
 		//check more filters and exclude appropriately:
 		//by Subject
-		if (FilterSubject->Text != "" && FilterSubject->Text != subject)
+		if (!FilterSubject->Text.IsEmpty() && FilterSubject->Text != subject)
 			continue;
+
 		//by Keyword
-		if (FilterKw->Text != "" && !mess.message_text.Pos(FilterKw->Text))
+		String pstr = mess.getContent().c_str();
+		if (!FilterKw->Text.IsEmpty() && !pstr.Pos(FilterKw->Text))
 			continue;
+
 		//by Thread
-		if (i == temp_history1->size() - 1)	//keep first message (last in history)
+		if (i == (int) temp_history1->size() - 1)	//keep first message (last in history)
 		{									//and it serves as the starting seed
 			last_thread = curr_thread;
 		}
 		else if (FilterThread->Checked)		//if filter is to get thread only
 		{
-			if (last_thread != makeTag(mess.message_text))
+			AnsiString tstr = mess.getContent().c_str();
+			if ( last_thread != makeTag(tstr) )
 				continue;					//don't keep if no match on thread
 			else
 				last_thread = curr_thread;	//rearm for next match up the line
 		}
 
 		//add formatted output (of selected hist messages) to double-buffer:
-		temp_history2->Add(String("From:  ") + mess.from + "     To:  " + mess.to);
+		temp_history2->Add(String("From:  ") + 
+						   String(mess.getAttribute("from").c_str()) + 
+						   "     To:  " + 
+						   String(mess.getAttribute("to").c_str()));
 		temp_history2->Add(messg_time);
 		if (subject.Length() > 0)
 			temp_history2->Add(String("Subject:  ") + subject);
 		temp_history2->Add("");
-		temp_history2->Add(mess.message_text);
+		temp_history2->Add(mess.getContent().c_str());
 		temp_history2->Add(IniOpt->getValue("hist_message_divider").c_str());
 
 	}
@@ -597,14 +617,13 @@ void __fastcall TMessageActionForm::ApplyFilterClick(TObject *Sender)
 	UserListClick(UserList);			//simulate UserList control click
 }
 //---------------------------------------------------------------------------
-
-String TMessageActionForm::makeTag (String& what_message)
+String TMessageActionForm::makeTag (const String& what_message)
 {
 	//creates a message identifier -- currently the first 30 chars of the
 	//									message, with newlines replcd by spaces
 
-	String tempstr = what_message.TrimLeft();
-	tempstr = tempstr.SubString(1, 30);
+	String tempstr = what_message;
+	tempstr = tempstr.TrimLeft().SubString(1, 30);
 
 	while (int pos = tempstr.Pos("\r"))		//need to modify for Unix
 	{
@@ -615,7 +634,6 @@ String TMessageActionForm::makeTag (String& what_message)
 	return tempstr;
 }
 //---------------------------------------------------------------------------
-
 void __fastcall TMessageActionForm::TheMessageKeyDown(TObject *Sender,
       WORD &Key, TShiftState Shift)
 {

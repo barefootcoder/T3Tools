@@ -2,16 +2,12 @@
 #ifndef MessageMgrH
 #define MessageMgrH
 //---------------------------------------------------------------------------
-#include <Classes.hpp>	//MessagesImp.h still uses String, so this is still
-						//needed -- once messages has no VCL, this can be deleted
 
 #include <map>
 #include <vector>
-
-#include "MessagesImp.h"
-
-
 using namespace std;
+
+#include "T3Message.h"
 
 //---------------------------------------------------------------------------
 
@@ -22,8 +18,8 @@ class MessageMgr
 	MessageMgr (const string& history_filename);
 
 	//key methods
-	void initTransfer (const Message& what_messg);	//key i/f to message senders
-	void confirmDelivery (const Message& what_messg);	//confirm rcvd-message
+	void initTransfer (const T3Message& what_messg);	//key i/f to message senders
+	void confirmDelivery (const T3Message& what_messg);	//confirm rcvd-message
 	void confirmMessages ();	//process confirmations received from others
 	void resendMessages ();		//resends any messages that remain unconfirmed
 
@@ -32,11 +28,11 @@ class MessageMgr
 	void saveUnconfirmed ();
 
 	//key data collections (see also private temp versions)
-	multimap<string, Message> MessageBuffer;	//unread messages (rcvd)
-	multimap<string, Message> StatusBuffer;		//unread status messages (rcvd)
-	map<string, Message> UserCollection;		//ON/OFF mssgs = Users (rcvd)
-	map<string, Message> UnconfCollection;		//unconfirmed messages
-	vector<Message> SendBuffer;					//accumulates to-send messages
+	multimap<string, T3Message> MessageBuffer;	//unread messages (rcvd)
+	multimap<string, T3Message> StatusBuffer;		//unread status messages (rcvd)
+	map<string, T3Message> UserCollection;		//ON/OFF mssgs = Users (rcvd)
+	map<string, T3Message> UnconfCollection;		//unconfirmed messages
+	vector<T3Message> SendBuffer;					//accumulates to-send messages
 
 	vector<string> user_list;	//user names list - clients maintain its order
 	vector<string> hist_buffer;                 //memory copy of history file
@@ -49,7 +45,7 @@ class MessageMgr
  private:
 	//key methods
 	void doTransfer ();
-	void addToHistory (const Message& what_messg);
+	void addToHistory (const T3Message& what_messg);
 
 	//auxiliary methods
 	void loadLocalHistory ();
@@ -60,13 +56,14 @@ class MessageMgr
 
 	//Temp versions of key data collections are for use by child thread
 	//without interfering with the main (public) collections
-	multimap<string, Message> TempMessageBuffer;
-	multimap<string, Message> TempStatusBuffer;
-	map<string, Message> TempUserCollection;
-	vector<Message> TempSendBuffer;
+	multimap<string, T3Message> TempMessageBuffer;
+	multimap<string, T3Message> TempStatusBuffer;
+	map<string, T3Message> TempUserCollection;
+	vector<T3Message> TempSendBuffer;
 
 	//private data
 	bool thread_active;
+	bool m_should_resend_now;
 	string hist_filename;			//full-path name of history file
 	string unconf_filename;			//obtained from hist_filename
 

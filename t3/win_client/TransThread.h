@@ -7,12 +7,10 @@
 
 #include <vector>
 #include <map>
-
-#include "MessagesImp.h"
-
+#include <string>
 using namespace std;
 
-//---------------------------------------------------------------------------
+#include "T3Message.h"
 
 //---------------------------------------------------------------------------
 class TransferThread : public TThread
@@ -21,12 +19,12 @@ public:
 	__fastcall TransferThread(bool CreateSuspended);
 
 	//pointers to collections of data that the thread reads or writes
-	vector<Message>* pTempSendBuffer;				//coll of messages to send
-	multimap<string, Message>* pTempMessageBuffer;	//coll of unread messages
-	multimap<string, Message>* pTempStatusBuffer;	//coll of unread status msgs
-	map<string, Message>* pTempUserCollection;		//coll of ON/OFF mssgs (Users)
+	vector<T3Message>* pTempSendBuffer;				//coll of messages to send
+	multimap<string, T3Message>* pTempMessageBuffer;	//coll of unread messages
+	multimap<string, T3Message>* pTempStatusBuffer;	//coll of unread status msgs
+	map<string, T3Message>* pTempUserCollection;		//coll of ON/OFF mssgs (Users)
 
-	String cgi_exe;			//address of server executable to process transfer
+	string cgi_exe;			//address of server executable to process transfer
 	int timeout;
 	bool keeplog; 			//passed to comms libraries if comm log must be kept
 

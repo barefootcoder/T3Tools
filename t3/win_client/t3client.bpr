@@ -3,11 +3,13 @@
 <PROJECT>
   <MACROS>
     <VERSION value="BCB.05.03"/>
-    <PROJECT value="t3client.exe"/>
-    <OBJFILES value="t3client.obj MainFrm.obj TimersImp.obj NewTimr.obj TimerActionFrm.obj 
-      MessagesImp.obj MessageActionFrm.obj OptionsFrm.obj TestFrm.obj 
-      TransThread.obj IniOptions.obj MessageMgr.obj UtilityDialg.obj 
-      InTransitFrm.obj"/>
+    <PROJECT value="release\t3client.exe"/>
+    <OBJFILES value="win_obj\t3client.obj win_obj\MainFrm.obj win_obj\TimersImp.obj 
+      win_obj\NewTimr.obj win_obj\TimerActionFrm.obj win_obj\T3Message.obj 
+      win_obj\MessageActionFrm.obj win_obj\OptionsFrm.obj win_obj\TestFrm.obj 
+      win_obj\TransThread.obj win_obj\IniOptions.obj win_obj\MessageMgr.obj 
+      win_obj\stringlist.obj win_obj\HttpComponent.obj win_obj\comm.obj 
+      win_obj\Socket.obj win_obj\UtilityDialg.obj win_obj\InTransitFrm.obj"/>
     <RESFILES value="t3client.res"/>
     <IDLFILES value=""/>
     <DEFFILE value=""/>
@@ -15,10 +17,10 @@
       MessageActionFrm.dfm OptionsFrm.dfm TestFrm.dfm UtilityDialg.dfm 
       InTransitFrm.dfm"/>
     <LIBFILES value=""/>
-    <LIBRARIES value="nmfast50.lib vclx50.lib vcl50.lib"/>
-    <SPARELIBS value="vcl50.lib vclx50.lib nmfast50.lib"/>
-    <PACKAGES value="vcl50.bpi vclx50.bpi vcljpg50.bpi nmfast50.bpi"/>
-    <PATHCPP value=".;"/>
+    <LIBRARIES value="vclx50.lib vcl50.lib"/>
+    <SPARELIBS value="vcl50.lib vclx50.lib"/>
+    <PACKAGES value="vcl50.bpi vclx50.bpi vcljpg50.bpi"/>
+    <PATHCPP value=".;HttpComm"/>
     <PATHPAS value=".;"/>
     <PATHRC value=".;"/>
     <PATHASM value=".;"/>
@@ -28,22 +30,22 @@
     <USERDEFINES value=""/>
     <SYSDEFINES value="NO_STRICT"/>
     <MAINSOURCE value="t3client.cpp"/>
-    <INCLUDEPATH value="C:\;$(BCB)\Projects;$(BCB)\include;$(BCB)\include\vcl"/>
-    <LIBPATH value="C:\;$(BCB)\Projects;$(BCB)\lib\obj;$(BCB)\lib"/>
+    <INCLUDEPATH value="$(BCB)\include;$(BCB)\include\vcl;HttpComm"/>
+    <LIBPATH value="HttpComm;$(BCB)\lib\obj;$(BCB)\lib;$(RELEASELIBPATH)"/>
     <WARNINGS value="-w-par -w-8027 -w-8026"/>
     <WARNOPTSTR value=""/>
   </MACROS>
   <OPTIONS>
-    <CFLAG1 value="-O2 -H=$(BCB)\lib\vcl50.csm -Hc -Vx -Ve -X- -a8 -b- -k- -vi -c -tW -tWM"/>
-    <PFLAGS value="-$Y- -$L- -$D- -v -JPHNE -M"/>
+    <CFLAG1 value="-O2 -H=t3client.pch -Vx -Ve -X- -a8 -b- -k- -vi -c -tW -tWM"/>
+    <PFLAGS value="-N2win_obj -N0win_obj -$Y- -$L- -$D- -v -JPHNE -M"/>
     <RFLAGS value=""/>
     <AFLAGS value="/mx /w2 /zn"/>
-    <LFLAGS value="-D&quot;&quot; -aa -Tpe -x -Gn"/>
+    <LFLAGS value="-Iwin_obj -D&quot;&quot; -aa -Tpe -x -Gn"/>
   </OPTIONS>
   <LINKER>
     <ALLOBJ value="c0w32.obj sysinit.obj $(OBJFILES)"/>
     <ALLRES value="$(RESFILES)"/>
-    <ALLLIB value="$(LIBFILES) $(LIBRARIES) import32.lib cp32mt.lib impmBFTalker.lib"/>
+    <ALLLIB value="$(LIBFILES) $(LIBRARIES) import32.lib cp32mt.lib"/>
   </LINKER>
   <IDEOPTIONS>
 [Version Info]
@@ -74,18 +76,36 @@ ProductVersion=1.0.0.0
 Comments=
 
 [HistoryLists\hlIncludePath]
-Count=2
-Item0=C:\;$(BCB)\Projects;$(BCB)\include;$(BCB)\include\vcl
-Item1=$(BCB)\Projects;$(BCB)\include;$(BCB)\include\vcl
+Count=6
+Item0=$(BCB)\include;$(BCB)\include\vcl;HttpComm
+Item1=HttpComt;HttpComnt;HttpComent;HttpComnent;HttpComonent;HttpComponent;HttpComponen;HttpCompone;HttpCompon;HttpCompo;HttpComp;HttpCom;HttpCo;HttpC;Http;Htt;Ht\;H\;H:\;r\;er\;ker;lker;alker;Talker;FTalker;BFTalker;mBFTalker;pmBFTalker;mpmBFTalker;impmBFTalker;$(BCB)\include;$(BCB)\include\vcl;HttpComm
+Item2=$(BCB)\include;$(BCB)\include\vcl;impmBFTalker
+Item3=$(BCB)\include;$(BCB)\include\vcl
+Item4=C:\;$(BCB)\Projects;$(BCB)\include;$(BCB)\include\vcl
+Item5=$(BCB)\Projects;$(BCB)\include;$(BCB)\include\vcl
 
 [HistoryLists\hlLibraryPath]
-Count=2
-Item0=C:\;$(BCB)\Projects;$(BCB)\lib\obj;$(BCB)\lib
-Item1=$(BCB)\Projects;$(BCB)\lib\obj;$(BCB)\lib
+Count=6
+Item0=HttpComm;$(BCB)\lib\obj;$(BCB)\lib;$(RELEASELIBPATH)
+Item1=HttpComm;$(BCB)\lib\obj;$(BCB)\lib;$(RELEASELIBPATH);
+Item2=HttpComm;HttpComt;HttpComnt;HttpComent;HttpComnent;HttpComonent;HttpComponent;HttpComponen;HttpCompone;HttpCompon;HttpCompo;HttpComp;HttpCom;HttpCo;HttpC;Http;Htt;Ht\;H\;H:\;r\;er\;ker;lker;alker;Talker;FTalker;BFTalker;mBFTalker;pmBFTalker;mpmBFTalker;impmBFTalker;$(BCB)\lib\obj;$(BCB)\lib;
+Item3=$(BCB)\lib\obj;$(BCB)\lib;HTTPclient\lib;impmBFTalker\lib
+Item4=C:\;$(BCB)\Projects;$(BCB)\lib\obj;$(BCB)\lib
+Item5=$(BCB)\Projects;$(BCB)\lib\obj;$(BCB)\lib
 
 [HistoryLists\hlDebugSourcePath]
 Count=1
 Item0=$(BCB)\source\vcl
+
+[HistoryLists\hlIntOutputDir]
+Count=2
+Item0=win_obj
+Item1=obj
+
+[HistoryLists\hlFinalOutputDir]
+Count=2
+Item0=release\
+Item1=release
 
 [Debugging]
 DebugSourceDirs=$(BCB)\source\vcl
@@ -101,5 +121,10 @@ RemoteDebug=0
 ShowInfoMsgs=0
 LinkDebugVcl=0
 LinkCGLIB=0
+
+[Language]
+ActiveLang=
+ProjectLang=
+RootDir=
   </IDEOPTIONS>
 </PROJECT>
