@@ -2,18 +2,6 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.3  2000/10/23 20:32:46  tryan
-# Changed 'return' test from $answer to ( $answer ne "" ), so
-# that the input 0 works.
-#
-# Revision 1.2  2000/08/28 21:12:40  buddy
-# first truly working version
-# implements get_yn() and input()
-#
-# Revision 1.1  1999/11/22 16:24:34  buddy
-# Initial revision
-#
 #
 # $Id$
 # $Revision$
@@ -26,10 +14,20 @@
 #
 # General routines to help with script input.
 #
+# get_yn prints a prompt, accepts input, and returns 1 (true) if the input
+# begins with 'y' or 'Y', otherwise returns 0 (false).  Default value is
+# always false.
+#
+# input prints a prompt if given, will return a default value if given and
+# the user provides no input, otherwise returns whatever input the user
+# gives (chomped).
+#
+# menu_select works very much like the "select" command of ksh.
+#
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 1999 Barefoot Software.
+# licensing agreement.  Copyright (c) 1999-2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -39,11 +37,10 @@ package Barefoot::input;
 
 use strict;
 
-use vars qw(@ISA @EXPORT_OK);
-require Exporter;
+use base qw<Exporter>;
+use vars qw<@EXPORT_OK>;
 
-@ISA = qw(Exporter);
-@EXPORT_OK = qw(get_yn input);
+@EXPORT_OK = qw<get_yn input menu_select>;
 
 1;
 
@@ -66,6 +63,7 @@ sub get_yn
 	return 0;
 }
 
+
 sub input
 {
 	my ($prompt, $default) = @_;
@@ -78,4 +76,30 @@ sub input
 	my $answer = <STDIN>;
 	chomp $answer;
 	return ( $answer ne "" ) ? $answer : $default;
+}
+
+
+sub menu_select
+{
+	my ($prompt, @choices) = @_;
+
+	MENU: {
+		my $choice = 1;
+		foreach (@choices)
+		{
+			print "$choice: $_\n";
+		}
+		continue
+		{
+			++$choice;
+		}
+
+		print "\n$prompt ";
+		$choice = <STDIN>;
+		print "\n";
+
+		chomp $choice;
+		redo MENU if $choice < 1 or $choice > @choices;
+		return $choice - 1;
+	}
 }
