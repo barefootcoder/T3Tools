@@ -98,6 +98,8 @@ sub send_request
 	T3::debug(2, "request string is $request_string\n");
 
 	# now create the pipe that the server will write to
+	croak("can't reuse an old pipe")
+			if -e t3_pipename(T3::OUTPUT_FILE . $output_id);
 	my $pipefile = t3_create_pipe(T3::OUTPUT_FILE . $output_id);
 	die("can't create pipe for output") unless ($pipefile);
 
@@ -120,15 +122,9 @@ sub retrieve_output
 	my ($id) = @_;
 
 	my $pipe_file = t3_pipename(T3::OUTPUT_FILE . $id);
-	my $pipe_is_there = timeout
-	{
-		until (-p $pipe_file)
-		{
-			die("output file $pipe_file isn't a pipe") if -e _;
-			sleep 1;
-		}
-	} 20;
-	die("server never created output pipe $pipe_file") unless $pipe_is_there;
+	# this shouldn't happen if send_request() is called first
+	die("output pipe not there or not pipe (did you call send_request?)")
+			unless -p $pipe_file;
 
 	my ($success, @output);
 	T3::debug(2, "began trying to get output");
