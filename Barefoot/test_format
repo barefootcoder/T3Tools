@@ -43,6 +43,14 @@ test_format("writeln test", `cat $testfile`, SIMPLE_FORMAT_RESULT . "\n");
 unlink($testfile);
 select STDOUT;
 
+# test ignoring of undef values
+{
+	local $SIG{__WARN__} = sub { die $_[0] };
+
+	test_format("undef test",
+			swrite('@<< @<< @<<', "xxx", undef, "zzz"), "xxx     zzz");
+}
+
 # test date formats
 my $datetime = str2time("5/7/1997 14:23");
 test_format("simple date test",
