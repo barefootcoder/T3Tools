@@ -1,0 +1,36 @@
+-- SORT GROUP: Customer Reports
+-- TITLE: Timesheet
+
+$(build_profit_item "
+	log.client = '{client}'
+	and log.proj = '{proj}'										{?proj}
+	and log.date >= '{start_date}'
+	and log.date <= '{end_date}'
+")
+
+calc_total_price
+go
+
+set nocount on
+go
+
+declare @eheader varchar(30)
+select @eheader = "<H3>Employee:  " + $(employee_name e) + "</H3>"
+from employee e
+where e.login = '{user}'
+print @eheader
+go
+
+print "<H3>For Time Period Ending:  {end_date}</H3>"
+go
+
+select convert(char(12), tlp.date, 109) "Date:", sum(tlp.hours) "Hours:"
+from profit_item pi, time_log_profit tlp, employee e
+where pi.log_source = tlp.log_source
+and pi.log_id = tlp.log_id
+and tlp.emp = e.emp
+and e.login = '{user}'
+group by $(period_num tlp.date 7), convert(char(12), tlp.date, 109)
+order by $(period_num tlp.date 7), tlp.date
+compute sum(sum(tlp.hours)) by $(period_num tlp.date 7)
+go
