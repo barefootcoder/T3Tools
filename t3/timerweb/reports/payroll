@@ -189,17 +189,15 @@ print ""
 print "SAL3 (Insurance Adjustments) for Employees"
 print ""
 
-select pa.emp, 
-	       sum ( pa.hours ) total_hours,
+select e.emp, 
+	       isnull ( sum ( pa.hours ), 0 ) total_hours,
 	       convert ( numeric (8,2), 0 ) applicable_hours,
 	       convert ( money, $REGULAR_SAL3 ) insurance_adjustment
 into #insurance_adjustment
-from pay_amount pa
-where exists ( select 1 
-               from employee e
-			   where pa.emp = e.emp
-			   and has_insurance = 1 )
-group by pa.emp
+from pay_amount pa, employee e
+where pa.emp =* e.emp
+and e.has_insurance = 1 
+group by e.emp
 
 -- Use this table to determine #insurance_adjustment.applicable_hours
 select emp, requires_billing, requires_payment, sum (hours) "hours"
