@@ -72,6 +72,7 @@ unless ($ENV{USER})
 	$ENV{USER} = "www";
 	$ENV{HOME} = "/home/www";
 	$ENV{SYBASE} = "/opt/sybase";
+	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/dbutils:/opt/sybase";
 }
 our $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
 
