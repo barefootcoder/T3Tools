@@ -1,0 +1,15 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;
+
+use Barefoot::base;
+use Barefoot::format;
+
+
+# test
+
+
+# everything looks good
+print "ALL TESTS PASSED\n";
