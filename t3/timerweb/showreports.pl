@@ -2,6 +2,14 @@
 
 # $Header$
 # $Log$
+# Revision 1.4  1999/05/13 14:35:43  buddy
+# divided reports into groups
+# sorted reports within groups
+# made special group (Administrative Updates) only accessible by certain users
+#     (list is currently hard-coded)
+# added invoice num to variables
+# added size to variable so all fields aren't the same (huge) width
+#
 # Revision 1.3  1999/02/18 06:11:19  buddy
 # now calls correct version of sqlcgi.pl
 #
@@ -42,6 +50,10 @@ $vars = {
 	invoice		=>	{
 						value	=>	"",
 						size	=>	7,
+					},
+	check_date	=>	{
+						value	=>	"",
+						size	=>	10,
 					},
 };
 @admin_users = ('tweber', 'christy', 'buddy');
