@@ -1,0 +1,809 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+# $Log$
+#
+# $Id$
+# $Revision$
+
+# create tables for TIMER
+#
+# these tables were originally created long ago (see the timerload script)
+# this script includes updates for new tables and fields to help prepare
+# TIMER for general release
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=sa
+destdb=timertest
+admin_users="christy,wayne"
+
+while getopts ":S:U:D:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		h)  echo "usage: $me [-Sserver] [-Uusername] [-Ddest_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb" >&2
+			exit
+			;;
+		:)  echo "$me: $OPTARG requires an argument ($me -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $me -h for usage" >&2
+			exit
+	esac
+done
+
+# check for pre-existence of the database
+exists_query="select name from sysdatabases where name = '$destdb'"
+db_exists=$(get_sql "$exists_query" -S$server -U$user -Dmaster)
+if [ -n "$db_exists" ]
+then
+	echo "$me: database $destdb already exists (drop it first)\n" >&2
+	exit 1
+fi
+
+# function to split admin_users and return proper adduser commands
+function add_users
+{
+	echo $1 | perl -ne '
+		chomp;
+		@users = split(",");
+		foreach (@users)
+		{
+			print "sp_adduser $_\ngo\n";
+		}
+	'
+}
+
+run_query -S$server -U$user -Dmaster <<-END
+
+	-- create the database
+
+	print "creating the database"
+	go
+
+	create database $destdb
+		on data_2 = 75
+		log on data_1 = 25
+	go
+	sp_dboption $destdb, 'trunc log on chkpt', true
+	go
+
+	use $destdb
+	go
+	sp_addsegment index_seg, $destdb, data_2
+	go
+	checkpoint
+	go
+
+END
+
+if ! syls / | grep -q $destdb
+then
+	echo "$me: attempt to create database failed" >&2
+	exit 1
+fi
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	print "adding users"
+	go
+
+	$(add_users $admin_users)
+	sp_adduser guest
+	go
+
+	sp_addalias buddy, dbo
+	go
+	sp_addalias gregg, dbo
+	go
+
+
+	-- types
+
+	print "making types"
+	go
+
+	sp_addtype unique_id, 'numeric(6,0)'
+	go
+
+	sp_addtype type_id, 'char(1)'
+	go
+
+	sp_addtype internal_id, 'char(3)'
+	go
+
+	sp_addtype external_id, 'char(10)'
+	go
+
+	sp_addtype description, 'varchar(30)'
+	go
+
+	sp_addtype username, 'varchar(20)'
+	go
+
+	sp_addtype table_name, 'varchar(30)'
+	go
+
+	sp_addtype comments_text, 'varchar(255)'
+	go
+
+	sp_addtype percentage, 'numeric(5,2)'
+	go
+
+
+	-- category
+
+	print "making category"
+	go
+
+	$(overwrite_table category "
+		category			internal_id		NOT NULL,
+		name				description		NOT NULL,
+	")
+
+	create unique index cat
+	on category (category)
+	on index_seg
+	go
+
+	insert category
+	values ('COG', 'Cost of Goods Sold')
+	insert category
+	values ('ADM', 'Administration')
+	insert category
+	values ('MKT', 'Marketing and Sales')
+	insert category
+	values ('INF', 'Infrastructure Development')
+	insert category
+	values ('REC', 'Recruitment')
+	insert category
+	values ('TAX', 'Taxes')
+	insert category
+	values ('RNV', 'Capital Reinvestment')
+	go
+
+
+	-- int_project
+
+	print "making int_project"
+	go
+
+	$(overwrite_table int_project "
+		proj				internal_id		NOT NULL,
+		name				description		NOT NULL,
+		category			internal_id		NOT NULL
+	")
+
+	create unique index proj
+	on int_project (proj)
+	on index_seg
+	go
+
+
+	-- phase
+
+	print "making phase"
+	go
+
+	$(overwrite_table phase "
+		phase				internal_id		NOT NULL,
+		name				description		NOT NULL
+	")
+
+	create unique index phase
+	on phase (phase)
+	on index_seg
+	go
+
+
+	-- client					(have to have before can do project)
+
+	print "making client"
+	go
+
+	$(overwrite_table client "
+		client				internal_id		NOT NULL,
+		name				description		NOT NULL,
+		rounding			char(1)			NOT NULL,
+		to_nearest			numeric(3,2)	NOT NULL
+	")
+
+	create unique index client
+	on client (client)
+	on index_seg
+	go
+
+
+	-- client_project
+
+	print "making client_project"
+	go
+
+	$(overwrite_table client_project "
+		client				internal_id		NOT NULL,
+		project_id			external_id		NOT NULL,
+		name				description		NOT NULL,
+	")
+
+	create unique index cliproj
+	on client_project (client, project_id)
+	on index_seg
+	go
+
+
+	-- project
+
+	print "making project"
+	go
+
+	$(overwrite_table project "
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		name				description		NOT NULL,
+		proj_type			type_id			NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL
+	")
+
+	create unique index proj
+	on project (client, proj, start_date)
+	on index_seg
+	go
+
+
+	-- employee
+
+	print "making employee"
+	go
+
+	$(overwrite_table employee "
+		emp					internal_id		NOT NULL,
+		fname				varchar(20)		NOT NULL,
+		lname				varchar(20)		NOT NULL,
+		show_last			bit				NOT NULL,
+		login				username		NULL,
+		def_client			internal_id		NOT NULL,
+	")
+
+	create unique index employee
+	on employee (emp)
+	on index_seg
+	go
+
+
+	-- client_employee
+
+	print "making client_employee"
+	go
+
+	$(overwrite_table client_employee "
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		emp					internal_id		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL
+	")
+
+	create unique index cliemp
+	on client_employee (client, proj, emp, start_date)
+	on index_seg
+	go
+
+
+	-- project_type
+
+	print "making project_type"
+	go
+
+	$(overwrite_table project_type "
+		proj_type			type_id			NOT NULL,
+		requires_phase		bit				NOT NULL,
+		requires_cliproj	bit				NOT NULL,
+		requires_comments	bit				NOT NULL,
+		requires_billing	bit				NOT NULL,
+		requires_payment	bit				NOT NULL,
+		resource_billing	bit				NOT NULL,
+		class_billing		bit				NOT NULL,
+		no_profit_till_end	bit				NOT NULL,
+	")
+
+
+	-- commission_type
+
+	print "making commission_type"
+	go
+
+	$(overwrite_table commission_type "
+		comm_type			type_id			NOT NULL,
+		name				description		NOT NULL,
+	")
+	go
+
+	create unique index commtype
+	on commission_type (comm_type)
+	on index_seg
+	go
+
+
+	-- admin_commission_type
+
+	print "making admin_commission_type"
+	go
+
+	$(overwrite_table admin_commission_type "
+		admin_comm			internal_id		NOT NULL,
+		name				description		NOT NULL,
+		sort_order			tinyint			NOT NULL,
+	")
+
+	create unique index commtype
+	on admin_commission_type (admin_comm)
+	on index_seg
+	go
+
+
+	-- pay_rate
+
+	print "making pay_rate"
+	go
+
+	$(overwrite_table pay_rate "
+		emp					internal_id		NOT NULL,
+		client				internal_id		NULL,
+		proj				internal_id		NULL,
+		rate_type			type_id			NOT NULL,
+		rate				money			NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index empcli
+	on pay_rate (emp, client, proj, start_date)
+	on index_seg
+	go
+
+
+	-- bill_rate
+
+	print "making bill_rate"
+	go
+
+	$(overwrite_table bill_rate "
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		rate				money			NOT NULL,
+		fixed_price_days	int				NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index cliproj
+	on bill_rate (client, proj, start_date)
+	on index_seg
+	go
+
+
+	-- billing_ratio
+
+	print "making billing_ratio"
+	go
+
+	$(overwrite_table billing_ratio "
+		emp					internal_id		NOT NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		phase				internal_id		NULL,
+		ratio				numeric(4,3)	NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index empcli
+	on billing_ratio (emp, client, proj, phase, start_date)
+	on index_seg
+	go
+
+
+
+	-- resource_rate
+
+	print "making resource_rate"
+	go
+
+	$(overwrite_table resource_rate "
+		client				internal_id		NOT NULL,
+		resrc				internal_id		NOT NULL,
+		resource_name		description		NOT NULL,
+		rate				money			NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index resource
+	on resource_rate (client, resrc)
+	on index_seg
+	go
+
+
+	-- resource_employee
+
+	print "making resource_employee"
+	go
+
+	$(overwrite_table resource_employee "
+		client				internal_id		NOT NULL,
+		resrc				internal_id		NOT NULL,
+		emp					internal_id		NOT NULL,
+		phase				internal_id		NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index resemp
+	on resource_employee (client, resrc, emp, phase)
+	on index_seg
+	go
+
+
+	-- salesman
+
+	print "making salesman"
+	go
+
+	$(overwrite_table salesman "
+		salesman			internal_id		NOT NULL,
+		name				description		NOT NULL,
+	")
+	go
+
+	create unique index salesman
+	on salesman (salesman)
+	on index_seg
+	go
+
+
+	-- admin_commission
+
+	print "making admin_commission"
+	go
+
+	$(overwrite_table admin_commission "
+		admin_comm			internal_id		NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		commission_percent	percentage		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index admcomm
+	on admin_commission (admin_comm, pay_type, pay_to, start_date)
+	on index_seg
+	go
+
+
+	-- sales_commission
+
+	print "making sales_commission"
+	go
+
+	$(overwrite_table sales_commission "
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		commission_percent	percentage		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index scomm
+	on sales_commission (pay_type, pay_to, client, proj, start_date)
+	on index_seg
+	go
+
+
+	-- referral_commission
+
+	print "making referral_commission"
+	go
+
+	$(overwrite_table referral_commission "
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		emp					internal_id		NOT NULL,
+		commission			smallmoney		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+	go
+
+	create unique index rcomm
+	on referral_commission (pay_type, pay_to, emp, start_date)
+	on index_seg
+	go
+
+
+	-- invoice
+
+	print "making invoice"
+	go
+
+	$(overwrite_table invoice "
+		invoice_id			unique_id		IDENTITY,
+		client				internal_id		NOT NULL,
+		invoice_number		external_id		NOT NULL,
+		invoice_amount		money			NOT NULL,
+		invoice_billdate	datetime		NOT NULL,
+		invoice_paydate		datetime		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	grant insert on invoice to $admin_users
+	go
+	grant update on invoice to $admin_users
+	go
+
+	create unique clustered index id
+	on invoice (invoice_id)
+	on index_seg
+	go
+
+	create unique index invnum
+	on invoice (invoice_number)
+	on index_seg
+	go
+
+	create unique index client
+	on invoice (client, invoice_number)
+	on index_seg
+	go
+
+
+	-- payroll
+
+	print "making payroll"
+	go
+
+	$(overwrite_table payroll "
+		payroll_id			unique_id		IDENTITY,
+		period_start		datetime		NOT NULL,
+		period_end			datetime		NOT NULL,
+		payroll_amount		money			NULL,
+		overhead_amount		money			NULL,
+		check_date			datetime		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	grant insert on payroll to $admin_users
+	go
+
+	create unique clustered index id
+	on payroll (payroll_id)
+	on index_seg
+	go
+
+	create unique index start
+	on payroll (period_start)
+	on index_seg
+	go
+
+
+	-- commission_payment
+
+	print "making commission_payment"
+	go
+
+	$(overwrite_table commission_payment "
+		payment_id			unique_id		IDENTITY,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NULL,
+		payment_amount		money			NULL,
+		check_number		external_id		NULL,
+		check_date			datetime		NOT NULL,
+		comments			comments_text	NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	grant insert on commission_payment to $admin_users
+	go
+
+	create unique clustered index id
+	on commission_payment (payment_id)
+	on index_seg
+	go
+
+	create index paidon
+	on commission_payment (pay_type, pay_to, check_date)
+	on index_seg
+	go
+
+
+	-- time_log
+
+	print "making time_log"
+	go
+
+	$(overwrite_table time_log "
+		log_source			table_name
+				default 'time_log'			NOT NULL
+				check (log_source = 'time_log'),
+		log_id				unique_id		IDENTITY,
+		emp					internal_id		NOT NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		phase				internal_id		NULL,
+		cliproj				external_id		NULL,
+		date				datetime		NOT NULL,
+		hours				numeric(5,2)	NOT NULL,
+		comments			comments_text	NULL,
+		invoice_id			unique_id		NULL,
+		payroll_id			unique_id		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	grant insert on time_log to public
+	go
+	grant update on time_log to $admin_users
+	go
+
+	create unique clustered index id
+	on time_log (log_id)
+	on index_seg
+	go
+
+	create index empcli
+	on time_log (emp, client, proj)
+	on index_seg
+	go
+
+
+	-- materials_log
+
+	print "making materials_log"
+	go
+
+	$(overwrite_table materials_log "
+		log_source			table_name
+				default 'materials_log'		NOT NULL
+				check (log_source = 'materials_log'),
+		log_id				unique_id		IDENTITY,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		date				datetime		NOT NULL,
+		amount_billed		money			NOT NULL,
+		amount_paid			money			NOT NULL,
+		comments			comments_text	NULL,
+		invoice_id			unique_id		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	create unique clustered index id
+	on materials_log (log_id)
+	on index_seg
+	go
+
+	create index cliproj
+	on materials_log (client, proj, date)
+	on index_seg
+	go
+
+
+	-- class_log
+
+	print "making class_log"
+	go
+
+	$(overwrite_table class_log "
+		log_source			table_name
+				default 'class_log'			NOT NULL
+				check (log_source = 'class_log'),
+		log_id				unique_id		IDENTITY,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		num_students		tinyint			NOT NULL,
+		num_breaks			tinyint			NULL,
+		date				datetime		NOT NULL,
+		start_time			datetime		NOT NULL,
+		end_time			datetime		NOT NULL,
+		comments			comments_text	NULL,
+		invoice_id			unique_id		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	create unique clustered index id
+	on class_log (log_id)
+	on index_seg
+	go
+
+	create unique index cliproj
+	on class_log (client, proj, date)
+	on index_seg
+	go
+
+
+	-- commission
+
+	print "making commission"
+	go
+
+	$(overwrite_table commission "
+		commission_id		unique_id		IDENTITY,
+		comm_type			type_id			NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NULL,
+		period_start		datetime		NOT NULL,
+		period_end			datetime		NOT NULL,
+		amount				money			NULL,
+		payment_id			unique_id		NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	grant insert,update on commission to $admin_users
+	go
+
+	create unique clustered index id
+	on commission (commission_id)
+	on index_seg
+	go
+
+	create unique index pay_to
+	on commission (comm_type, pay_type, pay_to, period_start)
+	on index_seg
+	go
+
+
+	print "making log_commission"
+	go
+
+	$(overwrite_table log_commission "
+		log_source			table_name		NOT NULL,
+		log_id				unique_id		NOT NULL,
+		commission_id		unique_id		NOT NULL,
+	")
+
+	create unique index ids
+	on log_commission (log_source, log_id, commission_id)
+	on index_seg
+	go
+
+	create index comm_id
+	on log_commission (commission_id)
+	on index_seg
+	go
+
+
+END
+
+echo "making procedures"
+make_stored_procedures -S$server -U$user -D$destdb
