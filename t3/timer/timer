@@ -10,23 +10,31 @@ use strict;
 
 # use Barefoot::debug;						# comment out for production
 
-use Env qw(TIMERDIR HOME USER);
+use CGI;
 use Getopt::Std;
+use Env qw(TIMERDIR HOME USER);
 
 use Barefoot::date;
 use Barefoot::range;
 use Barefoot::timerdata;
+use Barefoot::config_file;
 
 
 #################################
 # CONSTANTS
 #################################
 
-use constant TIMEFILE => 'timer.$$$';
-use constant HISTFILE => 'timer.history';
+use constant CONFIG_FILE => '/etc/t3.conf';
+use constant DBSERVER_DIRECTIVE => 'DBServer';
+use constant DATABASE_DIRECTIVE => 'Database';
+use constant TIMERDIR_DIRECTIVE => 'TimerDir';
+
+use constant TIMEFILE_EXT => '.timer';
+use constant HISTFILE => 'history.timer';
 
 use constant SAMBAGRP => 'guestpc';
 
+use constant DEFAULT_WORKGROUP => 'Barefoot';
 use constant FALLBACK_TIMER => 'default';
 
 
@@ -57,62 +65,69 @@ use constant Log_Comments =>
 # OPTIONS AND ENVIRONMENT VARS
 #################################
 
-if (@ARGV == 0)
+my $timerinfo = {};
+my $func = "";
+my ($cgi, $workgroup);
+
+my $cfg_file = config_file->read(CONFIG_FILE);
+
+if (-t STDOUT or @ARGV)
 {
-	error(0,
-		"incorrect usage; usage is:\n",
-		"    timer -{s|p|d|c|e|r|b|t} [-fh] [-u user] [-C clientnum] ",
-						"[timername] [newtimername]\n",
-		"       -s:   start a timer\n",
-		"       -p:   pause all timers\n",
-		"       -d:   done with a timer\n",
-		"       -c:   cancel a timer\n",
-		"       -n:   new name/client for a timer\n",
-		"       -e:   show elapsed time for all timers\n",
-		"       -r:   run the time logger directly\n",
-		"       -b:   break down a timer's portions\n",
-		"       -t:   total for all timers this week (by client)\n",
-		"       -f:   force (ignore all confirmations)\n",
-		"       -h:   half-time timing (while watching movies, etc)\n",
-		"       -u:   user name to use (default is current user)\n",
-		"       -C:   client number to use (default is user-specific)\n",
-		"    user must have an I:\\ drive directory\n",
-		"    clientnum must be a valid 3-digit timer code\n",
-		"    timername is ignored for -p\n",
-		"    newtimername is ignored for all but -n\n",
-	);
+	usage() if @ARGV == 0;
+
+	my $opt = {};
+	getopts('sedrcpnbtfhu:C:@:', $opt);
+	$timerinfo->{force} = defined($opt->{f});
+	$timerinfo->{halftime} = defined($opt->{h});
+	$timerinfo->{user} = $opt->{u};
+	$timerinfo->{client} = $opt->{C};
+	$timerinfo->{parse_fmt} = $opt->{'@'};
+
+	$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : FALLBACK_TIMER;
+	$timerinfo->{newname} = $ARGV[1];
+
+	foreach my $fopt ( ('s','e','d','r','c','p','n','b','t','@') )
+	{
+		$func .= $fopt if $opt->{$fopt};
+	}
+
+	$workgroup = defined($::ENV{T3_WORKGROUP})
+			? $::ENV{T3_WORKGROUP} : DEFAULT_WORKGROUP;
+}
+else
+{
+	$cgi = new CGI;
+	$workgroup = $cgi->param('workgroup');
+	$timerinfo->{user} = $cgi->param('user');
+	$timerinfo->{client} = $cgi->param('client');
+	$timerinfo->{giventimer} = $cgi->param('timername');
+	$timerinfo->{newname} = $cgi->param('newname');
+
+	$timerinfo->{force} = 1;					# no input when run as a CGI
+	$timerinfo->{parse_fmt} = 'x';				# always output XML-style
+
+	$func = string::left($cgi->param('mode'), 1);
+
+	# get a header out there so the server won't choke
+	print $cgi->header('text/plain');
 }
 
-my $timerinfo = {};
-
-my $opt = {};
-getopts('sedrcpnbtfhu:C:$', $opt);
-$timerinfo->{force} = defined($opt->{f});
-$timerinfo->{halftime} = defined($opt->{h});
-$timerinfo->{user} = $opt->{u};
-$timerinfo->{client} = $opt->{C};
-
-$timerinfo->{tdir} = defined($::TIMERDIR) ? $::TIMERDIR : $::HOME;
+# print STDERR "user is $::USER, should be $timerinfo->{user}\n";
 if (!$timerinfo->{user})
 {
 	$timerinfo->{user} = $::USER;
 }
-elsif ($timerinfo->{user} ne $::USER)
+elsif ($timerinfo->{user} ne $::USER and !$cgi)
 {
 	$timerinfo->{tdir} =~ s/$::USER/$timerinfo->{user}/;
 }
-$timerinfo->{tfile} = "$timerinfo->{tdir}/" . TIMEFILE;
+$timerinfo->{tdir} = $cfg_file->lookup($workgroup, TIMERDIR_DIRECTIVE);
+$timerinfo->{tfile} = "$timerinfo->{tdir}/$timerinfo->{user}" . TIMEFILE_EXT;
 $timerinfo->{hfile} = "$timerinfo->{tdir}/" . HISTFILE;
-$timerinfo->{hfile} =~ s/$timerinfo->{user}/misc/;
-$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : FALLBACK_TIMER;
-$timerinfo->{newname} = $ARGV[1];
 $timerinfo->{timers} = {};
-my $func = "";
-my $fopt;
-foreach $fopt ( ('s','e','d','r','c','p','n','b','t','$') )
-{
-	$func .= $fopt if $opt->{$fopt};
-}
+
+timerdata::set_connection($cfg_file->lookup($workgroup, DBSERVER_DIRECTIVE),
+		$cfg_file->lookup($workgroup, DATABASE_DIRECTIVE));
 
 
 #################################
@@ -449,36 +464,9 @@ if ($func eq 'd')					# done with a timer
 	writefile($timerinfo);
 }
 
-if ($func eq '$')					# special flag for use by other processes
+if ($func eq '@')					# special flag for use by other processes
 {
-	my $user = $timerinfo->{user};
-	foreach my $timer (keys %{$timerinfo->{timers}})
-	{
-		my $client = $timerinfo->{timers}->{$timer}->{client};
-		foreach my $part (reverse split(/,/,
-				$timerinfo->{timers}->{$timer}->{time}))
-		{
-			print "$user:$timer:$client:";
-
-			my $mins = calc_time($part);
-			print "$mins:";
-
-			if ($part =~ /^([+-]\d+)$/)
-			{
-				# raw adjustment; date and time not known
-				print ":";
-				next;
-			}
-
-			$part =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
-			print "$2:$3";				# if current, $3 will be blank field
-
-			# not sure if half-time is needed, so we'll leave it out for now
-			# print " at half-time" if $1 == 2;
-
-			print "\n";
-		}
-	}
+	print_parsable($timerinfo);
 }
 
 
@@ -486,13 +474,51 @@ if ($func eq '$')					# special flag for use by other processes
 # SUBROUTINES
 #################################
 
+sub usage
+{
+	error(0,
+		"incorrect usage; usage is:\n",
+		"    timer -{s|p|d|c|e|r|b|t} [-fh] [-u user] [-C clientnum] ",
+						"[timername] [newtimername]\n",
+		"       -s:   start a timer\n",
+		"       -p:   pause all timers\n",
+		"       -d:   done with a timer\n",
+		"       -c:   cancel a timer\n",
+		"       -n:   new name/client for a timer\n",
+		"       -e:   show elapsed time for all timers\n",
+		"       -r:   run the time logger directly\n",
+		"       -b:   break down a timer's portions\n",
+		"       -t:   total for all timers this week (by client)\n",
+		"       -f:   force (ignore all confirmations)\n",
+		"       -h:   half-time timing (while watching movies, etc)\n",
+		"       -u:   user name to use (default is current user)\n",
+		"       -C:   client number to use (default is user-specific)\n",
+		"    user must have an I:\\ drive directory\n",
+		"    clientnum must be a valid 3-digit timer code\n",
+		"    timername is ignored for -p\n",
+		"    newtimername is ignored for all but -n\n",
+	);
+}
+
 sub error
 {
 	my ($exitcode, @messages) = @_;
 	my $progname = $0;
 	$progname =~ s@.*/@@;
-	print STDERR "$progname: ", @messages;
-	exit $exitcode;
+	if ($cgi)
+	{
+		foreach (@messages)
+		{
+			# s/\n/<BR>\n/g;
+		}
+		print @messages;
+		exit 0;
+	}
+	else
+	{
+		print STDERR "$progname: ", @messages;
+		exit $exitcode;
+	}
 }
 
 sub readfile
@@ -641,6 +667,7 @@ sub get_client
 sub print_elapsed
 {
 	my ($timerinfo) = @_;
+	print_parsable($timerinfo) and return if $cgi;
 
 	print "\nTIMERS FOR $timerinfo->{user}:\n";
 	my $timer;
@@ -661,6 +688,45 @@ sub print_elapsed
 	print $timerinfo->{curtimer} ? "active timer is $timerinfo->{curtimer}"
 		: "no timer is active";
 	print "\n\n";
+}
+
+sub print_parsable
+{
+	my ($timerinfo) = @_;
+
+	my $user = $timerinfo->{user};
+	foreach my $timer (keys %{$timerinfo->{timers}})
+	{
+		print "$timer\n" and next if $timerinfo->{parse_fmt} eq 't';
+
+		my $client = $timerinfo->{timers}->{$timer}->{client};
+		foreach my $part (reverse split(/,/,
+				$timerinfo->{timers}->{$timer}->{time}))
+		{
+			print "<TIMER>" if $timerinfo->{parse_fmt} eq 'x';
+			print "$user:$timer:$client:";
+
+			my $mins = calc_time($part);
+			print "$mins:";
+
+			if ($part =~ /^([+-]\d+)$/)
+			{
+				# raw adjustment; date and time not known
+				print ":";
+				next;
+			}
+
+			$part =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
+			print "$2:$3";				# if current, $3 will be blank field
+
+			# not sure if half-time is needed, so we'll leave it out for now
+			# print " at half-time" if $1 == 2;
+
+			print "</TIMER>" if $timerinfo->{parse_fmt} eq 'x';
+			print "\n";
+		}
+	}
+	return 1;
 }
 
 sub calc_time
