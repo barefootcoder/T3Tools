@@ -1,2 +1,124 @@
 -- SORT GROUP: Financial Reports
 -- TITLE: Invoicing and Payroll Time
+
+select distinct $(period_num tl.date 14) "period",
+		convert(numeric(5,3), 0) "inv_hours", 0 "clients",
+		convert(numeric(5,3), 0) "pay_hours", 0 "employees"
+into #invpay_time
+from time_log tl
+where tl.date between '{start_date}' and '{end_date}'
+go
+
+
+-- Get number of invoicing hours for each period
+select ipt.period, sum(tl.hours) "inv_hours"
+into #inv_hours
+from time_log tl, #invpay_time ipt
+where $(period_num tl.date 14) = ipt.period
+and tl.client = '001'
+and tl.proj = 'INV'
+group by ipt.period
+go
+
+update #invpay_time
+set inv_hours = ih.inv_hours
+from #invpay_time ipt, #inv_hours ih
+where ipt.period = ih.period
+go
+
+
+-- Now get number of billiable clients during period
+/*
+					-- debugging
+select distinct $(period_name ipt.period 14), tl.client, c.name
+from time_log tl, #invpay_time ipt, project p, project_type pt, client c
+where $(period_num tl.date 14) = ipt.period
+and tl.client = p.client
+and tl.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_billing = 1
+and tl.client = c.client
+order by ipt.period, tl.client
+*/
+go
+
+select ipt.period, count(distinct tl.client) "clients"
+into #inv_clients
+from time_log tl, #invpay_time ipt, project p, project_type pt
+where $(period_num tl.date 14) = ipt.period
+and tl.client = p.client
+and tl.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.requires_billing = 1
+group by ipt.period
+go
+
+update #invpay_time
+set clients = ic.clients
+from #invpay_time ipt, #inv_clients ic
+where ipt.period = ic.period
+go
+
+
+-- get the number of payroll hours for each period
+select ipt.period, sum(tl.hours) "pay_hours"
+into #pay_hours
+from time_log tl, #invpay_time ipt
+where $(period_num tl.date 14) = ipt.period
+and tl.client = '001'
+and tl.proj = 'PAY'
+group by ipt.period
+go
+
+update #invpay_time
+set pay_hours = ph.pay_hours
+from #invpay_time ipt, #pay_hours ph
+where ipt.period = ph.period
+go
+
+
+-- Now get number of payrolled employees during period
+/*
+					-- debugging
+select distinct $(period_name ipt.period 14), tl.emp, $(employee_name e)
+from time_log tl, #invpay_time ipt, pay_rate pr, employee e
+where $(period_num tl.date 14) = ipt.period
+and tl.emp = pr.emp
+and tl.date between pr.start_date and pr.end_date
+and pr.rate_type != 'S'
+and tl.emp = e.emp
+order by ipt.period, tl.emp
+*/
+go
+
+select ipt.period, count(distinct tl.emp) "employees"
+into #pay_emps
+from time_log tl, #invpay_time ipt, pay_rate pr
+where $(period_num tl.date 14) = ipt.period
+and tl.emp = pr.emp
+and tl.date between pr.start_date and pr.end_date
+and pr.rate_type != 'S'
+group by ipt.period
+go
+
+update #invpay_time
+set employees = pe.employees
+from #invpay_time ipt, #pay_emps pe
+where ipt.period = pe.period
+go
+
+
+-- the actual report
+select $(period_name ipt.period 14), ipt.inv_hours, ipt.clients,
+		convert(numeric(5,2), ipt.inv_hours / ipt.clients) "hours / client"
+from #invpay_time ipt
+order by ipt.period
+compute avg(convert(numeric(5,2), ipt.inv_hours / ipt.clients))
+go
+
+select $(period_name ipt.period 14), ipt.pay_hours, ipt.employees,
+		convert(numeric(5,2), ipt.pay_hours / ipt.employees) "hours / employee"
+from #invpay_time ipt
+order by ipt.period
+compute avg(convert(numeric(5,2), ipt.pay_hours / ipt.employees))
+go
