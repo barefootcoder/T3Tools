@@ -7,8 +7,6 @@ use strict;
 use Barefoot::T3;
 
 
-T3::initialize("/export/usr/$::ENV{USER}");
-
 if (@ARGV != 2)
 {
 	print STDERR "usage: $0 user \"message text\"\n";
