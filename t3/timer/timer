@@ -158,15 +158,15 @@ if ($command eq 'START')					# start a timer
 	{
 		if ($timerinfo->{connected})
 		{
-			# print STDERR "given timer doesn't exist, getting new values\n";
-			$timerinfo->{client} = get_timer_parameter("client");
-			$timerinfo->{project} = get_timer_parameter("project");
+			print STDERR "given timer doesn't exist, getting new values\n"
+					if DEBUG >= 5;
+			get_timer_parameter("client");
+			get_timer_parameter("project");
 
 			my ($phase_needed) = proj_requirements($timerinfo->{client},
 					$timerinfo->{project}, calc_date(time));
 
-			$timerinfo->{phase} = get_timer_parameter("phase")
-					if $phase_needed;
+			get_timer_parameter("phase") if $phase_needed;
 		}
 		else
 		{
@@ -221,8 +221,8 @@ if ($command eq 'RENAME')					# new name for a timer
 
 	if ($timerinfo->{connected})
 	{
-		$timerinfo->{client} = get_timer_parameter("client");
-		$timerinfo->{project} = get_timer_parameter("project");
+		get_timer_parameter("client");
+		get_timer_parameter("project");
 
 		my ($phase_needed, $tracking_needed, $comments_needed) = 
 				proj_requirements(
@@ -230,7 +230,7 @@ if ($command eq 'RENAME')					# new name for a timer
 					calc_date(time)
 				);
 
-		$timerinfo->{phase} = get_timer_parameter("phase") if $phase_needed;
+		get_timer_parameter("phase") if $phase_needed;
 	}
 }
 
@@ -598,7 +598,6 @@ sub gather_log_info
 	# the order chosen below, so DON'T MUCK WITH IT!
 
 	($emp_id, $emp_fullname) = get_timer_parameter("employee");
-	$timerinfo->{employee} = $emp_id;	
 	
 	# $timerinfo->{user} may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
@@ -612,7 +611,6 @@ sub gather_log_info
 
 	# Get client info
 	($client, $client_name) = get_timer_parameter("client");
-	$timerinfo->{client} = $client;
 
 	HOURS: {
 		($rounding, $to_nearest) = client_rounding($client);
@@ -632,7 +630,6 @@ sub gather_log_info
 
 	# Get project info
 	($project, $project_name) = get_timer_parameter("project");
-	$timerinfo->{project} = $project;
 
 	my ($phase_needed, $tracking_needed, $comments_needed)
 			= proj_requirements($client, $project, $date);
@@ -640,7 +637,6 @@ sub gather_log_info
 	# Get phase information
 	($phase, $phase_name) = $phase_needed
 			? get_timer_parameter("phase") : ("","");
-	$timerinfo->{phase} = $phase;
 
 	($tracking, $tracking_name) = $tracking_needed ?
 			get_timer_parameter("client tracking code") : ("","");
