@@ -3,8 +3,10 @@
 use strict;
 
 use Barefoot::debug;						# comment out for production
+#use Barefoot::debug_verbose;				# comment out for production
 
 
+use Barefoot::base;
 use Barefoot::exception;
 use Barefoot::T3::client;
 
@@ -13,7 +15,9 @@ use Barefoot::T3::client;
 
 print "=" x 40, "\n";
 
+make_test_modules_dir();
 test_bad_modules_dir_perms();
+test_dup_modules();
 test_server_start();
 
 # this loop tests mosts of the error checking stuff
@@ -31,11 +35,12 @@ for (1..1)
 		my $success = timeout
 		{
 			test_pipe_exists();
-			test_bogus_request();
+			test_bogus_request1();
+			test_bogus_request2();
 			test_unknown_module();
 			test_bogus_output1();
 			test_bogus_output2();
-			test_bogus_output3();
+			test_large_output_module();
 		} 60;			# anything over a minute means something went wrong
 		die("got stuck during testing") unless $success;
 	}
@@ -59,7 +64,8 @@ for my $x (1..5)
 	try
 	{
 		test_test_module();
-		test_large_output_module();
+		test_input_module();
+		# test_combo_output();
 	}
 	catch
 	{
@@ -94,27 +100,68 @@ sub get_last_log
 {
 	# sometimes we try to read the log before the server's finished
 	# writing ... so we give ourselves a slight delay to help out
-	sleep 1;
+	sleep 2;
 	my $msg = `tail -1 t3engd.log`;
 	chomp $msg;
 	return $msg;
 }
 
+sub make_test_modules_dir
+{
+	die("can't make modules dir for testing")
+			unless mkdir T3::TEST_MODULES_DIR;
+	# permissions should be too open on initial creation, but just in case ...
+	chmod 0777, T3::TEST_MODULES_DIR;
+	# put the good test module in there
+	system("cp modules/test.pm " . T3::TEST_MODULES_DIR);
+
+	# make sure the dir gets cleaned up at the end
+	# WARNING! this is a hardcoded "rm -rf", so BE CAREFUL!
+	# the only reason it's really okay is that we know that we just created
+	# this directory above (if it had already existed, the mkdir would have
+	# failed, and we would have died before we got here)
+	# if you do something wacky like commenting out the mkdir but leaving in
+	# the rm -rf, you could really destroy something you don't want to
+	END { system("rm -rf " . T3::TEST_MODULES_DIR) };
+}
+
 sub test_bad_modules_dir_perms
 {
-	chmod 0777, "modules";			# these are bad permissions
 	my $error_catch = "s.errors";
 	system("t3engd 2>$error_catch &");
 	sleep 1;
 	my $errs = `cat $error_catch`;
 	unlink $error_catch;
 	if (`ps aux | grep 'perl -Tw .*t3engd'`
-			or $errs !~ /^modules directory has too many permissions /)
+			or $errs !~ /^modules directory has too many permissions /m)
 	{
 		test_server_shutdown();
+		print STDERR "got errors as follows:\n$errs";
 		die("server did not detect bad perms on modules directory");
 	}
-	chmod 0700, "modules";			# good permissions for further testing
+	chmod 0700, T3::TEST_MODULES_DIR;	# good permissions for further testing
+}
+
+sub test_dup_modules
+{
+	# put a second copy of test in for testing duplicate module registration
+	system("cp modules/test.pm " . T3::TEST_MODULES_DIR . "/test2.pm");
+
+	my $error_catch = "s.errors";
+	system("t3engd 2>$error_catch &");
+	sleep 1;
+	my $errs = `cat $error_catch`;
+	unlink $error_catch;
+	if (`ps aux | grep 'perl -Tw .*t3engd'`
+			or $errs !~
+				/^attempt to register module which is already registered /m)
+	{
+		test_server_shutdown();
+		print STDERR "got errors as follows:\n$errs";
+		die("server did not detect duplicate module names");
+	}
+	# get rid of duplicate maker for further testing
+	unlink(T3::TEST_MODULES_DIR . "/test2.pm");
 }
 
 sub test_server_start
@@ -131,63 +178,82 @@ sub test_pipe_exists
 	die("request pipe doesn't exist") unless -p T3::REQUEST_FILE;
 }
 
-sub test_bogus_request
+sub test_bogus_request1
 {
-	T3::Client::send_request("bogus");
+	T3::Client::_request_to_pipe("bogus");
 	# print STDERR "last log is: ", get_last_log(), "<<\n";
 	die("didn't gracefully handle bogus request")
 			unless get_last_log() =~ /: malformed request/;
 }
 
+sub test_bogus_request2
+{
+	T3::Client::_request_to_pipe("bogus=bogus");
+	die("didn't gracefully handle missing module")
+			unless get_last_log() =~ /: missing module name/;
+}
+
 sub test_unknown_module
 {
-	T3::Client::send_request("module=bogus");
+	T3::Client::send_request("bogus");
 	die("didn't gracefully handle bogus module")
 			unless get_last_log() =~ /: unknown module/;
 }
 
 sub test_bogus_output1
 {
-	T3::Client::send_request("module=test");
+	T3::Client::send_request("test");
 	die("didn't gracefully handle bogus output pipe")
 			unless get_last_log() =~ /: output pipe name invalid/;
 }
 
 sub test_bogus_output2
 {
-	T3::Client::send_request("module=test output=");
+	T3::Client::send_request("test", "");
 	die("didn't gracefully handle bogus output pipe")
 			unless get_last_log() =~ /: output pipe name invalid/;
-}
-
-sub test_bogus_output3
-{
-	T3::Client::send_request("module=test output=bogus");
-	die("didn't gracefully handle bogus output pipe")
-			unless get_last_log() =~ /: output pipe name invalid/;
-}
-
-sub test_test_module
-{
-	T3::Client::send_request("module=test output=$$");
-	my @test_output = T3::Client::retrieve_output($$);
-	print STDERR ">>>", @test_output, "<<<\n" and
-	die("test module returned incorrect output")
-			unless @test_output == 1 and $test_output[0] eq "TEST OUTPUT\n";
 }
 
 sub test_large_output_module
 {
-	T3::Client::send_request("module=large_output output=$$");
+	T3::Client::send_request("large_output", $$);
 	my @test_output = T3::Client::retrieve_output($$);
 	die("large output module returned incorrect output")
 			unless @test_output == 1_000
 			and ! grep { $_ ne "TEST." x 100 . "\n" } @test_output;
 }
 
+sub test_test_module
+{
+	T3::Client::send_request("test", "t$$");
+	my @test_output = T3::Client::retrieve_output("t$$");
+	print STDERR ">>>", @test_output, "<<<\n" and
+	die("test module returned incorrect output")
+			unless @test_output == 1 and $test_output[0] eq "TEST OUTPUT\n";
+}
+
+sub test_input_module
+{
+	T3::Client::send_request("input", "i$$", (join('', 'a'..'z')) x 7);
+	my @test_output= T3::Client::retrieve_output("i$$");
+	die("input module returned incorrect output")
+			unless @test_output == 7
+			and ! grep { $_ ne join('', 'A'..'Z') . "\n" } @test_output;
+}
+
+sub test_combo_output
+{
+	T3::Client::send_request("test", "c$$", { combine_next => true });
+	T3::Client::send_request("input", "c$$");
+	my @test_output = T3::Client::retrieve_output("c$$");
+	die("test module returned incorrect output")
+			unless @test_output == 8 and $test_output[0] eq "TEST OUTPUT\n"
+			and ! grep { $_ ne join('', 'A'..'Z') . "\n" } @test_output[1..7];
+}
+
 sub test_server_shutdown
 {
-	T3::Client::send_request("SHUTDOWN");
+	T3::Client::request_shutdown();
 	system("kill `ps aux | grep 'perl -Tw .*t3engd' | awk '{print \$2}'`") and
 	die("server refuses to shutdown")
 			if `ps aux | grep 'perl -Tw .*t3engd'`;
