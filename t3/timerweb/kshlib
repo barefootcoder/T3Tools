@@ -130,6 +130,23 @@ function bcp_file
 ###                           SQL utilities                              ###
 ############################################################################
 
+function printdate
+{
+	message=$1
+
+	cat <<-END
+
+		declare @date char(20)
+		set nocount on
+		select @date = getdate()
+		set nocount off
+		print @date
+		print '$message'
+		go
+
+	END
+}
+
 function make_midnight
 {
 	date=$1
@@ -302,10 +319,10 @@ function build_pay_amount
 
 		-- put in the new
 		insert pay_amount
-			(log_source, log_id, emp, client, proj, date, hours,
+			(log_source, log_id, emp, client, proj, phase, date, hours,
 					requires_payment)
 		select log.log_source, log.log_id, log.emp, log.client, log.proj,
-				log.date, log.hours, pt.requires_payment
+				log.phase, log.date, log.hours, pt.requires_payment
 		from time_log log, project p, project_type pt
 		where $where_clause
 		and log.client = p.client
