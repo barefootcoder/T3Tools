@@ -64,7 +64,7 @@ go
 
 print "<H4>Total Actually Billed Thus Far</H4>"
 go
-select isnull(p.name, "NO PROJECT SPECIFIED") "Project",
+select distinct isnull(p.name, "NO PROJECT SPECIFIED") "Project",
 		-- convert(char(10), p.start_date, 101) "starting",
 		convert(numeric(6,2), sum(pi.units)) "total hours",
 		convert(char(13), sum(pi.total_price), 1) "total billed",
@@ -85,13 +85,15 @@ and not exists
 	where pi.log_source = unb.log_source
 	and pi.log_id = unb.log_id
 )
-group by p.name, p.start_date
-order by p.start_date, p.name
+--group by p.name, p.start_date
+--order by p.start_date, p.name
+group by p.name
+order by p.name
 go
 
 print "<H4>Total Unbilled At This Time</H4>"
 go
-select isnull(p.name, "NO PROJECT SPECIFIED") "Project",
+select distinct isnull(p.name, "NO PROJECT SPECIFIED") "Project",
 		-- convert(char(10), p.start_date, 101) "starting",
 		convert(numeric(6,2), sum(pi.units)) "total hours",
 		convert(char(13), sum(pi.total_price), 1) "total billed",
@@ -107,8 +109,10 @@ where pi.client *= p.client
 and pi.proj *= p.proj
 and pi.log_source = unb.log_source
 and pi.log_id = unb.log_id
-group by p.name, p.start_date
-order by p.start_date, p.name
+--group by p.name, p.start_date
+--order by p.start_date, p.name
+group by p.name
+order by p.name
 go
 
 print "<H4>Grand Totals (Billed):</H4>"
