@@ -5,7 +5,7 @@ use Barefoot::string;
 
 use strict;
 
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 
 my $cgi = new CGI;
 my $cookie_array = [];
@@ -292,7 +292,7 @@ sub processdir
 	{
 		my ($group, $alt_params, $variables, $title);
 		my ($required, $optional, $basefile);
-		my (%parameters);
+		my (%parameters, %tparam, %tgroup);
 
 		$basefile = $file;
 		$basefile =~ s?^$path/??;
@@ -313,6 +313,8 @@ sub processdir
 			{
 											debug("report is $1");
 				$title = $1;
+				$tgroup{$title} = $group;
+				$tparam{$title} = $alt_params;
 			}
 
 			if ( /--\s*ALSO RUN WITH:\s*(.*)\s*/ or 
@@ -392,13 +394,16 @@ sub processdir
 		$variables = "No Variables Required" unless $variables;
 		
 
-		my $report = {};
-		$report->{file} = $basefile;
-		$report->{title} = $title;
-		$report->{params} = "script" if $dirtype ne "reprt";
-		$report->{params} = $alt_params if $dirtype eq "reprt";
-		$report->{vars} = $variables;
-		push @{$report_groups{$group}}, $report;
+		foreach my $title (keys (%tgroup))
+		{
+			my $report = {};
+			$report->{file} = $basefile;
+			$report->{title} = $title;
+			$report->{params} = "script" if $dirtype ne "reprt";
+			$report->{params} = $tparam{$title} if $dirtype eq "reprt";
+			$report->{vars} = $variables;
+			push @{$report_groups{$tgroup{$title}}}, $report;
+		}
 	}
 }
 
