@@ -77,6 +77,19 @@ $DataStore::procs->{correlated_update} = \&correlated_update;
 #						where dt.id = st.id
 #				");
 #
+# or, if you want to structure it so it looks a bit more like SQL:
+#
+#		my $num_rows = $ds->correlated_update(
+#				# update
+#					"dest_tbl", "dt",
+#				# set
+#					[ "col1 = st.col1", "col2 = st.col2" ],
+#				"
+#					from source_tbl st
+#					where dt.id = st.id
+#				"
+#		);
+#
 # This builds (and executes) the standard SQL query:
 #
 #		update dest_tbl
@@ -128,7 +141,7 @@ $DataStore::procs->{correlated_update} = \&correlated_update;
 #
 #		1) If you're used to Sybase, you may be tempted to add the
 #			table you're updating into the from clause.  Don't do that.
-#		2) Don't put any aliases before the _destination column names.
+#		2) Don't put any aliases before the _destination_ column names.
 #			You'll almost certainly need aliases before the source column
 #			names, however.
 #		3) The alias you supply (as the second argument) better not be
@@ -166,7 +179,7 @@ $DataStore::procs->{correlated_update} = \&correlated_update;
 #			you had a space after the "Mr.", you wouldn't trigger it.
 #			Just be careful.
 #
-# The return values is either the number of rows updated, or undef if the
+# The return value is either the number of rows updated, or undef if the
 # query failed (in which case you should check $ds->last_error()).
 #
 ###########################################################################
