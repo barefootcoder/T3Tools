@@ -138,6 +138,7 @@ private:	// User declarations
 
 	int getScrollPosition(HWND handle);
 	void setScrollPosition(HWND handle, short int pos);
+	void keepWithinScreen();
 
 public:		// User declarations
 	__fastcall TMainForm(TComponent* Owner);
@@ -153,13 +154,15 @@ public:		// User declarations
 	String status1, status2;				//strings to display on status bar
 
 	//Timers management methods
+	void activateTimerFeatures();
 	void addNewTimer ();
 	void startTimer ();
 	void stopTimer ();
 	void doneWithTimer ();
-	void cancelTimer ();
+	void cancelTimer (bool transmit = true);
 	void setOptions (int item_index);
 	void manageTimerButtons ();
+	void sendTimerMessage (String timername, String client, String command);
 
 	//Messages management methods
 	void ferryMessage(Message what_messg);		//the only message-out gateway

@@ -1,11 +1,11 @@
 object TimerActionForm: TTimerActionForm
-  Left = 694
-  Top = 185
+  Left = 204
+  Top = 453
   BorderIcons = [biSystemMenu]
   BorderStyle = bsToolWindow
   Caption = ' '
-  ClientHeight = 145
-  ClientWidth = 255
+  ClientHeight = 212
+  ClientWidth = 104
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -45,25 +45,9 @@ object TimerActionForm: TTimerActionForm
   OnShow = FormShow
   PixelsPerInch = 96
   TextHeight = 13
-  object AddNewTimer: TButton
-    Left = 0
-    Top = 0
-    Width = 105
-    Height = 25
-    Caption = '&Add New'
-    Font.Charset = ANSI_CHARSET
-    Font.Color = clWindowText
-    Font.Height = -11
-    Font.Name = 'Arial'
-    Font.Style = [fsBold]
-    ModalResult = 6
-    ParentFont = False
-    TabOrder = 0
-    OnClick = AddNewTimerClick
-  end
   object StartTimer: TButton
     Left = 0
-    Top = 24
+    Top = 0
     Width = 105
     Height = 25
     Caption = '&Start'
@@ -74,15 +58,15 @@ object TimerActionForm: TTimerActionForm
     Font.Style = [fsBold]
     ModalResult = 1
     ParentFont = False
-    TabOrder = 1
+    TabOrder = 0
     OnClick = StartTimerClick
   end
   object StopTimer: TButton
     Left = 0
-    Top = 48
+    Top = 24
     Width = 105
     Height = 25
-    Caption = 'S&top'
+    Caption = '&Pause'
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
     Font.Height = -11
@@ -90,12 +74,12 @@ object TimerActionForm: TTimerActionForm
     Font.Style = [fsBold]
     ModalResult = 1
     ParentFont = False
-    TabOrder = 2
+    TabOrder = 1
     OnClick = StopTimerClick
   end
   object DoneWithTimer: TButton
     Left = 0
-    Top = 72
+    Top = 48
     Width = 105
     Height = 25
     Caption = '&Done'
@@ -106,15 +90,15 @@ object TimerActionForm: TTimerActionForm
     Font.Style = [fsBold]
     ModalResult = 1
     ParentFont = False
-    TabOrder = 3
+    TabOrder = 2
     OnClick = DoneWithTimerClick
   end
   object CancelTimer: TButton
     Left = 0
-    Top = 96
+    Top = 72
     Width = 105
     Height = 25
-    Caption = 'D&elete'
+    Caption = '&Cancel'
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
     Font.Height = -11
@@ -122,12 +106,12 @@ object TimerActionForm: TTimerActionForm
     Font.Style = [fsBold]
     ModalResult = 1
     ParentFont = False
-    TabOrder = 4
+    TabOrder = 3
     OnClick = CancelTimerClick
   end
   object Options: TButton
     Left = 0
-    Top = 120
+    Top = 96
     Width = 105
     Height = 25
     Caption = '&Options >>'
@@ -137,15 +121,15 @@ object TimerActionForm: TTimerActionForm
     Font.Name = 'Arial'
     Font.Style = [fsBold]
     ParentFont = False
-    TabOrder = 5
+    TabOrder = 4
     OnClick = OptionsClick
   end
   object Panel1: TPanel
-    Left = 110
-    Top = 0
-    Width = 145
-    Height = 145
-    TabOrder = 6
+    Left = 0
+    Top = 128
+    Width = 104
+    Height = 81
+    TabOrder = 5
     object Label1: TLabel
       Left = 8
       Top = 8
@@ -161,7 +145,7 @@ object TimerActionForm: TTimerActionForm
     end
     object Label2: TLabel
       Left = 8
-      Top = 72
+      Top = 56
       Width = 111
       Height = 65
       Caption = 
@@ -171,16 +155,16 @@ object TimerActionForm: TTimerActionForm
       WordWrap = True
     end
     object TimerMaxHours: TEdit
-      Left = 88
-      Top = 8
+      Left = 40
+      Top = 24
       Width = 33
       Height = 21
       TabOrder = 0
       Text = '10'
     end
     object TimerMaxHoursChange: TUpDown
-      Left = 121
-      Top = 8
+      Left = 73
+      Top = 24
       Width = 16
       Height = 21
       Associate = TimerMaxHours

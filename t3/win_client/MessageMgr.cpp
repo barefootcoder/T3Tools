@@ -6,6 +6,7 @@
 #include "MessageMgr.h"
 #include "TransThread.h"
 #include "IniOptions.h"
+#include "TestFrm.h"	//included only for debugging -- otherwise can hide
 
 
 using namespace user_options;
@@ -116,7 +117,7 @@ void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 	//in TransferThread's, so we can safely update callers collections
 
 	//collect newly arrived normal messages
-	MessageBuffer.insert(TempMessageBuffer.begin(), TempMessageBuffer.end());
+	//MessageBuffer.insert(TempMessageBuffer.begin(), TempMessageBuffer.end());
 
 	//collect newly arrived status message
 	StatusBuffer.insert(TempStatusBuffer.begin(), TempStatusBuffer.end());
@@ -130,9 +131,24 @@ void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 	}
 
 	map<string, Message>::const_iterator it;
-	//add each message received to history and issue confirmation of delivery
+	map<string, Message>::iterator pit;
+	//for each received message:  if this message was not already received,
+	//collect in message buffer, add to history, and issue delivery confirmation
 	for (it = TempMessageBuffer.begin(); it != TempMessageBuffer.end(); it++)
 	{
+		//check if we already have this message
+		string who_from = it->second.from.c_str();
+		bool already_have = false;
+		for (pit = MessageBuffer.lower_bound(who_from);
+					pit != MessageBuffer.upper_bound(who_from); ++pit)
+			if (it->second.message_id == pit->second.message_id)
+			{
+				already_have = true;		//already have this message
+				break;
+			}
+		if (already_have) continue;			//so, do nothing with it
+
+		MessageBuffer.insert(*it);
 		addToHistory(it->second);
 		confirmDelivery(it->second);
 	}
@@ -142,6 +158,7 @@ void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 	transfer_active = thread_active;
 	thread_finished = true;
 
+		//ShowMessage("Thread terminated OK");
 }
 //---------------------------------------------------------------------------
 
@@ -236,13 +253,19 @@ void MessageMgr::confirmDelivery (const Message& what_messg)
 void MessageMgr::confirmMessages ()
 {
 	//process message confirmations received from others
+	// -- later may also want to clean up status codes not currently recognized
 
 	map<string, Message>::iterator loc;
 	map<string, Message>::iterator it;
 
-	for (it = StatusBuffer.begin(); it != StatusBuffer.end(); it++)
+	for (it = StatusBuffer.begin(); it != StatusBuffer.end(); )
 	{
 		string status = it->second.status.c_str();
+
+		//Debug only, to see what we're actually getting
+		//TestForm->Show();
+		//TestForm->ShowWhatever->Lines->Add(String("Received status ") + status.c_str() + " on message " + it->second.message_id);
+
 		if (status == "NORMAL_RCVD")
 		{
 			//replace in UnconfCollection
@@ -250,8 +273,8 @@ void MessageMgr::confirmMessages ()
 			if (loc != UnconfCollection.end() && loc->second.status == "NORMAL")
 				loc->second.status = status.c_str();
 			//delete in StatusBuffer
-			StatusBuffer.erase(it);
-				//ShowMessage("Confirmed:  RCVD");
+			StatusBuffer.erase(it++);
+			//ShowMessage("Confirmed:  RCVD");
 		}
 		else if (status == "NORMAL_DLVD")
 		{
@@ -260,8 +283,8 @@ void MessageMgr::confirmMessages ()
 			if (loc != UnconfCollection.end())
 				loc->second.status = status.c_str();
 			//delete in StatusBuffer
-			StatusBuffer.erase(it);
-				//ShowMessage("Confirmed:  DLVD");
+			StatusBuffer.erase(it++);
+			//ShowMessage("Confirmed:  DLVD");
 		}
 		else if (status == "NORMAL_READ")
 		{
@@ -270,10 +293,15 @@ void MessageMgr::confirmMessages ()
 			if (loc != UnconfCollection.end())
 				UnconfCollection.erase(loc);
 			//delete in StatusBuffer
-			StatusBuffer.erase(it);
-				//ShowMessage("Confirmed:  READ");
+			StatusBuffer.erase(it++);
+			//ShowMessage("Confirmed:  READ");
 		}
+		else
+			++it;
 	}
+		//Debug only
+		//TestForm->ShowWhatever->Lines->Add("-----------------------");
+
 
 	saveUnconfirmed();	//to keep latest updates of UnconfCollection persistent
 
@@ -287,7 +315,6 @@ void MessageMgr::resendMessages ()
 
 	time_t t1;		//the current time
 	time_t t0;		//the message's time (most recent time update)
-
 	time(&t1);		//read the current time
 
 	map<string, Message>::iterator it;
@@ -296,7 +323,15 @@ void MessageMgr::resendMessages ()
 	{
 		istringstream(it->second.time.c_str()) >> t0;	//read message's time
 
+		//check if addressee has on-line status (so it will not resend undelivd)
+		map<string, Message>::iterator usrit;
+		usrit = UserCollection.find(it->second.to.c_str());
+		bool isonline = false;
+		if (usrit != UserCollection.end() && usrit->second.status != "IMOFF")
+			isonline = true;
+
 		string status = it->second.status.c_str();
+
 		if (status == "NORMAL")				//means NORMAL_RCVD was not received
 		{
 			int defvalue = IniOpt->getValueInt("resend_if_no_rcvd_interval");
@@ -310,7 +345,7 @@ void MessageMgr::resendMessages ()
 		else if (status == "NORMAL_RCVD")	//means NORMAL_DLVD was not received
 		{
 			int defvalue = 60 * IniOpt->getValueInt("resend_if_no_dlvd_interval");
-			if ( defvalue > 0 && (t1 - t0) > defvalue )
+			if ( isonline && defvalue > 0 && (t1 - t0) > defvalue )
 			{
 				//update time and resend
 				it->second.time = t1;
@@ -322,7 +357,7 @@ void MessageMgr::resendMessages ()
 		else if (status == "NORMAL_DLVD")	//means NORMAL_READ was not received
 		{
 			int defvalue = 3600 * IniOpt->getValueInt("resend_if_no_read_interval");
-			if ( defvalue > 0 && (t1 - t0) > defvalue )
+			if ( isonline && defvalue > 0 && (t1 - t0) > defvalue )
 			{
 				//update time and resend
 				it->second.time = t1;

@@ -19,8 +19,28 @@ __fastcall TTimerActionForm::TTimerActionForm(TComponent* Owner)
 
 void __fastcall TTimerActionForm::FormShow(TObject *Sender)
 {
-	this->Width = 111;
+	this->Height = 144;
 	Options->Caption = "&Options >>";
+
+	//prevent form from showing outside screen
+	keepWithinScreen();
+
+}
+//---------------------------------------------------------------------------
+
+void TTimerActionForm::keepWithinScreen ()
+{
+	//prevent form from showing outside viewable screen area
+
+	int hidden_area;
+	if ((hidden_area = Left + Width - Screen->Width) > 0)
+		Left -= (hidden_area + 1);
+	if ((hidden_area = Top + Height - Screen->Height) > 0)
+		Top -= (hidden_area + 1);
+
+	if (Left < 0) Left = 1;
+	if (Top < 0) Top = 1;
+
 }
 //---------------------------------------------------------------------------
 
@@ -35,15 +55,9 @@ void __fastcall TTimerActionForm::FormClose(TObject *Sender,
 }
 //---------------------------------------------------------------------------
 
-void __fastcall TTimerActionForm::AddNewTimerClick(TObject *Sender)
-{
-	MainForm->addNewTimer();
-}
-//---------------------------------------------------------------------------
-
 void __fastcall TTimerActionForm::StartTimerClick(TObject *Sender)
 {
-	MainForm->startTimer();	
+	MainForm->startTimer();
 }
 //---------------------------------------------------------------------------
 
@@ -68,16 +82,18 @@ void __fastcall TTimerActionForm::CancelTimerClick(TObject *Sender)
 void __fastcall TTimerActionForm::OptionsClick(TObject *Sender)
 {
 
-	if (this->Width == 111)
+	if (this->Height == 144)
 	{
-		this->Width = 263;
+		this->Height = 236;
 		Options->Caption = "&Options <<";
 	}
 	else
 	{
-		this->Width = 111;
+		this->Height = 144;
 		Options->Caption = "&Options >>";
 	}
+
+	keepWithinScreen();
 
 }
 //---------------------------------------------------------------------------

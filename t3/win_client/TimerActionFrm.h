@@ -12,7 +12,6 @@
 class TTimerActionForm : public TForm
 {
 __published:	// IDE-managed Components
-	TButton *AddNewTimer;
 	TButton *StartTimer;
 	TButton *StopTimer;
 	TButton *DoneWithTimer;
@@ -23,7 +22,6 @@ __published:	// IDE-managed Components
 	TLabel *Label1;
 	TUpDown *TimerMaxHoursChange;
 	TLabel *Label2;
-	void __fastcall AddNewTimerClick(TObject *Sender);
 	void __fastcall StartTimerClick(TObject *Sender);
 	void __fastcall StopTimerClick(TObject *Sender);
 	void __fastcall DoneWithTimerClick(TObject *Sender);
@@ -32,9 +30,10 @@ __published:	// IDE-managed Components
 	void __fastcall FormShow(TObject *Sender);
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall FormKeyDown(TObject *Sender, WORD &Key,
-          TShiftState Shift);
-private:	// User declarations
-public:		// User declarations
+		  TShiftState Shift);
+private:		// User declarations
+	void keepWithinScreen ();
+public:			// User declarations
 	__fastcall TTimerActionForm(TComponent* Owner);
 };
 //---------------------------------------------------------------------------

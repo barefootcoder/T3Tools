@@ -10,7 +10,7 @@
 #include <Buttons.hpp>
 #include <ExtCtrls.hpp>
 
-#include <vector>
+#include <map>
 
 using namespace std;
 
@@ -31,8 +31,10 @@ __published:	// IDE-managed Components
 	void __fastcall FormShow(TObject *Sender);
 	void __fastcall FormResize(TObject *Sender);
 	void __fastcall CancelClick(TObject *Sender);
+	void __fastcall MessageListClick(TObject *Sender);
+	void __fastcall DeliveryStatusClick(TObject *Sender);
 private:	// User declarations
-	vector<string> unconf_id_list;		//local id list of unconfirmed messages
+	map<int, string> unconf_id_list;		//local id list of unconfirmed messages
 public:		// User declarations
 	__fastcall TInTransitForm(TComponent* Owner);
 };

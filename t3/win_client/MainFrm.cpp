@@ -52,7 +52,9 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 
 	//set after reading ini settings:
 
+	Caption = Caption + " - " + IniOpt->getValue("user_name").c_str();
 	contacts_width = Contacts->Width;
+	activateTimerFeatures();
 
 	MessagePump = new MessageMgr(hist_filename.c_str());
 	pUserCollection = &(MessagePump->UserCollection);
@@ -83,6 +85,7 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 
 void __fastcall TMainForm::FormShow(TObject *Sender)
 {
+	keepWithinScreen();
 
 	ImOnClick(ImOn);				//immediately go on-line at startup
 
@@ -93,6 +96,22 @@ void __fastcall TMainForm::FormShow(TObject *Sender)
 	//(also called by HideTimersClick)
 	if (!hidden_timer_panes[0] && !hidden_timer_panes[1] && !hidden_timer_panes[2])
 		timernames_width = TimersList->Width - DIGITS_PLUS_ICONS;
+}
+//---------------------------------------------------------------------------
+
+void TMainForm::keepWithinScreen()
+{
+	//prevent form from showing outside viewable screen area
+
+	int hidden_area;
+	if ((hidden_area = Left + Width - Screen->Width) > 0)
+		Left -= (hidden_area + 1);
+	if ((hidden_area = Top + Height - Screen->Height) > 0)
+		Top -= (hidden_area + 1);
+
+	if (Left < 0) Left = 1;
+	if (Top < 0) Top = 1;
+	
 }
 //---------------------------------------------------------------------------
 
@@ -155,6 +174,48 @@ void __fastcall TMainForm::FormKeyDown(TObject *Sender, WORD &Key,
 }
 //---------------------------------------------------------------------------
 
+void TMainForm::activateTimerFeatures()
+{
+	//Activates and deactivates whether Timer functionality is available
+
+	if (IniOpt->getValueInt("timer_active"))
+	{
+		//icons
+		AddTimer->Visible = true;
+		RunningDude->Visible = true;
+		HideContacts->Visible = true;
+		HideTimerNames->Visible = true;
+		HideTimerDigits->Visible = true;
+		HideTimerIcons->Visible = true;
+
+		Contacts->Align = alLeft;
+		Contacts->Left = 0;
+		Contacts->Width = 80;
+		Splitter1->Left = 81;
+		TimersList->Left = 84;
+		//TimersList->Align = alClient;
+		Splitter1->Visible = true;
+		TimersList->Visible = true;
+	}
+	else
+	{
+		//icons
+		AddTimer->Visible = false;
+		RunningDude->Visible = false;
+		HideContacts->Visible = false;
+		HideTimerNames->Visible = false;
+		HideTimerDigits->Visible = false;
+		HideTimerIcons->Visible = false;
+
+		//TimersList->Align = alNone;
+		TimersList->Visible = false;
+		Splitter1->Visible = false;
+		Contacts->Align = alClient;
+	}
+
+}
+//---------------------------------------------------------------------------
+
 //---------------------------------------------------------------------------
 //	METHODS TO MANAGE FORM GEOMETRY AND FORM REPAINT
 //---------------------------------------------------------------------------
@@ -164,29 +225,33 @@ void __fastcall TMainForm::FormConstrainedResize(TObject *Sender,
 {
 	//this event happens when form is about to be resized (before resize)
 
-	/* TODO : TO REEXPOSE TIMER PANELS DO THE FOLLOWING
+	/* TO REEXPOSE TIMER PANELS DO THE FOLLOWING
 		1. Reexpose code as described in other ToDo's below
 		2. Make TimersList->Align = alLeft -- at design time (Obj Inspector)
-		3. Make visible: Spliter1, TimersList, applicabel toolbar icons (design)
+		3. Make visible: Spliter1, TimersList, applicable toolbar icons (design)
 		4. Set ImOn->Left = 30  (design time)
 		5. Options and RunningDune should exchange Left values (design time)
 
-	/* TODO : REEXPOSE FOLLOWING CODE FOR TIMERS REACTIVATION */
+	/* REEXPOSE FOLLOWING CODE FOR TIMERS REACTIVATION */
 				//AND RESTORE LAST LINE TO "MinWidth = 120;"
-	/*
-	//for continuously measuring width of timer pames
-	int timerdigits_w = (hidden_timer_panes[1] ?
+
+	if (IniOpt->getValueInt("timer_active"))
+	{
+		//for continuously measuring width of timer pames
+		int timerdigits_w = (hidden_timer_panes[1] ?
 						0 : (TIMER_DIGITS_WIDTH + SPACE_AFTER_DIGITS));
-	int timericons_w = (hidden_timer_panes[2] ? 0 : TIMER_ICONS_WIDTH);
+		int timericons_w = (hidden_timer_panes[2] ? 0 : TIMER_ICONS_WIDTH);
 
-	
-	if (hidden_timer_panes[0] && hidden_timer_panes[1] && hidden_timer_panes[2])
-		MinWidth = 120;
+		if (hidden_timer_panes[0] && hidden_timer_panes[1] && hidden_timer_panes[2])
+			MinWidth = 120;
+		else
+			MinWidth = Contacts->Width + 12 + timerdigits_w + timericons_w;
+
+		if (MinWidth < 120)
+			MinWidth = 120;		//should be 120 while Timer panes are active
+	}
 	else
-		MinWidth = Contacts->Width + 12 + timerdigits_w + timericons_w;
-
-	if (MinWidth < 120)        */
-		MinWidth = 60;	//should be 120, only less while Timer panes r inactive
+		MinWidth = 60;			//should be ~60 when Timer panes are inactive
 }
 //---------------------------------------------------------------------------
 
@@ -194,61 +259,75 @@ void __fastcall TMainForm::FormResize(TObject *Sender)
 {
 	//this event happens after form is resized
 
-	/* TODO : REEXPOSE FOLLOWING CODE FOR TIMERS REACTIVATION */
-				   Panel1->Height = 22;  //AND ERASE THIS LINE
-	/*
-
-	no_timer_update = true;
-
-	//guarantee minimum size when all timer panes are hidden
-	if (hidden_timer_panes[0] && hidden_timer_panes[1] && hidden_timer_panes[2])
+	if (IniOpt->getValueInt("timer_active"))
 	{
-		Contacts->Width = this->Width - 12;
-		contacts_width = Contacts->Width;	//so splitter will know new position
-	}
+		no_timer_update = true;
 
-	//for continuously measuring width of timer pames
-	int timerdigits_w = (hidden_timer_panes[1] ?
+		//guarantee minimum size when all timer panes are hidden
+		if (hidden_timer_panes[0] && hidden_timer_panes[1] && hidden_timer_panes[2])
+		{
+			Contacts->Width = this->Width - 12;
+			contacts_width = Contacts->Width;	//so splitter will know new position
+		}
+
+		//for continuously measuring width of timer pames
+		int timerdigits_w = (hidden_timer_panes[1] ?
 						0 : (TIMER_DIGITS_WIDTH + SPACE_AFTER_DIGITS));
-	int timericons_w = (hidden_timer_panes[2] ? 0 : TIMER_ICONS_WIDTH);
-	int timernames_w = TimersList->Width - timerdigits_w - timericons_w;
+		int timericons_w = (hidden_timer_panes[2] ? 0 : TIMER_ICONS_WIDTH);
+		int timernames_w = TimersList->Width - timerdigits_w - timericons_w;
 
-	//update timernames_width only if not hidden, so it'll remember when hidden
-	if (!hidden_timer_panes[0])
-		timernames_width = timernames_w;
+		//update timernames_width only if not hidden, so it'll remember when hidden
+		if (!hidden_timer_panes[0])
+			timernames_width = timernames_w;
 
-	//when user manually hides timer panes, coordinate with Hide buttons:
-	if (!hidden_timer_panes[0] && timernames_w <= 5)
-	{
-		timernames_width = 50;			//arbitrary value that will restore to
-		HideTimerNames->Picture = ShowArrow->Picture;
-		hidden_timer_panes[0] = true;
+		//when user manually hides timer panes, coordinate with Hide buttons:
+		if (!hidden_timer_panes[0] && timernames_w <= 5)
+		{
+			timernames_width = 50;		//arbitrary value that will restore to
+			HideTimerNames->Picture = ShowArrow->Picture;
+			hidden_timer_panes[0] = true;
+		}
+		else if (hidden_timer_panes[0] && timernames_w > 5)
+		{
+			HideTimerNames->Picture = HideArrow->Picture;
+			hidden_timer_panes[0] = false;
+		}
+
+		//guarantee position of arrow icons
+		//should be automatic, but is not always, so this is needed
+		HideTimerNames->Left = Width - 52;
+		HideTimerDigits->Left = Width - 37;
+		HideTimerIcons->Left = Width - 22;
+
+		//manage the toolbar
+		if (Options->Left > HideTimerNames->Left - 36)
+		{
+			Panel1->Height = 42;
+			HideContacts->Left = 5;
+			HideContacts->Top = 24;
+			HideTimerNames->Top = 24;
+			HideTimerDigits->Top = 24;
+			HideTimerIcons->Top = 24;
+		}
+		else
+		{
+			Panel1->Height = 22;
+			HideContacts->Left = 96;
+			HideContacts->Top = 4;
+			HideTimerNames->Top = 4;
+			HideTimerDigits->Top = 4;
+			HideTimerIcons->Top = 4;
+		}
+
+		no_timer_update = false;
+		TimersList->Refresh();
 	}
-	else if (hidden_timer_panes[0] && timernames_w > 5)
+	else		//when timer functionality is not available
 	{
-		HideTimerNames->Picture = HideArrow->Picture;
-		hidden_timer_panes[0] = false;
+		Panel1->Height = 22;	//fixed height, since resize arrows don't show
 	}
 
-
-	//manage the toolbar
-	if (Options->Left > HideTimerNames->Left - 22)
-	{
-		Panel1->Height = 42;
-		HideTimerNames->Top = 24;
-		HideTimerDigits->Top = 24;
-		HideTimerIcons->Top = 24;
-	}
-	else
-	{
-		Panel1->Height = 22;
-		HideTimerNames->Top = 4;
-		HideTimerDigits->Top = 4;
-		HideTimerIcons->Top = 4;
-	}
-
-	no_timer_update = false;
-	TimersList->Refresh();              */
+	keepWithinScreen();		//always adjust position so some of it is not hidden
 }
 //---------------------------------------------------------------------------
 
@@ -652,7 +731,7 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 	if (!pStatusBuffer->empty())
 	{
 		map<string, Message>::iterator it;
-		for (it = pStatusBuffer->begin(); it != pStatusBuffer->end(); it++)
+		for (it = pStatusBuffer->begin(); it != pStatusBuffer->end(); )
 		{
 			//if we still don't have first message id, get it now if available
 			if (message_base_id == 0x0ui64 && it->second.status == "ID")
@@ -664,12 +743,16 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 				if (!(istringstream(id_value) >> hex >> message_base_id))
 					message_base_id = 0x0ui64;	//if assignment fails, guarantee 0
 
-				pStatusBuffer->erase(it);
-				//we have id, so immediately issue IMON
+				pStatusBuffer->erase(it++);
+
+				//we now have id, so immediately issue IMON
 				sendStatusMessage(available ? "IMON" : "IMBUSY");
 			}
+			else
+				++it;
 
 			//else if () -- add here other statuses that may need processing
+
 		}
 	}
 
@@ -758,11 +841,22 @@ void TMainForm::addNewTimer ()
 {
 	//adds a new timer to collection
 
-	//display blank-fields dialog to enter new timer information
+	//b4 displaying the new timer dialog, adjust position relative to MainForm
+	if (Left < (Screen->Width / 2))
+		NewTimer->Left = Left + 10;
+	else
+		NewTimer->Left = Left + Width - NewTimer->Width - 10;
+
+	NewTimer->Top = Top + 10;
+	int hidden = NewTimer->Top + NewTimer->Height - Screen->Height;
+	if (hidden > 0)
+		NewTimer->Top -= (hidden + 1);
+
+	//display timer dialog to enter new timer information
 	NewTimer->TimerName->Clear();
 	NewTimer->TimerNotes->Clear();
 	NewTimer->Caption = "New Timer";
-	NewTimer->Height = 204;		//adjust the height to show only desired fields
+	NewTimer->Height = 152;		//adjust the height to show only desired fields
 	NewTimer->ActiveControl = NewTimer->TimerName;
 	NewTimer->ShowModal();
 
@@ -783,6 +877,7 @@ void TMainForm::addNewTimer ()
 		//create new timer, add to collection, add to display list
 
 		Timer new_timer(NewTimerName);
+		new_timer.client = NewTimer->TimerClient->Text;
 		TimerCollection.insert(make_pair(NewTimerName, new_timer));
 
 		int insert_index;	//where on the display new timers are inserted,
@@ -798,8 +893,11 @@ void TMainForm::addNewTimer ()
 
 		setOptions(insert_index);	//user-set options for this new timer
 
-		//don't select the timer, but keep this code here in case needed later
-		//TimersList->ItemIndex = TimersList->Items->IndexOf(NewTimerName);
+		//select the timer, and start it up
+		//(this behavior can be omitted by simply hiding this code)
+		TimersList->ItemIndex = TimersList->Items->IndexOf(NewTimerName);
+		item_number = TimersList->ItemIndex;
+		startTimer();
 	}
 
 }
@@ -813,8 +911,9 @@ void __fastcall TMainForm::AddTimerClick(TObject *Sender)
 
 void TMainForm::startTimer ()
 {
+	String timer_name = TimersList->Items->Strings[item_number];
 
-	CurrTimer = TimerCollection.find(TimersList->Items->Strings[item_number]);
+	CurrTimer = TimerCollection.find(timer_name);
 
 	TimersList->Items->Move(item_number, 0);
 	item_number = 0;
@@ -824,11 +923,15 @@ void TMainForm::startTimer ()
 
 	updateClocks();
 
+	sendTimerMessage(timer_name, CurrTimer->second.client, "start");
+
 }
 //---------------------------------------------------------------------------
 
 void TMainForm::stopTimer ()
 {
+	sendTimerMessage(CurrTimer->second.name, CurrTimer->second.client, "pause");
+
 	CurrTimer = TimerCollection.end();
 
 	Application->Icon = NewTimer->Icon;		//->LoadFromFile("TimerOff.ico");
@@ -841,7 +944,7 @@ void TMainForm::stopTimer ()
 
 void TMainForm::doneWithTimer ()
 {
-
+               ShowMessage("Note: Communication with server is not currently implemented for this action.");
 	map<String, Timer>::iterator it;
 	it = TimerCollection.find(TimersList->Items->Strings[item_number]);
 
@@ -861,27 +964,45 @@ void TMainForm::doneWithTimer ()
 		//Code to Save this timer to Database goes here
 
 		//if saved without problems, remove this timer:
-		cancelTimer();
+		cancelTimer(false);
 	}
 
 }
 //---------------------------------------------------------------------------
 
-void TMainForm::cancelTimer ()
+void TMainForm::cancelTimer (bool transmit)
 {
 	//removes selected timer from collection without saving anything to database
 
 	map<String, Timer>::iterator it;
 	it = TimerCollection.find(TimersList->Items->Strings[item_number]);
 
+	TimersList->Items->Delete(item_number);			//delete from display
+
 	if (it == CurrTimer)	//we're deleting a timer, but might be current timer
-		CurrTimer = TimerCollection.end();		//if so CurrTimer is no more
+		CurrTimer = TimerCollection.end();			//if so CurrTimer is no more
+
+	if (transmit)			//send request to server
+		sendTimerMessage(it->second.name, it->second.client, "cancel");
 
 	TimerCollection.erase(it);						//delete from collection
 
-	TimersList->Items->Delete(item_number);			//delete from display
-
 	updateClocks();
+
+}
+//---------------------------------------------------------------------------
+
+void TMainForm::sendTimerMessage (String timername, String client, String command)
+{
+	//call this function to issue a Timer command to the server
+	//this uses the messaging system for transport
+
+	Message trans_out(timername, IniOpt->getValue("user_name").c_str(), "",
+					"TIMER", client, command);
+
+	trans_out.location = IniOpt->getValue("user_location").c_str();
+							
+	ferryMessage(trans_out);
 
 }
 //---------------------------------------------------------------------------
@@ -980,20 +1101,22 @@ void __fastcall TMainForm::TimersListMouseDown(TObject *Sender,
 			it = TimerCollection.find(TimersList->Items->Strings[item_number]);
 			TimerActionForm->Caption = it->second.name;
 			TimerActionForm->TimerMaxHours->Text = it->second.max_hours_bar;
+
+			//position the action box next to the click location
+			TimerActionForm->Left = MainForm->Left + WhatList->Left + X;
+			TimerActionForm->Top = MainForm->Top + WhatList->Top + Y;
+
+			//enable/disable buttons, then show the action box
+			manageTimerButtons();
+			TimerActionForm->ShowModal();
 		}
-		else
+		else	//clicked outside a timer -- means same as start new timer
 		{
 			item_number = -1;					//none "selected"
-			TimerActionForm->Caption = " ";
+			//TimerActionForm->Caption = " ";	//obsolete
+			addNewTimer();		//same as AddNewTimerClick()
 		}
 
-		//position the action box next to the click location
-		TimerActionForm->Left = MainForm->Left + WhatList->Left + X;
-		TimerActionForm->Top = MainForm->Top + WhatList->Top + Y;
-
-		//enable/disable buttons, then show the action box
-		manageTimerButtons();
-		TimerActionForm->ShowModal();
 	}
 
 	else if (Button == mbLeft)		
@@ -1022,7 +1145,6 @@ void __fastcall TMainForm::TimersListMouseDown(TObject *Sender,
 void TMainForm::manageTimerButtons ()
 {
 	//default is all available
-	TimerActionForm->AddNewTimer->Enabled = true;
 	TimerActionForm->StartTimer->Enabled = true;
 	TimerActionForm->StopTimer->Enabled = true;
 	TimerActionForm->DoneWithTimer->Enabled = true;
@@ -1290,7 +1412,7 @@ bool TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 	trans_out.location = IniOpt->getValue("user_location").c_str();
 
 	stringstream mess_id;
-	mess_id << hex << message_base_id++;
+	mess_id << hex << ++message_base_id;
 	trans_out.message_id = mess_id.str().c_str();
 
 	//assign now-time if the time is empty
@@ -1686,4 +1808,3 @@ void __fastcall TMainForm::InTransitClick(TObject *Sender)
 	InTransitForm->Show();
 }
 //---------------------------------------------------------------------------
-

@@ -464,7 +464,7 @@ object OptionsForm: TOptionsForm
       ImageIndex = 1
       TabVisible = False
     end
-    object TabSheet1: TTabSheet
+    object TalkerAdvanced: TTabSheet
       Caption = 'Talker &Advanced'
       ImageIndex = 2
       object Label15: TLabel
@@ -733,6 +733,28 @@ object OptionsForm: TOptionsForm
         Text = '10'
       end
     end
+    object TimerPreferences: TTabSheet
+      Caption = '&Timer Preferences'
+      ImageIndex = 3
+    end
+    object Admin: TTabSheet
+      Caption = 'A&dmin'
+      ImageIndex = 4
+      object ShowTimer: TCheckBox
+        Left = 32
+        Top = 24
+        Width = 113
+        Height = 25
+        Caption = 'Timer is Active'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        TabOrder = 0
+      end
+    end
   end
   object Panel1: TPanel
     Left = 0
@@ -746,7 +768,7 @@ object OptionsForm: TOptionsForm
       Top = 6
       Width = 164
       Height = 14
-      Caption = 'Development Release version 16a'
+      Caption = 'Development Release version 16c'
       Font.Charset = ANSI_CHARSET
       Font.Color = clNavy
       Font.Height = -11

@@ -66,7 +66,9 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 
 void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 {
-	editing_message_size = 0;
+	keepWithinScreen();
+
+	editing_message_size = 0;		//message window starts out clear
 
 	//add users to dropdown lists (read users from Contacts panels
 	//instead of UserCollection to preserve same order)
@@ -96,11 +98,27 @@ void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 }
 //---------------------------------------------------------------------------
 
+void TMessageActionForm::keepWithinScreen()
+{
+	//prevent form from showing outside viewable screen area
+
+	int hidden_area;
+	if ((hidden_area = Left + Width - Screen->Width) > 0)
+		Left -= (hidden_area + 1);
+	if ((hidden_area = Top + Height - Screen->Height) > 0)
+		Top -= (hidden_area + 1);
+
+	if (Left < 0) Left = 1;
+	if (Top < 0) Top = 1;
+}
+//---------------------------------------------------------------------------
+
 void __fastcall TMessageActionForm::FormClose(TObject *Sender,
 	  TCloseAction &Action)
 {
 
-	if (editing_message_size > 0 && IniOpt->getValue("confirm_on_clear") == "1")
+	if (editing_message_size != TheMessage->Text.Length()
+							&& IniOpt->getValue("confirm_on_clear") == "1")
 	{
 		String confirm_text = history_on ?
 						"Closing window will Delete message you were editing before"
@@ -142,6 +160,9 @@ void __fastcall TMessageActionForm::GetMessgClick(TObject *Sender)
 	BroadcastMessg->Enabled = false;
 	SendMessg->Enabled = false;			//disable after clicking ReadNext
 										//later turned on by typing
+
+	editing_message_size = TheMessage->Text.Length();	//keep up with Joneses
+														//since this is not editing
 }
 //---------------------------------------------------------------------------
 
@@ -316,7 +337,8 @@ void __fastcall TMessageActionForm::TheMessageChange(TObject *Sender)
 
 void __fastcall TMessageActionForm::ClearMessageClick(TObject *Sender)
 {
-	if (editing_message_size > 0 && IniOpt->getValue("confirm_on_clear") == "1"
+	if (editing_message_size != TheMessage->Text.Length()
+						&& IniOpt->getValue("confirm_on_clear") == "1"
 						&& !confirmDialog("Delete displayed message?"))
 		return;
 
@@ -511,6 +533,9 @@ void __fastcall TMessageActionForm::ShowHistoryClick(TObject *Sender)
 	static String temp_message("");
 	static String temp_caption("");
 
+	//remember this for use at end of this function
+	bool was_not_editing = (editing_message_size == TheMessage->Text.Length());
+
 	for (int i = 0; i < UserList->Items->Count; i++)
 		UserList->Selected[i] = false;			//unselect all items
 
@@ -561,6 +586,9 @@ void __fastcall TMessageActionForm::ShowHistoryClick(TObject *Sender)
 		Topic->Visible = true;
 	}
 
+	if (was_not_editing)
+		editing_message_size = TheMessage->Text.Length();
+
 }
 //---------------------------------------------------------------------------
 
@@ -600,10 +628,13 @@ void __fastcall TMessageActionForm::TheMessageKeyDown(TObject *Sender,
 void __fastcall TMessageActionForm::TheMessageKeyUp(TObject *Sender,
 	  WORD &Key, TShiftState Shift)
 {
-	//detect if the message is being edited by keeping track of its size
-	if (!history_on && TheMessage->Text.Length() != editing_message_size)
-		editing_message_size = TheMessage->Text.Length();
+	//OBSOLETE -- can remove later
 
+	//detect if the message is being edited by keeping track of its size
+	//if (!history_on && TheMessage->Text.Length() != editing_message_size)
+	//	editing_message_size = TheMessage->Text.Length();
+
+	//ShowMessage(TheMessage->Text.Length());
 }
 //---------------------------------------------------------------------------
 

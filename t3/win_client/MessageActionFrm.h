@@ -69,6 +69,7 @@ private:	// User declarations
 	bool history_on;
 	bool confirmDialog(String saywhat);
 	int editing_message_size;
+	void keepWithinScreen();
 public:		// User declarations
 	__fastcall TMessageActionForm(TComponent* Owner);
 	String user;		//each Message form usually has an associated user name

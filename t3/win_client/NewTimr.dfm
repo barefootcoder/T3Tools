@@ -1,6 +1,6 @@
 object NewTimer: TNewTimer
-  Left = 165
-  Top = 187
+  Left = 150
+  Top = 417
   HorzScrollBar.Visible = False
   VertScrollBar.Visible = False
   BorderIcons = []
@@ -41,7 +41,7 @@ object NewTimer: TNewTimer
     0000000000000000000000000000000000000000000000000000000000000000
     000000000000000000000000000000000000000000000000000000000000}
   OldCreateOrder = False
-  Position = poScreenCenter
+  Position = poDefault
   Scaled = False
   OnKeyDown = FormKeyDown
   PixelsPerInch = 96

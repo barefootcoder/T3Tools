@@ -17,6 +17,7 @@ public:
 	String getElapsedTime ();
 
 	String name;
+	String client;
 	String description;
 	int hours;
 	int minutes;

@@ -55,7 +55,7 @@ __published:	// IDE-managed Components
 	TComboBox *MessageSound;
 	TLabel *Label14;
 	TEdit *UserLocation;
-	TTabSheet *TabSheet1;
+	TTabSheet *TalkerAdvanced;
 	TLabel *Label15;
 	TEdit *ResendAfterNoRCVD;
 	TUpDown *ResendAfterNoRCVDChange;
@@ -76,6 +76,9 @@ __published:	// IDE-managed Components
 	TEdit *CommTimeout;
 	TLabel *Label13;
 	TCheckBox *ConfirmOnClear;
+	TTabSheet *TimerPreferences;
+	TTabSheet *Admin;
+	TCheckBox *ShowTimer;
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall SetMessageFontClick(TObject *Sender);
 	void __fastcall FormShow(TObject *Sender);

@@ -6,6 +6,7 @@
 
 #include "OptionsFrm.h"
 #include "IniOptions.h"
+#include "MainFrm.h"	//limit calling MainFrm interface to OptionsFrm OnClose
 
 using namespace user_options;
 
@@ -36,8 +37,12 @@ void __fastcall TOptionsForm::FormClose(TObject *Sender,
 	if (ModalResult == mrCancel)
 		return;
 
-	else 		//otherwise save the values displayed on the form fields
-		gatherOptions();
+	else
+	{
+		gatherOptions();	//save the values displayed on the form fields
+		//do other updates that may be needed immediately after picking options:
+		MainForm->activateTimerFeatures();
+	}
 
 }
 //---------------------------------------------------------------------------
@@ -98,6 +103,9 @@ void TOptionsForm::scatterOptions()
 			MessageFont->Font->Style = MessageFont->Font->Style << fsItalic;
 	}
 
+	//timer settings
+	ShowTimer->Checked = (IniOpt->getValue("timer_active", "0") == "1");
+
 }
 //---------------------------------------------------------------------------
 
@@ -140,6 +148,9 @@ void TOptionsForm::gatherOptions()
 	IniOpt->setValueInt("messagefont_color", MessageFont->Font->Color);
 	IniOpt->setValueInt("messagefont_bold", bold);
 	IniOpt->setValueInt("messagefont_italic", italic);
+
+	//timer settings
+	IniOpt->setValue("timer_active", ShowTimer->Checked ? "1" : "0");
 
 	//non-persistent settings
 	bool persistent = false;

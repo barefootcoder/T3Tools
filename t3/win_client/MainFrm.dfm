@@ -1,6 +1,6 @@
 object MainForm: TMainForm
-  Left = 626
-  Top = 237
+  Left = 138
+  Top = 504
   Width = 464
   Height = 217
   Caption = 'T3Client'
@@ -50,7 +50,7 @@ object MainForm: TMainForm
     Left = 0
     Top = 22
     Width = 3
-    Height = 152
+    Height = 149
     Cursor = crHSplit
     Color = clBtnFace
     Constraints.MaxWidth = 3
@@ -71,7 +71,7 @@ object MainForm: TMainForm
     ParentCtl3D = False
     TabOrder = 0
     object HideContacts: TImage
-      Left = 4
+      Left = 96
       Top = 4
       Width = 10
       Height = 16
@@ -186,7 +186,7 @@ object MainForm: TMainForm
       Visible = False
     end
     object AddTimer: TImage
-      Left = 52
+      Left = 39
       Top = 4
       Width = 16
       Height = 16
@@ -205,7 +205,6 @@ object MainForm: TMainForm
         8888}
       ShowHint = True
       Transparent = True
-      Visible = False
       OnClick = AddTimerClick
     end
     object HideArrow: TImage
@@ -228,7 +227,7 @@ object MainForm: TMainForm
       OnClick = HideContactsClick
     end
     object RunningDude: TImage
-      Left = 96
+      Left = 57
       Top = 4
       Width = 16
       Height = 16
@@ -247,11 +246,10 @@ object MainForm: TMainForm
         8888}
       ShowHint = True
       Transparent = True
-      Visible = False
       OnClick = RunningDudeClick
     end
     object ImOn: TImage
-      Left = 4
+      Left = 3
       Top = 4
       Width = 16
       Height = 16
@@ -428,7 +426,7 @@ object MainForm: TMainForm
       OnClick = ImOnClick
     end
     object InTransit: TImage
-      Left = 26
+      Left = 21
       Top = 4
       Width = 16
       Height = 16
@@ -507,7 +505,7 @@ object MainForm: TMainForm
     Left = 3
     Top = 22
     Width = 453
-    Height = 152
+    Height = 149
     Align = alClient
     Color = clWhite
     Font.Charset = ANSI_CHARSET
@@ -529,7 +527,7 @@ object MainForm: TMainForm
   end
   object StatBar: TStatusBar
     Left = 0
-    Top = 174
+    Top = 171
     Width = 456
     Height = 19
     Panels = <
@@ -544,7 +542,7 @@ object MainForm: TMainForm
     Left = 3
     Top = 22
     Width = 453
-    Height = 152
+    Height = 149
     Align = alClient
     Ctl3D = True
     Font.Charset = ANSI_CHARSET
