@@ -1,0 +1,3 @@
+#! /usr/bin/ksh
+
+cp $1 /home/httpd/sybase/timer_reports
