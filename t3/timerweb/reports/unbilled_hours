@@ -1,20 +1,19 @@
--- SORT GROUP: Error Checkers
--- TITLE: Unbilled Hours Report
+# SORT GROUP: Error Checkers
+# TITLE: Unbilled Hours Report
 
-select $(employee_name e) "employee",
-	c.name "client", p.name "project",
-	convert(char(10), date, 101) "date", hours
-from time_log tl, employee e, client c, project p, project_type pt
+select pe.first_name "employee",
+	c.name "client", p.name "project", tl.log_date, hours
+from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
+		{~timer}.project p, {~timer}.project_type pt, {~t3}.person pe
 where tl.invoice_id is NULL
-and tl.emp = e.emp
-and tl.client = c.client
-and tl.client = p.client
-and tl.proj = p.proj
-and tl.date between p.start_date and p.end_date
-and p.proj_type = pt.proj_type
+and tl.emp_id = e.emp_id
+and e.person_id = pe.person_id
+and tl.client_id = c.client_id
+and tl.client_id = p.client_id
+and tl.proj_id = p.proj_id
+and tl.log_date between p.start_date and p.end_date
+and p.project_type = pt.project_type
 and pt.requires_billing = 1
 and pt.class_billing = 0
---and l.date >= "10/1/1997"
---order by date, l.emp
---	compute sum(time)
-go
+--order by tl.log_date, tl.emp
+;
