@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.7  1999/02/26 20:49:16  buddy
+# added default client to employee table
+#
 # Revision 1.6  1999/02/18 04:02:01  buddy
 # fixed too aggressive adjustment of Tim's secretarial hours
 # added project type fixups for ILJ
@@ -109,6 +112,27 @@ run_query -S$server -U$user -D$destdb <<-END
 
 	create unique index client
 	on client (client)
+	go
+
+
+	-- cliproj
+
+	print "making cliproj"
+	go
+
+	$(overwrite_table cliproj "
+		client				char(3)			NOT NULL,
+		project_id			char(10)		NOT NULL,
+		name				varchar(30)		NOT NULL,
+	")
+
+	insert cliproj
+	select cp.client, cp.project_id, cp.name
+	from $srcdb..cliproj cp
+	go
+
+	create unique index cliproj
+	on cliproj (client, project_id)
 	go
 
 
@@ -324,16 +348,19 @@ run_query -S$server -U$user -D$destdb <<-END
 		sales_comm_paydate	smalldatetime	NULL,
 		ref_comm_paydate	smalldatetime	NULL,
 		admin_comm_paydate	smalldatetime	NULL,
-		chguser				varchar(20)		NOT NULL,
-		chgdate				datetime		NOT NULL
+		create_user			varchar(20)		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				varchar(20)		NULL,
+		chgdate				datetime		NULL
 	")
 
 	insert log
 		(emp, client, proj, phase, cliproj, date, hours, comments,
-				invoice_num, invoice_paydate, payroll_date, chguser, chgdate)
+				invoice_num, invoice_paydate, payroll_date,
+				create_user, create_date)
 	select empcode, client, proj, phase, cliproj, date, time, comments,
 		invoice, paid, payroll, isnull(chguser, "UNKNOWN"),
-		isnull(chgdate, $SMALL_BEGINNING_OF_TIME)
+		isnull(chgdate, $BEGINNING_OF_TIME)
 	from $srcdb..log
 	where proj is not NULL
 	go
