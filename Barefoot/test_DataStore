@@ -2,7 +2,7 @@
 
 use strict;
 
-use Barefoot::debug(1);					# comment out for production use
+use Barefoot::debug(1);
 
 use Carp;
 use POSIX qw<strftime>;
@@ -16,7 +16,7 @@ sub test_error(&@);
 
 
 # alert to testing user
-my $server = "SYBASE_1";
+my $server = "lexx";
 print "\nNOTICE: This script requires a certain amount of setup.\n";
 print "Make sure the following things are true if you have problems:\n";
 print "    1) The server $server is up and running.\n";
@@ -227,6 +227,10 @@ test_schema_trans();
 test_execute();
 test_vars();
 test_calc_columns();
+
+# make sure we're not using dbpasswd any more
+print STDERR "path is $ENV{PATH}\n" if DEBUG >= 5;
+$ENV{PATH} =~ s@/usr/local/dbutils:@@;
 
 # make sure we can reopen our data store
 undef $testds;
@@ -567,7 +571,7 @@ sub test_load_append_replace
 			and $contents->[1]->{c} == 0;
 
 	# make sure load_data can accept temp variables
-	my $contents = $testds->load_data('
+	$contents = $testds->load_data('
 			select * from {~dbo}.test1
 			where a = {a}
 			order by b
