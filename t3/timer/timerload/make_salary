@@ -36,11 +36,15 @@ shift $((OPTIND - 1))
 
 run_query -S$server -U$user -D$destdb <<-END
 
+	print 'creating salary_draw'
+	go
+
 	$(overwrite_table salary_draw "
 		emp					char(3)			NOT NULL,
-		weekly_amount		money			NOT NULL,
-		variation			percentage		NOT NULL,
-		max_weeks			int				NOT NULL,
+		amount_per_period	money			NOT NULL,
+		max_debit			percentage		NOT NULL,
+		max_overage			percentage		NOT NULL,
+		periods_cap			int				NOT NULL,
 		start_date			datetime		NOT NULL,
 		end_date			datetime		NOT NULL,
 	")
@@ -49,12 +53,30 @@ run_query -S$server -U$user -D$destdb <<-END
 	on salary_draw (emp, start_date)
 	go
 
-	print "adding record for Tom"
+	print 'adding record for Tom'
 	go
 
 	insert salary_draw
-	values ('150', 2000, .5, 4, '10/2/00', '12/31/9999')
+	values ('150', 4000, .5, 1.5, 2, '10/2/00', '12/31/9999')
 	go
 
+	
+	print 'creating salary_bank'
+	go
+
+	$(overwrite_table salary_bank "
+		emp					char(3)			NOT NULL,
+		bank_amount			money			NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+		create_user			username		NOT NULL,
+		create_date			datetime		NOT NULL,
+		chguser				username		NULL,
+		chgdate				datetime		NULL
+	")
+
+	create unique index salary_bank
+	on salary_bank (emp, start_date)
+	go
 
 END
