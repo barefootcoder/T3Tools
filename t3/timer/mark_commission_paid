@@ -1,0 +1,368 @@
+#! /usr/bin/perl
+
+#.	1) Prompt for a period to check for unpaid commissions.
+#.	2) Run all unpaid commissions through loop (ordered by pay_to). 
+#.	(in loop)
+#.	3) Process one employee at a time, displaying 
+#.		all unpaid commissions (via sub process_employee)
+#. 		4) Per employee, prompt for one of 
+#.         the following actions:
+#. 				1) Mark Paid (via sub mark_payment)
+#. 				2) Do not pay, continue 
+#. 				3) Adjust payment total (via sub mark_payment)
+#. 				4) Exit program
+#. 	When loop completes, program exits.
+
+#. 	sub insert_commission_payment: actual insert into
+#. 		commission_payment in Sybase. Called from sub mark_payment.
+
+#^ (Improvements):
+#^ Allow processing for single employee, specified from command line.
+
+#^ Have a 'quick mark' method where modified amounts of all employees
+#^		are shown and a 'mark all' options is presented.
+
+use strict;
+
+use Barefoot::date;
+use Barefoot::input qw(get_yn input);
+use Barefoot::timerdata;
+
+################
+#    main()    #
+################
+
+my $start_date = input("\nStarting date for period:");
+die("illegal date") unless date::isValid($start_date);
+
+my $end_date = input("Ending date for period:");
+die("illegal date") unless date::isValid($end_date);
+
+my $general_check_date = input("Check date:");
+
+#. User can omit general_check_date. Only validate if entered.
+if ( $general_check_date )
+{
+	die("illegal date") unless date::isValid($general_check_date);
+}
+
+my $general_check_num = input("\nCheck description (*Max 10 characters*)\n". 
+                        "(Leave blank if you are going to specify check numbers):");
+
+my $rows = timerdata::query_results("
+	select
+		c.pay_to,
+		convert  (varchar(12), fname) + ' ' +
+		convert (varchar(12), lname) name,
+		c.comm_type,
+		c.pay_type,
+		isnull ( cm.modifier, 1.0) ,
+		c.amount
+	from commission c,
+		commission_modifier cm,
+		employee e
+	where 1=1
+
+	and c.pay_to = e.emp
+
+	and c.period_start < '$end_date'
+	and c.period_end > '$start_date'
+
+	and cm.start_date < '$end_date'
+	and cm.end_date > '$start_date'
+
+	and c.payment_id is null
+
+	and c.pay_to *= cm.pay_to
+	and cm.pay_type = 'E'
+	and c.comm_type *= cm.comm_type
+	union
+	select
+		c.pay_to,
+		s.name,
+		c.comm_type,
+		c.pay_type,
+		isnull ( cm.modifier, 1.0) ,
+		c.amount
+	from commission c,
+		commission_modifier cm,
+		salesman s
+	where 1=1
+
+	and c.pay_to = s.salesman
+
+	and c.period_start < '$end_date'
+	and c.period_end > '$start_date'
+
+	and cm.start_date < '$end_date'
+	and cm.end_date > '$start_date'
+
+	and c.payment_id is null
+
+	and c.pay_to *= cm.pay_to
+	and cm.pay_type = 'S'
+	and c.comm_type *= cm.comm_type
+	order by c.pay_to, c.comm_type
+     ");
+ die("couldn't access timer database") unless defined($rows);
+
+ my $numrows = $#$rows + 1;
+
+ if ( $numrows == 0 )
+ {
+ 	print "\nNo unpaid commissions to process for timer period <$start_date> to <$end_date>\n";
+ 	sleep 1;
+	print "\nExiting...\n";
+ }
+
+
+ #. This leads to inserts to commission_payment...
+ #.  (i.e. "marking commissions paid" ).
+ my $old_pay_to ;
+ my $old_name ;
+ my $old_pay_type ;
+ my $numloops = 1 ;
+ my $modified_total = 0;
+
+ foreach my $row (@$rows)
+ {
+	 my $modified_amount = 0;
+
+     my $pay_to     = $row->[0];
+     my $name       = $row->[1];
+     my $comm_type  = $row->[2];
+     my $pay_type   = $row->[3];
+     my $modifier   = $row->[4];
+     my $amount     = $row->[5];
+     $amount =~ s/,//g;
+
+	 $modified_amount = sprintf ( "%10.2f", $modifier * $amount );
+
+	 if ( $pay_to ne $old_pay_to )
+	 {
+
+	 	if ( $numloops != 1 )
+		{
+			process_employee ( $old_name, $general_check_date, $general_check_num,
+								 $old_pay_type, $old_pay_to, $modified_total, 
+								 $start_date, $end_date );
+			$modified_total = 0;
+
+		} #.END IF  "if ( $numloops != 1 )"
+
+	 	#. New pay_to
+		#. Print supergroup info.
+		#. Print subgroup header.
+		print "\n" ;
+		printf ( "%-24.24s %-3.3s %-8.8s\n", "Pay to", "Emp", "Pay Type" ) ;
+		printf ( "%-24.24s %-3.3s %-8.8s\n", "=" x 24 , "=" x 3 , "=" x 8 ) ;
+		printf ( "%-24.24s %-3.3s %-8.8s\n", $name , $pay_to , $pay_type ) ;
+
+		print "\n" ;
+		printf ( "        %-8.8s %-10.10s %-8.8s %-10.10s\n", 
+		              "CommType", "Amount", "Modifier", "Modified" ) ;
+		printf ( "        %-8.8s %-10.10s %-8.8s %-10.10s\n", 
+		              "-" x 8 , "-" x 10 , "-" x 8, "-" x 10 ) ;
+
+	 } #. END IF "if ( $pay_to ne $old_pay_to )"
+
+	#. Continuation of current pay_to.
+	#. Print detail.
+	printf ( "        %-8.8s %10.2f %8.8s %10.2f\n", 
+	              $comm_type, $amount, $modifier, $modified_amount ) ;
+
+	$modified_total += $modified_amount;
+	$old_pay_to = $pay_to ;
+	$old_name = $name ;
+ 	$old_pay_type = $pay_type;
+	$numloops++;
+
+	if ( $numloops > $numrows ) 
+	{
+		process_employee ( $name, $general_check_date, 
+		                   $general_check_num, $pay_type, $pay_to, 
+						   $modified_total, $start_date, $end_date );
+		last;
+	}
+
+ } #. END LOOP "foreach my $row (@$rows)"
+
+
+sub  insert_commission_payment
+{
+	my ( $pay_type, $pay_to, $modified_total, $check_num, 
+	     $check_date, $comments, $start_date, $end_date ) = @_;
+
+	my $insert_query = "
+	     set nocount on
+		 declare \@new_payment_id numeric
+
+		 insert commission_payment
+			 (pay_type, pay_to, payment_amount, check_number,
+					 check_date, comments, create_user, create_date)
+		 values ('$pay_type', '$pay_to', $modified_total, '$check_num',
+		          '$check_date', '$comments', '$::ENV{USER}', getdate())
+	 
+	 	 select \@new_payment_id = \@\@identity	
+
+		 update commission
+		 set payment_id = \@new_payment_id, 
+		                  chguser = '$::ENV{USER}',
+				          chgdate = getdate()
+		 from commission 
+		 where pay_to = '$pay_to'
+		 and pay_type = '$pay_type' 
+		 and period_start <= '$end_date' 
+		 and period_end >= '$start_date' 
+		 and payment_id is null
+		 go
+	 ";
+ 
+ timerdata::set_user($::ENV{USER});
+ my $results = timerdata::run_query("
+     begin tran
+     go
+ 
+     $insert_query
+ 
+     commit tran
+     go
+ ");
+
+ die ("$results \nError occurred during insert.") if ( $results ); 
+ sleep 1;
+ print "\n>>>>> Mark paid was successful <<<<<\n";
+ sleep 1;
+
+}
+
+sub mark_payment
+{
+	my ( $check_date, $check_num,
+		 $pay_type, $pay_to, $modified_total, 
+		 $comments, $start_date, $end_date ) = @_ ;
+
+	#. Prompt for check date if check date is empty 
+	if ( ! $check_date )
+	{
+		$check_date = input("Check date:");
+		#. Check for invalid date entry.
+		if ( !  date::isValid($check_date) )
+		{
+			sleep 1;
+			print "\nIllegal date entry <$check_date>. Please retry.\n";
+			return ( 0 ); 
+		}
+	}
+	
+	#. Prompt for check number if check num/description is blank.
+	if ( ! $check_num )
+	{
+		$check_num = input("\nCheck number/description (*Max 10 characters*):");
+	}
+
+	insert_commission_payment ( $pay_type, $pay_to, $modified_total, 
+			 $check_num, $check_date, $comments, $start_date, $end_date );
+
+}	
+
+sub process_employee 
+{
+
+	my ( $name, $check_date, $check_num,
+		 $pay_type, $pay_to, $modified_total, 
+		 $start_date, $end_date ) = @_ ;
+ 	my $retval ;
+ 	my $comments ;
+
+	#. Print total
+	printf ( "        %-8.8s ====================%10.10s\n", 
+				  " " x 8 , "=" x 10 ) ;
+	printf ( "        %-8.8s Commission GT:      %10.2f\n", 
+				  " " x 8 , $modified_total ) ;
+
+	PAY_OPTION: 
+	{	
+		#. Options:
+		#. 1) ok, proceed
+		#. 2) do not pay, continue 
+		#. 3) adjust payment
+		#. 4) exit program
+
+		#. Ask for validation
+		print "\n";
+		print "Choose from following options for $name:\n";
+		printf "1) Mark \$%.2f paid.\n", ${modified_total} ;
+		print "2) Do not mark commissions paid. Go to next employee.\n";
+		print "3) Manually change the commission grand total.\n";
+		my $pay_option = input("4) Exit program:");
+
+		if ( $pay_option == 1 )
+		{
+			$retval = mark_payment ( $general_check_date, $general_check_num,
+						 $pay_type, $pay_to, $modified_total, 
+						 $comments, $start_date, $end_date );
+			redo PAY_OPTION if ( $retval == 0 );
+		}
+		elsif ( $pay_option == 2 )
+		{
+			print "\nNot marking commissions paid for $name\n";
+			sleep 1;
+		}
+		elsif ( $pay_option == 3 )
+		{
+			sleep 1;
+			print "\nModify commission check from $modified_total\n";
+			my $changed_total = input("\nNew amount:");
+
+			if ( get_yn ( "\nNew total is \$$changed_total. Is this correct?" ) == 0 )
+			{
+				sleep 1;
+				print "\nReverting to previous amount. Let's start over...\n";
+				redo PAY_OPTION ;
+			}
+
+			#. Mandatory to enter a comment/explanation for adjustment.
+			COMMENTS: {
+
+				print "\nEnter reason for adjustment below (maximum 255 chars):\n";
+				print "  (255 chars is a little over 3 lines if your screen is 80\n";
+				print "   columns wide and you don't hit RETURN at all (which you ",
+						"shouldn't))\n";
+				print "Enter ^D (control-D) on a line by itself to finish the ",
+						"comments.\n";
+				local ($/) = undef;
+				$comments = input();
+				while ($comments =~ s/^\s+$//) {};  # no completely blank lines
+				while ($comments =~ s/^\n//) {};    # no extra newlines in front
+				$comments =~ s/\s*\n+\s*$//;        # none at the end either
+				$comments =~ s/'//g;                # Hack for ' problem. 
+				print "  {You must have comments}\n\n" and redo COMMENTS
+						if not $comments;
+				print "  {Comments too long!}\n\n" and redo COMMENTS
+						if length($comments) > 255;
+				}
+
+			$retval = mark_payment ( $check_date, $check_num,
+						 $pay_type, $pay_to, $changed_total, 
+						 $comments, $start_date, $end_date );
+
+			redo PAY_OPTION if ( $retval == 0 );
+		}
+		elsif ( $pay_option == 4 )
+		{
+			print "\nExiting...\n";
+			exit ;
+		}
+		else 
+		{
+			sleep 1;
+			print "\nInvalid option. Please try again\n";
+			sleep 1;
+			redo PAY_OPTION;
+		}
+	}  #. END TAG "PAY_OPTION".
+
+}
+
+################################################################################
