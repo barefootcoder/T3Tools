@@ -10,10 +10,8 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = (qw<get_timer_info do_timer_command calc_date calc_time>,
-		qw<get_emp_id default_client valid_employees valid_clients>,
-		qw<valid_projects proj_requirements phase_list valid_trackings>,
-		qw<client_rounding this_week_totals insert_time_log>);
+@EXPORT_OK = qw<get_timer_info do_timer_command calc_date calc_time
+		this_week_totals insert_time_log>;
 
 
 use POSIX qw<strftime>;
@@ -28,20 +26,11 @@ use Barefoot::exception;
 use Barefoot::DataStore;
 use Barefoot::config_file;
 
+use Barefoot::T3::base;
+
 
 # Timer constants
 
-use constant CONFIG_FILE => '/etc/t3.conf';
-
-use constant DBSERVER_DIRECTIVE => 'DBServer';
-use constant DATABASE_DIRECTIVE => 'Database';
-use constant TIMERDIR_DIRECTIVE => 'TimerDir';
-
-use constant TIMEFILE_EXT => '.timer';
-use constant HISTFILE => 'timer.history';
-
-use constant DEFAULT_WORKGROUP => 'Barefoot';
-#use constant DEFAULT_WORKGROUP => 'TestCompany';
 use constant FALLBACK_TIMER => 'default';
 
 
@@ -65,7 +54,6 @@ unless ($ENV{USER})
 	$ENV{SYBASE} = "/opt/sybase";
 	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/dbutils:/opt/sybase";
 }
-our $t3;
 
 
 true;
@@ -139,6 +127,7 @@ sub get_timer_info
 	}
 	catch
 	{
+		print STDERR "can't connect to DataStore: $_\n" if DEBUG >= 3;
 		$timerinfo->{connected} = false;
 	};
 }
@@ -162,29 +151,15 @@ sub do_timer_command
 sub setuptimer						# Set up
 {
 	my ($timername, $timerinfo) = @_;
-    my $cfg_file = config_file->read(CONFIG_FILE);
-    my $workgroup = $ENV{T3_WORKGROUP} || DEFAULT_WORKGROUP;
 
     $timerinfo->{timers} = {};
 
     $timerinfo->{giventimer} = $timername || FALLBACK_TIMER;
 
-    unless ($timerinfo->{user})
-	{
-		$timerinfo->{user} = $ENV{T3_USER} if exists $ENV{T3_USER};
-		die("Invalid user.  Change username or talk to administrator.")
-				unless $timerinfo->{user};
-	}
+	$timerinfo->{user} = t3_username() unless $timerinfo->{user};
 
-    $timerinfo->{tdir} = $cfg_file->lookup($workgroup, TIMERDIR_DIRECTIVE);
-	die("don't have a directory for timer files") unless $timerinfo->{tdir};
-	die("cannot write to directory $timerinfo->{tdir}")
-			unless -d $timerinfo->{tdir} and -w $timerinfo->{tdir};
-
-    $timerinfo->{tfile} = "$timerinfo->{tdir}/$timerinfo->{user}"
-            . TIMEFILE_EXT;
-    $timerinfo->{hfile} = "$timerinfo->{tdir}/" . HISTFILE;
-	print "timer file is $timerinfo->{tfile}\n" if DEBUG >= 1;
+	($timerinfo->{tfile}, $timerinfo->{hfile})
+			= t3_filenames("timer", $timerinfo->{user});
 
 	return true;
 }
@@ -402,14 +377,6 @@ sub rename                   # new name for a timer
 # ------------------------------------------------------------
 
 
-sub t3
-{
-	$t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER})
-			unless defined $t3;
-	return $t3;
-}
-
-
 sub _remove_timer
 {
 	my ($timerinfo, $timer_to_remove) = @_;
@@ -498,7 +465,7 @@ sub save_history
 
 
 # ------------------------------------------------------------
-# Database Procedures for timing
+# Database Procedures for timer
 # ------------------------------------------------------------
 
 
@@ -508,7 +475,11 @@ sub test_connection
 	print STDERR "Entered test_connection\n" if DEBUG >= 4;
 
 	my $test_query = &t3->do(" select 1 ");
-	return false unless $test_query;
+	unless ($test_query)
+	{
+		print STDERR "Leaving test_connection w/ error\n" if DEBUG >= 4;
+		return false;
+	}
 
 	print STDERR "Leaving test_connection w/o error\n" if DEBUG >= 4;
 	return true;
@@ -669,207 +640,6 @@ sub db_delete_timer
 # ------------------------------------------------------------
 # Database Procedures for Timer data
 # ------------------------------------------------------------
-
-
-sub get_emp_id
-{
-	my ($user) = @_;
-
-	my $res = &t3->do("
-			select e.emp_id
-			from {~t3}.workgroup_user wu, {~t3}.person pe, {~timer}.employee e
-			where wu.nickname = '$user'
-			and wu.person_id = pe.person_id
-			and pe.person_id = e.person_id
-	");
-	die("default client query failed") unless $res and $res->next_row();
-	return $res->col(0);
-}
-
-
-sub default_client
-{
-	my ($emp) = @_;
-
-	my $res = &t3->do("
-			select e.def_client
-			from {~timer}.employee e
-			where e.emp_id = '$emp'
-	");
-	die("default client query failed") unless $res and $res->next_row();
-	return $res->col(0);
-}
-
-
-sub valid_employees
-{
-	my $res = &t3->do("
-			select e.emp_id, pe.first_name, pe.last_name
-			from {~timer}.employee e, {~t3}.person pe
-			where e.person_id = pe.person_id
-			and exists
-			(
-				select 1
-				from {~timer}.client_employee ce
-				where e.emp_id = ce.emp_id
-				and {&curdate} between ce.start_date and ce.end_date
-			)
-	");
-	die("valid employees query failed:", &t3->last_error()) unless $res;
-
-	my $emps = {};
-	while ($res->next_row())
-	{
-		$emps->{$res->col(0)} = $res->col(1) . " " . $res->col(2);
-	}
-	return $emps;
-}
-
-
-sub valid_clients
-{
-	my ($emp) = @_;
-
-	my $res = &t3->do("
-			select c.client_id, c.name
-			from {~timer}.client c
-			where exists
-			(
-				select 1
-				from {~timer}.employee e, {~timer}.client_employee ce
-				where e.emp_id = '$emp'
-				and e.emp_id = ce.emp_id
-				and c.client_id = ce.client_id
-				and {&curdate} between ce.start_date and ce.end_date
-			)
-	");
-	die("valid clients query failed:", &t3->last_error()) unless $res;
-
-	my $clients = {};
-	while ($res->next_row())
-	{
-		# print STDERR "valid cli: ", $res->col(0), " => ", $res->col(1), "\n";
-		$clients->{$res->col(0)} = $res->col(1);
-	}
-	return $clients;
-}
-
-
-sub valid_projects
-{
-	my ($emp, $client) = @_;
-
-	my $res = &t3->do("
-			select p.proj_id, p.name
-			from {~timer}.project p
-			where p.client_id = '$client'
-			and {&curdate} between p.start_date and p.end_date
-			and exists
-			(
-				select 1
-				from {~timer}.employee e, {~timer}.client_employee ce
-				where e.emp_id = '$emp'
-				and e.emp_id = ce.emp_id
-				and p.client_id = ce.client_id
-				and
-				(
-					p.proj_id = ce.proj_id
-					or ce.proj_id is NULL
-				)
-				and {&curdate} between ce.start_date and ce.end_date
-			)
-	");
-	die("valid projects query failed:", &t3->last_error()) unless $res;
-
-	my $projects = {};
-	while ($res->next_row())
-	{
-		# print STDERR "valid proj: ", $res->col(0), " => ", $res->col(1), "\n";
-		$projects->{$res->col(0)} = $res->col(1);
-	}
-	return $projects;
-}
-
-
-sub proj_requirements
-{
-	my ($client, $proj, $date) = @_;
-	# print STDERR "client: $client, proj: $proj\n";
-
-	my $res = &t3->do("
-			select pt.requires_phase, pt.requires_tracking,
-					pt.requires_comments
-			from {~timer}.project p, {~timer}.project_type pt
-			where p.client_id = '$client'
-			and p.proj_id = '$proj'
-			and '$date' between p.start_date and p.end_date
-			and p.project_type = pt.project_type
-	");
-	die("project requirements query failed:", &t3->last_error())
-			unless $res;
-
-	if ($res->next_row())
-	{
-		return $res->all_cols();
-	}
-	else
-	{
-		return (0,0,0);
-	}
-}
-
-
-sub phase_list
-{
-	my $res = &t3->do("
-			select ph.phase_id, ph.name
-			from {~timer}.phase ph
-	");
-	die("phase list query failed:", &t3->last_error()) unless $res;
-
-	my $phases = {};
-	while ($res->next_row())
-	{
-		$phases->{$res->col(0)} = $res->col(1);
-	}
-	return $phases;
-}
-
-
-sub valid_trackings
-{
-	my ($client) = @_;
-
-	my $res = &t3->do("
-			select ct.tracking_code, ct.name
-			from {~timer}.client_tracking ct
-			where ct.client_id = '$client'
-	");
-	die("valid trackings query failed:", &t3->last_error()) unless $res;
-
-	my $track = {};
-	while ($res->next_row())
-	{
-		$track->{$res->col(0)} = $res->col(1);
-	}
-	return $track;
-}
-
-
-sub client_rounding
-{
-	my ($client) = @_;
-
-	my $res = &t3->do("
-			select c.rounding, c.to_nearest
-			from {~timer}.client c
-			where c.client_id = '$client'
-	");
-	die("client rounding query failed:", &t3->last_error())
-			unless $res and $res->next_row();
-
-	return $res->all_cols();
-}
 
 
 sub this_week_totals
