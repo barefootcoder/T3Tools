@@ -438,6 +438,7 @@ sub writefile
 	foreach my $timerstuff (values %{$timerinfo->{timers}})
 	{
 		$timerstuff->{phase} ||= "";
+		$timerstuff->{todo_link} ||= "";
 		print TFILE join("\t", timer_fields($timerstuff)), "\n";
 	}
 	close(TFILE);
