@@ -18,7 +18,6 @@ USEFORM("NewTimr.cpp", NewTimer);
 USEUNIT("HttpComm\T3Message.cpp");
 USEFORM("MessageActionFrm.cpp", MessageActionForm);
 USEFORM("OptionsFrm.cpp", OptionsForm);
-USEFORM("TestFrm.cpp", TestForm);
 USEUNIT("TransThread.cpp");
 USEUNIT("IniOptions.cpp");
 USEUNIT("MessageMgr.cpp");
@@ -51,7 +50,6 @@ WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			Application->CreateForm(__classid(TMainForm), &MainForm);
 		Application->CreateForm(__classid(TUtilityDialog), &UtilityDialog);
 		Application->CreateForm(__classid(TInTransitForm), &InTransitForm);
-		Application->CreateForm(__classid(TTestForm), &TestForm);
 		Application->Run();
 		}
 		catch (Exception &exception)
