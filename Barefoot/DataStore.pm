@@ -39,6 +39,7 @@ use Carp;
 use Storable;
 
 use Barefoot::base;
+use Barefoot::DataStore::DataSet;
 
 
 use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
@@ -306,7 +307,7 @@ sub _transform_query
 				my $varname = $1;
 				my $spec = quotemeta($&);
 
-				$calculation =~ s/$spec/\$_[0]->{ds}->{vars}->{$varname}/g;
+				$calculation =~ s/$spec/\${\$_[0]}->{vars}->{$varname}/g;
 			}
 
 			print STDERR "going to evaluate calc func: sub { $calculation }\n"
@@ -374,6 +375,7 @@ sub open
 	croak("data store $data_store_name not found") unless -e $ds_filename;
 
 	my $this = {};
+	$this->{name} = $data_store_name;
 	eval { $this->{config} = retrieve($ds_filename); };
 	croak("read error opening data store") unless $this->{config};
 
@@ -416,6 +418,7 @@ sub create
 	}
 
 	my $this = {};
+	$this->{name} = $data_store_name;
 
 	# user has to be present, and should be moved out of config section
 	croak("must specify user to data store") unless exists $attribs{user};
@@ -511,7 +514,7 @@ sub do
 	$results->{rows} = $rows;
 	$results->{sth} = $sth;
 	$results->{calc_funcs} = $calc_funcs;
-	bless $results, 'DataStore::results';
+	bless $results, 'DataStore::ResultSet';
 
 	return $results;
 }
@@ -593,6 +596,9 @@ sub rollback
 
 # despite its name, load_table can be used to load part of a table,
 # or even data from a multiple-table join
+# the primary difference between load_table and other methods such as do()
+# is that load_table returns a DataSet, whereas do() et al return a ResultSet
+# with a DataSet, all the data is in memory at once (not so with a ResultSet)
 sub load_table
 {
 	my $this = shift;
@@ -601,7 +607,7 @@ sub load_table
 	my $res = $this->do($query);
 	return undef unless $res;
 
-	return $res->{sth}->fetchall_arrayref({});
+	return DataStore::DataSet->new($res->{sth});
 }
 
 
@@ -760,51 +766,26 @@ sub define_var
 
 
 ###########################################################################
-# The DataStore::results "subclass"
+# The DataStore::ResultSet "subclass"
 ###########################################################################
 
-package DataStore::results;
+package DataStore::ResultSet;
 
 use Carp;
 
 use Barefoot::base;
+use Barefoot::DataStore::DataRow;
 
 
 sub _get_colnum
 {
-	my $this = shift;
-	my ($name) = @_;
-
-	print STDERR "checking for column name: $name\n" if DEBUG >= 3;
-	croak("unknown column name $name")
-			unless exists $this->{sth}->{NAME_hash}->{$name};
-	print STDERR "found column name: $name\n" if DEBUG >= 5;
-	return $this->{sth}->{NAME_hash}->{$name};
+	return $_[0]->{currow}->_get_colnum($_[1]);
 }
 
 
 sub _get_colval
 {
-	my ($this, $col_id) = @_;
-
-	my $true_colname = $this->{sth}->{NAME}->[$col_id];
-	print STDERR "getting column $col_id, true name is $true_colname\n"
-			if DEBUG >= 5;
-
-	if (substr($true_colname, 0, 1) eq '*')
-	{
-		$true_colname = substr($true_colname, 1);
-		croak("calc column with no calc function: $true_colname")
-				unless exists $this->{calc_funcs}->{$true_colname};
-		print STDERR "function for $true_colname will return ",
-				$this->{calc_funcs}->{$true_colname}->($this), "\n"
-					if DEBUG >= 4;
-		return $this->{calc_funcs}->{$true_colname}->($this);
-	}
-	else
-	{
-		return $this->{currow}->[$col_id];
-	}
+	return $_[0]->{currow}->[$_[1]];
 }
 
 
@@ -813,48 +794,45 @@ sub next_row
 	my $this = shift;
 
 	my $row = $this->{sth}->fetchrow_arrayref();
-	return 0 if not $row and not $this->{sth}->err();
 	unless ($row)
 	{
+		# just ran out of rows?
+		return 0 if not $this->{sth}->err();
+
+		# no, i guess it's an error
 		$this->{ds}->{last_err} = $this->{sth}->errstr();
 		return undef;
 	}
-	$this->{currow} = $row;
+	$this->{currow} = DataStore::DataRow->new(
+			$this->{sth}->{NAME}, $this->{sth}->{NAME_hash}, $row,
+			$this->{calc_funcs}, $this->{ds}->{vars}
+	);
 
-	return 1;
+	return $this->{currow};
 }
 
 
 sub rows_affected
 {
-	my $this = shift;
-
-	return $this->{rows};
+	return $_[0]->{rows};
 }
 
 
 sub num_cols
 {
-	my $this = shift;
-
-	return $this->{sth}->{NUM_OF_FIELDS};
+	return $_[0]->{sth}->{NUM_OF_FIELDS};
 }
 
 
 sub col
 {
-	my $this = shift;
-	my ($col_id) = @_;
-
-	$col_id = $this->_get_colnum($col_id) if $col_id !~ /^\d/;
-	return $this->_get_colval($col_id);
+	return $_[0]->{currow}->col($_[1]);
 }
 
 
 sub colname
 {
-	my $this = shift;
-	my ($colnum) = @_;
+	my ($this, $colnum) = @_;
 
 	return $this->{sth}->{NAME}->[$colnum];
 }
@@ -862,12 +840,5 @@ sub colname
 
 sub all_cols
 {
-	my $this = shift;
-
-	my @cols = ();
-	for (my $x = 0; $x < $this->{sth}->{NUM_OF_FIELDS}; ++$x)
-	{
-		push @cols, $this->_get_colval($x);
-	}
-	return @cols;
+	return @{ $_[0]->{currow} };
 }
