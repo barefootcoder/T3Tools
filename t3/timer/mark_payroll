@@ -102,6 +102,7 @@ print "\n\nPayroll: Here are the new bank balances for salaried employees.\n";
 printf "\n%-5.5s %-15.15s %-15.15s %15.15s\n" , "Emp", "Start Date", "End Date", "New Balance";
 foreach my $row (@$rows)
 {
+	$row->[3] =~ s/,//g;
 	printf "%-5.5s %-15.15s %-15.15s %15.2f\n" , $row->[0],$row->[1],$row->[2],$row->[3];
 }
 print "\n";
