@@ -115,6 +115,13 @@ sub isValid
 	return defined(_date_parse($date));
 }
 
+sub today
+{
+	my ($day, $mon, $year) = (localtime time)[3..5];
+	$year += 1900, ++$mon;
+	return "$mon/$day/$year";
+}
+
 sub incDays
 {
 	my ($date, $inc) = @_;
