@@ -2,33 +2,48 @@
 
 use strict;
 
+#use Barefoot::debug(1);							# comment out for production
+
+use Barefoot::base;
 use Barefoot::date;
-use Barefoot::input qw(get_yn input);
-use Barefoot::timerdata;
+use Barefoot::DataStore;
+use Barefoot::DataStore::DataSet;
+use Barefoot::input qw<get_yn input>;
 
 
 ################
 #    main()    #
 ################
 
-my $rows = timerdata::query_results("
-		select client, total_price
-		from profit_item
-	");
-die("couldn't access timer database") unless defined($rows);
+my $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
 
-my $num_rows = @$rows;
-my $client = $rows->[0]->[0];
+my $data = $t3->load_table("
+
+		select client_id, total_price
+		from {~reporting}.profit_item
+
+") or die("database error: ", $t3->last_error());
+DataStore::dump_set($data) if DEBUG >= 3;
+
+my $num_rows = @$data;
+my $client_id = "";
 my $total_price = 0;
-foreach my $row (@$rows)
-{
-	die("more than one client found in the profit items table")
-			unless $row->[0] eq $client;
-	my $price = $row->[1];
-	$price =~ s/,//g;
-	$total_price += $price;
-}
-print "\nInvoice for client $client: "
+DataStore::foreach_row($data, sub
+	{
+		if ($client_id)
+		{
+			die("more than one client found in the profit items table")
+					unless $_->{client_id} eq $client_id;
+		}
+		else
+		{
+			$client_id = $_->{client_id};
+		}
+		$total_price += $_->{total_price};
+		print STDERR "total price is now $total_price\n" if DEBUG >= 4;
+	}
+);
+print "\nInvoice for client $client_id: "
 		. "$num_rows rows totalling \$$total_price\n";
 exit 1 unless get_yn("Is this right?");
 
@@ -36,50 +51,64 @@ my $inv_num = input("\nInvoice number:");
 my $bill_date = input("Billing date:");
 die("illegal date") unless date::isValid($bill_date);
 
-my $insert_query = "
-	insert invoice
-		(client, invoice_number, invoice_amount, invoice_billdate,
-				create_user, create_date)
-	values ('$client', '$inv_num', $total_price, '$bill_date',
-			'$::ENV{USER}', getdate())
-	go
+$t3->begin_tran();
+update_timer("wrong number of rows returned");
+$t3->rollback();
 
-	update time_log
-	set invoice_id = i.invoice_id, chguser = '$::ENV{USER}',
-			chgdate = getdate()
-	from time_log tl, profit_item pi, invoice i
-	where tl.log_source = pi.log_source
-	and tl.log_id = pi.log_id
-	and i.invoice_number = '$inv_num'
-	go
-";
-
-timerdata::set_user($::ENV{USER});
-my $results = timerdata::run_query("
-	begin tran
-	go
-
-	$insert_query
-
-	rollback tran
-	go
-");
-die("mark failed <<$results>>") unless
-		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
-
-print "\nInitial attempt successful for invoice $inv_num, client $client,\n";
+print "\nInitial attempt successful for invoice $inv_num, "
+		. "client $client_id,\n";
 print "    billing date $bill_date, affecting $num_rows rows\n";
 exit 1 unless get_yn("Proceed?");
 
-my $results = timerdata::run_query("
-	begin tran
-	go
+$t3->begin_tran();
+update_timer("theoretically impossible error occurred");
+$t3->commit();
 
-	$insert_query
-
-	commit tran
-	go
-");
-die("theoretically impossible error occurred <<$results>>") unless
-		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
 print "\nmark was successful\n";
+
+
+sub update_timer
+{
+	my ($message) = @_;
+
+	my $res = $t3->do("
+
+		insert {~timer}.invoice
+			(client_id, invoice_number, invoice_amount, invoice_billdate,
+					create_user, create_date)
+		values ('$client_id', '$inv_num', $total_price, '$bill_date',
+				'$ENV{T3_USER}', {&curdate})
+
+
+	") or die("can't insert into invoice: ", $t3->last_error());
+	die("$message: ", $t3->last_error()) unless $res->rows_affected() == 1;
+
+	$res = $t3->do("
+	
+		select invoice_id
+		from {~timer}.invoice
+		where invoice_number = '$inv_num'
+
+	");
+	die("can't retrieve new invoice id: ", $t3->last_error())
+			unless $res and $res->next_row();
+	my $inv_id = $res->col(0);
+	$res->next_row();					# just to close out the result set
+
+	$res = $t3->do("
+
+		update {~timer}.time_log
+		set invoice_id = $inv_id, chguser = '$ENV{T3_USER}',
+				chgdate = {&curdate}
+		where exists
+		(
+			select 1
+			from {~reporting}.profit_item pi
+			where {~timer}.time_log.log_source = pi.log_source
+			and {~timer}.time_log.log_id = pi.log_id
+		)
+
+	") or die("can't update time_log: ", $t3->last_error());
+	die("$message: ", $t3->last_error())
+			unless $res->rows_affected() == $num_rows;
+}
