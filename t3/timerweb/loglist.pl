@@ -11,7 +11,7 @@ use Barefoot::timerdata;
 
 use constant BREAK => "<BR>\n";
 use constant LOGID => 15125;
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 
 my $urlpath = DEBUG ? "http://www.barefoot.net/cgi-bin/$ENV{REMOTE_USER}test/timer" 
 	: "http://www.barefoot.net/cgi-bin/timer";
