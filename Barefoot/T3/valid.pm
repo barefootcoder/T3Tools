@@ -63,8 +63,11 @@ our %db_default =
 our %valid_function =
 (
 	employee	=>	sub { valid_employees() },
-	client		=>	sub { valid_clients($_[0]->{employee}) },
-	project		=>	sub { valid_projects($_[0]->{employee}, $_[0]->{client}) },
+	client		=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
+	project		=>	sub {
+							valid_projects($_[0]->{employee}, $_[0]->{client},
+									$_[0]->{date})
+						},
 	phase		=>	sub { phase_list() },
 	'client tracking code'
 				=> sub { valid_trackings($_[0]->{client}) },
@@ -110,62 +113,72 @@ sub get_parameter
 	}
 	print "after parminfo, parm is $parm\n" if DEBUG >= 3;
 
-	return $parm if $parminfo->{force};
-
-	# get list of valid values (based on dispatch table;
-	# if we don't have such a function, better barf)
-	# (note that this has to be done after figuring the database default,
-	# because that might set up some values we need here)
-	croak("can't determine valid list for $parmname")
-			unless exists $valid_function{$parmname};
-	my $valid_parms = $valid_function{$parmname}->($parminfo);
-	
-	# at this point, parm will act as our default
-	# need to save it in case user enters "?", then we can put it back
-	my $default = $parm;
-
-	# make a block so redo will work
-	PARM:
+	my $valid_parms = {};				# set to empty in case force is set
+	unless ($parminfo->{force})
 	{
-		$parm = input("Which $parmname is this for? (? for list)", $default);
-		$parm = string::upper($parm);				# codes are all UC
-		$parm = string::trim($parm);				# no spaces
 
-		if ($parm eq "?")
+		# get list of valid values (based on dispatch table;
+		# if we don't have such a function, better barf)
+		# (note that this has to be done after figuring the database default,
+		# because that might set up some values we need here)
+		croak("can't determine valid list for $parmname")
+				unless exists $valid_function{$parmname};
+		my $valid_parms = $valid_function{$parmname}->($parminfo);
+		
+		# at this point, parm will act as our default
+		# need to save it in case user enters "?", then we can put it back
+		my $default = $parm;
+
+		# make a block so redo will work
+		PARM:
 		{
+			$parm = input("Which $parmname is this for? (? for list)", $default);
+			$parm = string::upper($parm);				# codes are all UC
+			$parm = string::trim($parm);				# no spaces
+
+			if ($parm eq "?")
+			{
+				foreach my $id (keys %$valid_parms)
+				{
+					print "  {", $id, " - ", $valid_parms->{$id}, "}\n";
+				}
+				redo PARM;
+			}
+
+			# Checks value to be sure it's valid
 			foreach my $id (keys %$valid_parms)
 			{
-				print "  {", $id, " - ", $valid_parms->{$id}, "}\n";
+				if ($parm eq string::trim($id))
+				{
+					if ($parminfo->{noconfirm})
+					{
+						print "\u$parmname is $parm: $valid_parms->{$id}.\n";
+					}
+					else 		# ask for confirmation
+					{
+						redo PARM unless get_yn("\u$parmname is $parm: "
+								. "$valid_parms->{$id}; is this right?");
+					}
+					$parm = $id;
+					last PARM;
+				}
 			}
+			print "Invalid \u$parmname! \n";
 			redo PARM;
 		}
-
-		# Checks value to be sure it's valid
-		foreach my $id (keys %$valid_parms)
-		{
-			if ($parm eq string::trim($id))
-			{
-				if ($parminfo->{noconfirm})
-				{
-					print "\u$parmname is $parm: $valid_parms->{$id}.\n";
-				}
-				else 		# ask for confirmation
-				{
-					redo PARM unless get_yn("\u$parmname is $parm: "
-							. "$valid_parms->{$id}; is this right?");
-				}
-				$parm = $id;
-				last PARM;
-			}
-		}
-		print "Invalid \u$parmname! \n";
-		redo PARM;
 	}
 
 	# save the value we got
+	# default is to save in $parminfo, but can also save in $objinfo
+	# if $opts specifies this
 	$parminfo->{$parmname} = $parm;
+	if ($opts->{SAVE_IN_OBJECT})
+	{
+		$objinfo->{$parmname} = $parm;
+	}
 
-	return wantarray ? ($parm, $valid_parms->{$parm}) : $valid_parms->{$parm};
+	# if force was specified, you'll get ($parm, undef)
+	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
 }
 
 
@@ -196,7 +209,8 @@ sub valid_employees
 
 sub valid_clients
 {
-	my ($emp) = @_;
+	my ($emp, $date) = @_;
+	$date = $date ? "'$date'" : "{&curdate}";
 
 	my $res = &t3->do("
 			select c.client_id, c.name
@@ -208,7 +222,7 @@ sub valid_clients
 				where e.emp_id = '$emp'
 				and e.emp_id = ce.emp_id
 				and c.client_id = ce.client_id
-				and {&curdate} between ce.start_date and ce.end_date
+				and $date between ce.start_date and ce.end_date
 			)
 	");
 	die("valid clients query failed:", &t3->last_error()) unless $res;
@@ -225,13 +239,14 @@ sub valid_clients
 
 sub valid_projects
 {
-	my ($emp, $client) = @_;
+	my ($emp, $client, $date) = @_;
+	$date = $date ? "'$date'" : "{&curdate}";
 
 	my $res = &t3->do("
 			select p.proj_id, p.name
 			from {~timer}.project p
 			where p.client_id = '$client'
-			and {&curdate} between p.start_date and p.end_date
+			and $date between p.start_date and p.end_date
 			and exists
 			(
 				select 1
@@ -244,7 +259,7 @@ sub valid_projects
 					p.proj_id = ce.proj_id
 					or ce.proj_id is NULL
 				)
-				and {&curdate} between ce.start_date and ce.end_date
+				and $date between ce.start_date and ce.end_date
 			)
 	");
 	die("valid projects query failed:", &t3->last_error()) unless $res;
