@@ -21,7 +21,6 @@ USEFORM("OptionsFrm.cpp", OptionsForm);
 USEUNIT("TransThread.cpp");
 USEUNIT("IniOptions.cpp");
 USEUNIT("MessageMgr.cpp");
-USEUNIT("HttpComm\stringlist.cpp");
 USEUNIT("HttpComm\HttpComponent.cpp");
 USEUNIT("HttpComm\comm.cpp");
 USEUNIT("HttpComm\Socket.cpp");
@@ -29,6 +28,7 @@ USEFORM("UtilityDialg.cpp", UtilityDialog);
 USEFORM("InTransitFrm.cpp", InTransitForm);
 USEUNIT("TimerMgr.cpp");
 USEUNIT("TimerFcns.cpp");
+USEUNIT("stringlist.cpp");
 //---------------------------------------------------------------------------
 WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {

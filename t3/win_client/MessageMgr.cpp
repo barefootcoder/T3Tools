@@ -182,25 +182,26 @@ void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 	//ShowMessage("Thread terminated OK");
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::addToHistory (const T3Message& what_messg)
 {
 	//currently only messages with "NORMAL" status are added to history
-	if (what_messg.getAttribute("status") != "NORMAL")
-		return;
+	string status = what_messg.getAttribute("status");
+	if (status == "NORMAL" || status == "NO_REPLY" )
+	{
+		//copy to history
+		string mess_rec = what_messg.toXML();
 
-	//copy to history
-	string mess_rec = what_messg.toXML();
+		ofstream history(hist_filename.c_str(), ios_base::app);
 
-	ofstream history(hist_filename.c_str(), ios_base::app);
+		history << mess_rec << endl;
+		history.close();
+		
+		hist_buffer.push_back(mess_rec);			//keep sync'd with file
+	}
 
-	history << mess_rec << endl;
-	history.close();
-	
-	hist_buffer.push_back(mess_rec);			//keep sync'd with file
+	return;
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::loadLocalHistory ()
 {
 	ifstream history(hist_filename.c_str());
@@ -240,7 +241,6 @@ void MessageMgr::loadUnconfirmed ()
 	unconf.close();
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::addToUnconfirmed ()
 {
 	//copies all NORMAL from SendBuffer to UnconfCollection
@@ -256,24 +256,27 @@ void MessageMgr::addToUnconfirmed ()
 
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::confirmDelivery (const T3Message& what_messg)
 {
 	//sends out confirmation of a message that was received
 	//build status message to send out (the 'from' of received will now be 'to')
-	map<string, string> attr;
-	attr["id"] = what_messg.getAttribute("id");
-	attr["from"] = IniOpt->getValue("user_name").c_str(); 
-	attr["to"] = what_messg.getAttribute("from");
-	attr["status"] = "NORMAL_DLVD";
-	attr["location"] = IniOpt->getValue("user_location").c_str();
-	T3Message trans_out("MESSAGE", attr, "");
+	if ( what_messg.getAttribute("status") != "NO_REPLY" )
+	{
+		map<string, string> attr;
+		attr["id"] = what_messg.getAttribute("id");
+		attr["from"] = IniOpt->getValue("user_name").c_str(); 
+		attr["to"] = what_messg.getAttribute("from");
+		attr["status"] = "NORMAL_DLVD";
+		attr["location"] = IniOpt->getValue("user_location").c_str();
+		T3Message trans_out("MESSAGE", attr, "");
 
-	//put it out for the mailman to pick up on next go round
-	SendBuffer.push_back(trans_out);
+		//put it out for the mailman to pick up on next go round
+		SendBuffer.push_back(trans_out);
+	}
+
+	return;
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::confirmMessages ()
 {
 

@@ -7,9 +7,9 @@
     <OBJFILES value="win_obj\t3client.obj win_obj\MainFrm.obj win_obj\TimersImp.obj 
       win_obj\NewTimr.obj win_obj\T3Message.obj win_obj\MessageActionFrm.obj 
       win_obj\OptionsFrm.obj win_obj\TransThread.obj win_obj\IniOptions.obj 
-      win_obj\MessageMgr.obj win_obj\stringlist.obj win_obj\HttpComponent.obj 
-      win_obj\comm.obj win_obj\Socket.obj win_obj\UtilityDialg.obj 
-      win_obj\InTransitFrm.obj win_obj\TimerMgr.obj win_obj\TimerFcns.obj"/>
+      win_obj\MessageMgr.obj win_obj\HttpComponent.obj win_obj\comm.obj 
+      win_obj\Socket.obj win_obj\UtilityDialg.obj win_obj\InTransitFrm.obj 
+      win_obj\TimerMgr.obj win_obj\TimerFcns.obj win_obj\stringlist.obj"/>
     <RESFILES value="t3client.res"/>
     <IDLFILES value=""/>
     <DEFFILE value=""/>

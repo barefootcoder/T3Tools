@@ -70,7 +70,7 @@ void __fastcall TransferThread::Execute()
 				T3Message new_message(it->second);
 				string from = new_message.getAttribute("from");
 				string status = new_message.getAttribute("status");
-				if (status == "NORMAL")
+				if (status == "NORMAL" || status == "NO_REPLY" )
 				{
 					pTempMessageBuffer->insert(make_pair(from, new_message));
 				}
