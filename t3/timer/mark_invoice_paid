@@ -58,7 +58,7 @@ print "    pay date $pay_date (1 row affected)\n";
 exit 1 unless get_yn("Proceed?");
 
 &t3->begin_tran();
-update_timer($pay_date, "theoretically impossible error occurred");
+update_invoice($pay_date, "theoretically impossible error occurred");
 &t3->commit();
 
 print "\nmark was successful\n";
