@@ -59,10 +59,9 @@ END
 
 sub _request_to_pipe
 {
-	my $reqfile = (DEBUG ? "." : t3_config(T3::REQUESTDIR_DIRECTIVE))
-			. "/" . T3::REQUEST_FILE;
+	my $reqfile = t3_config(T3::REQUESTDIR_DIRECTIVE) . "/" . T3::REQUEST_FILE;
 
-	T3::debug(4, "about to open pipe $reqfile");
+	T3::debug(3, "about to open pipe $reqfile");
 	open(PIPE, ">$reqfile") or croak("can't open request pipe for writing");
 	T3::debug(5, "opened pipe");
 
@@ -111,7 +110,8 @@ sub retrieve_output
 {
 	my ($id) = @_;
 
-	my $pipe_file = T3::OUTPUT_FILE . $id;
+	my $pipe_file = t3_config(T3::REQUESTDIR_DIRECTIVE) . "/"
+			. T3::OUTPUT_FILE . $id;
 	my $pipe_is_there = timeout
 	{
 		until (-p $pipe_file)
@@ -135,11 +135,11 @@ sub retrieve_output
 					or die("can't open output pipe for reading ($pipe_file)");
 			@output = <PIPE>;
 		} 3;
-		T3::debug(3, "read output") if $success;
+		T3::debug(4, "read output") if $success;
 		die("never got EOF from output pipe") if @output and not $success;
 		last if $success and @output;
 	}
-	T3::debug(3, "gave up trying to get output");
+	T3::debug(5, "finished trying to get output");
 	die("can't seem to get any output from $pipe_file")
 			unless $success and @output;
 	close(PIPE);
