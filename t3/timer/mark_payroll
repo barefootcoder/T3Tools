@@ -1,145 +1,118 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
 
 use strict;
 
+use Barefoot::debug;
+
+use Barefoot::base;
 use Barefoot::date;
-use Barefoot::input qw(get_yn input);
-use Barefoot::timerdata;
+use Barefoot::range;
+use Barefoot::format;
+use Barefoot::DataStore;
+use Barefoot::DataStore::DataSet;
+use Barefoot::input qw<get_yn input>;
 
 
 ################
 #    main()    #
 ################
 
-my $rows = timerdata::query_results("
-        set nocount on
+my $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
+# $t3->show_queries();
 
-        select 
-			log_source,
-			log_id,
-			emp,
-			client,
-			proj,
-			date,
-			hours,
-			requires_payment,
-			pay_rate,
-			pay_rate_type,
-			total_pay
-        into #pay_amount
-        from pay_amount pa
-        where not exists ( select 1
-                         from salary_amount sa
-                         where sa.emp = pa.emp )
-        union
-        select 
-			log_source,
-			log_id,
-			emp,
-			client,
-			proj,
-			date,
-			hours,
-			requires_payment,
-			pay_rate,
-			pay_rate_type,
-			0
-        from pay_amount pa
-        where exists ( select 1
-                         from salary_amount sa
-                         where sa.emp = pa.emp )
+my $data = $t3->load_table("
 
-        select hours,
-               total_pay,
-               convert(char(10), date, 112) 'date',
-			   'Hourly' paytype
-        from #pay_amount 
-        union all
-        select  0, 
-                sa.actual_pay,
-                '12/31/9999',  
-			   'Salary' paytype
-        from salary_amount sa
-        set nocount off
+        select pa.emp_id, pa.hours, pa.total_pay, pa.pay_date
+        from {~reporting}.pay_amount pa
 
-	");
-die("couldn't access timer database") unless defined($rows);
+") or die("database error: ", $t3->last_error());
 
-my $num_rows = @$rows;
+	# get salary data
+my $salary_data = $t3->load_table("
+
+        select sa.emp_id, sa.actual_pay
+        from {~reporting}.salary_amount sa
+
+") or die("database error: ", $t3->last_error());
+	# turn it into a hash
+my $salary = {};
+$salary->{$_->{emp_id}} = $_->{actual_pay} foreach @$salary_data;
+
+my $expected_tl_rows = @$data;
 my $total_hours = 0;
 my $total_pay = 0;
-my $min_date = "99999999";
-my $max_date = "00000000";
-foreach my $row (@$rows)
+my @dates;
+foreach my $row (@$data)
 {
-	$total_hours += $row->[0];
-	my $pay = $row->[1];
-	$pay =~ s/,//g;
-	$total_pay += $pay;
+	$total_hours += $row->{hours};
+	$total_pay += $row->{total_pay} unless exists $salary->{$row->{emp_id}};
 
-	$row->[2] = $min_date if $row->[2] eq '12/31/9999' ; 
-
-	$min_date = $row->[2] if $row->[2] < $min_date;
-	$max_date = $row->[2] if $row->[2] > $max_date;
-	$num_rows-- if ( $row->[3] eq "Salary" ) ;
+	push @dates, date::dateTimeSeconds($row->{pay_date});
 }
-print "\nPayroll: $num_rows rows totalling $total_hours hours and "
+my $min_date = range::min(@dates);
+my $max_date = range::max(@dates);
+# now add in all saralies
+$total_pay += $_ foreach values %$salary;
+
+print "\nPayroll: $expected_tl_rows rows totalling $total_hours hours and "
 		. "\$$total_pay total pay\n";
 exit 1 unless get_yn("Is this right?");
 
-$rows = timerdata::query_results("
-		set nocount on
+###########################################################################
+### Check Salaries
+###########################################################################
 
-		select 
-			sa.emp,
-			sa.bank_after
-		from salary_amount sa
+$data = $t3->load_table("
 
-		set nocount off
+		select sa.emp_id, sa.bank_after
+		from {~reporting}.salary_amount sa
 
-	");
-die("couldn't access timer database") unless defined($rows);
+") or die("database error: ", $t3->last_error());
+my $expected_sal_rows = @$data;
 
-print "\n\nPayroll: Here are the new bank balances for salaried employees.\n";
-printf "\n%-5.5s %15.15s\n" , "Emp", "New Balance";
-foreach my $row (@$rows)
 {
-	$row->[1] =~ s/,//g;
-	printf "%-5.5s %15.2f\n" , $row->[0],$row->[1];
+	no warnings 'numeric';
+	print "\n\nPayroll: Here are the new bank balances for "
+			. "salaried employees.\n";
+	print "Emp  New Balance\n";
+	print "---  -----------\n";
+	foreach my $row (@$data)
+	{
+		writeln('@<<  @#######.##', $row->{emp_id}, $row->{bank_after});
+	}
+	print "\n";
+	exit 1 unless get_yn("Is this right?");
 }
-print "\n";
-exit 1 unless get_yn("Is this right?");
 
-### START INS HERE
-$rows = timerdata::query_results("
-		set nocount on
+###########################################################################
+### Check Insurance
+###########################################################################
 
-		select ia.emp,
-			   ia.barefoot_contribution 'Barefoot Contribution',
-			   ia.insurance_adjustment 'SAL3 Adjustment'
-		from insurance_amount ia
-		order by ia.emp
+$data = $t3->load_table("
 
-		set nocount off
+		select ia.emp_id, ia.company_contribution
+		from {~reporting}.insurance_amount ia
+		order by ia.emp_id
 
-	");
-die("couldn't access timer database") unless defined($rows);
+") or die("database error: ", $t3->last_error());
 
 print "\n\nPayroll: Please confirm Barefoot insurance contributions:\n";
-printf "\n%-5.5s %10.10s %10.10s\n" , "Emp", "BF Contrib", "SAL3 Adj";
-foreach my $row (@$rows)
+print "Emp  Contrib\n";
+my $expected_ins_rows = 0;
+foreach my $row (@$data)
 {
-	printf "%-5.5s %10.2f %10.2f\n" , $row->[0],$row->[1],$row->[2];
+	writeln('@<<   @##.##', $row->{emp_id}, $row->{company_contribution});
+	++$expected_ins_rows if $row->{company_contribution} > 0;
 }
 print "\n";
 exit 1 unless get_yn("Is this right?");
-### END INS HERE
 
-$min_date =~ /(\d\d\d\d)(\d\d)(\d\d)/;
-$min_date = "$2/$3/$1";
+###########################################################################
+### Initial attempt to update
+###########################################################################
 
-$max_date =~ /(\d\d\d\d)(\d\d)(\d\d)/;
-$max_date = "$2/$3/$1";
+$min_date = date::mdy($min_date);
+$max_date = date::mdy($max_date);
 
 my $from_date = input("\nStart Date:", $min_date);
 die("illegal date") unless date::isValid($from_date);
@@ -148,87 +121,86 @@ die("illegal date") unless date::isValid($to_date);
 my $check_date = input("Check Date:");
 die("illegal date") unless date::isValid($check_date);
 
-my $insert_query = "
+my $insert_payroll = <<END;
 
-	set nocount on
-
-	declare \@payroll_id int
-
-	insert payroll
+	insert {~timer}.payroll
 		(period_start, period_end, check_date, create_user, create_date)
 	values ('$from_date', '$to_date', '$check_date', '$::ENV{USER}', getdate())
-	select \@payroll_id = \@\@identity
 
-	update time_log
-	set payroll_id = pay.payroll_id, chguser = '$::ENV{USER}',
-			chgdate = getdate()
-	from time_log tl, pay_amount pa, payroll pay
-	where tl.log_source = pa.log_source
-	and tl.log_id = pa.log_id
+END
+my $update_time_log = <<END;
+
+	update {~timer}.time_log
+	set payroll_id =
+		(
+			select pay.payroll_id
+			from {~timer}.payroll pay
+			where pay.check_date = '$check_date'
+		),
+		chguser = '$::ENV{USER}',
+		chgdate = getdate()
+	where exists
+	(
+		select 1
+		from {~reporting}.pay_amount pa
+		where {~timer}.time_log.log_source = pa.log_source
+		and {~timer}.time_log.log_id = pa.log_id
+	)
+
+END
+my $insert_salary = <<END;
+
+	insert {~timer}.salary_bank
+		(emp_id, bank_amount, payroll_id, create_user, create_date)
+	select sa.emp_id, bank_after, pay.payroll_id, '$::ENV{USER}', getdate() 
+	from {~reporting}.salary_amount sa, {~timer}.payroll pay
+	where pay.check_date = '$check_date'
+
+END
+my $insert_insurance = <<END;
+
+	insert {~timer}.insurance_contribution
+		(emp_id, payroll_id, amount, create_user, create_date)
+	select emp_id, pay.payroll_id, ia.company_contribution,
+			'$::ENV{USER}', getdate() 
+	from {~reporting}.insurance_amount ia, {~timer}.payroll pay
+	where ia.company_contribution > 0
 	and pay.check_date = '$check_date'
 
-	insert salary_bank ( 
-	          emp, 
-	          bank_amount, 
-			  payroll_id,
-			  create_user, 
-			  create_date )
-	select emp, 
-			bank_after,
-			\@payroll_id,
-			'$::ENV{USER}', 
-			getdate() 
-	from salary_amount 
+END
 
-	insert insurance_contribution ( 
-	 			emp, 
-				payroll_id, 
-				amount, 
-				create_user, 
-				create_date )
-	select emp, 
-			\@payroll_id, 
-			barefoot_contribution,
-			'$::ENV{USER}', 
-			getdate() 
-	from insurance_amount 
-	where barefoot_contribution > 0
-
-	delete from pay_amount
-	delete from salary_amount
-	delete from insurance_amount
-
-	set nocount off
-	go
-";
-
-timerdata::set_user($::ENV{USER});
-my $results = timerdata::run_query("
-	begin tran
-	go
-
-	$insert_query
-
-	rollback tran
-	go
-");
-
-die("mark failed <<$results>>") if ( length ( $results ) );
+# try it once to test the waters
+update_it("wrong number of rows");
+$t3->rollback();
 
 print "\nInitial attempt successful for payroll $from_date to $to_date,\n";
-print "    check date $check_date, affecting $num_rows rows & new bank balances\n";
+print "    check date $check_date, affecting $expected_tl_rows log rows,\n";
+print "    $expected_sal_rows salary rows, "
+		. "and $expected_ins_rows insurance rows\n";
 exit 1 unless get_yn("Proceed?");
 
-my $results = timerdata::run_query("
-	begin tran
-	go
-
-	$insert_query
-
-	commit tran
-	go
-");
-die("theoretically impossible error occurred <<$results>>")  
-	if ( length ( $results ) );
+# now do it for real
+update_it("theoretically impossible error occurred");
+$t3->commit();
 
 print "\nmark was successful\n";
+
+
+sub update_it
+{
+	my ($message) = @_;
+
+	$t3->begin_tran();
+	my $res = $t3->do($insert_payroll)
+			or die("database error: ", $t3->last_error());
+	die($message) unless $res->rows_affected() == 1;
+	$res = $t3->do($update_time_log)
+			or die("database error: ", $t3->last_error());
+	die($message) unless $res->rows_affected() == $expected_tl_rows;
+	$res = $t3->do($insert_salary)
+			or die("database error: ", $t3->last_error());
+	die($message) unless $res->rows_affected() == $expected_sal_rows;
+	$res = $t3->do($insert_insurance)
+			or die("database error: ", $t3->last_error());
+	die($message) unless $res->rows_affected() == $expected_ins_rows;
+}
