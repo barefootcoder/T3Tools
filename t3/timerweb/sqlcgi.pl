@@ -14,15 +14,17 @@ use CGI;
 
 use Barefoot::base;
 use Barefoot::exception;
+use Barefoot::T3::base;
 use Barefoot::DataStore;
 use Barefoot::DataStore::display;
+
 
 $| = 1;
 
 
 my $cgi = new CGI;
 my $basepath = DEBUG ? "/proj/$ENV{REMOTE_USER}/t3/timerweb/reports"
-		: "/home/httpd/sybase/timer_reports";
+		: T3::config(T3::WREPORTDIR_DIRECTIVE);
 my $lib = "/usr/local/bin/kshlib";
 my $dsname = DEBUG ? "t3test" : "T3";
 my $debug_string = "" if DEBUG;
