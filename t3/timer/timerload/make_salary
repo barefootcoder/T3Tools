@@ -1,0 +1,60 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+destdb=timertest
+
+while getopts ":S:U:D:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		h)  echo "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb" >&2
+			exit
+			;;
+		:)  echo "$0: $OPTARG requires an argument ($0 -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $0 -h for usage" >&2
+			exit
+	esac
+done
+shift $((OPTIND - 1))
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	$(overwrite_table salary_draw "
+		emp					char(3)			NOT NULL,
+		weekly_amount		money			NOT NULL,
+		variation			percentage		NOT NULL,
+		max_weeks			int				NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+	")
+
+	create unique index salary_draw
+	on salary_draw (emp, start_date)
+	go
+
+	print "adding record for Tom"
+	go
+
+	insert salary_draw
+	values ('150', 2000, .5, 4, '10/2/00', '12/31/9999')
+	go
+
+
+END
