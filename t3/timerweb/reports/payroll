@@ -37,8 +37,7 @@ $(build_pay_amount "
 exec calc_pay_amount
 go
 
-delete pay_amount
-where requires_payment = 0
+delete pay_amount where requires_payment = 0
 go
 
 -- for debugging
@@ -124,7 +123,8 @@ group by pa.emp, $(employee_name e), c.name, p.name, pa.pay_rate
 go
 
 -- Add calc_salary_pay here
-exec calc_salary_pay '[start_date]', '[end_date]'
+exec calc_salary_pay @start_date = '[start_date]', @end_date = '[end_date]'                  ?!check_date
+exec calc_salary_pay @check_date = '[check_date]'                                            ??check_date
 
 print ""
 print ""
@@ -155,8 +155,6 @@ from pay_amount pa, employee e, salary_amount sa
 where pa.emp = e.emp
 and pa.emp = sa.emp
 and pa.pay_rate_type != 'S'
-and sa.start_date = '[start_date]'
-and sa.end_date = '[end_date]'
 group by pa.emp, $(employee_name e), sa.actual_pay
 
 select *
@@ -188,67 +186,20 @@ set nocount on
 print ""
 print "SAL3 (Insurance Adjustments) for Employees"
 print ""
+go
 
-select e.emp, 
-	       isnull ( sum ( pa.hours ), 0 ) total_hours,
-	       convert ( numeric (8,2), 0 ) applicable_hours,
-	       convert ( money, $REGULAR_SAL3 ) insurance_adjustment
-into #insurance_adjustment
-from pay_amount pa, employee e
-where pa.emp =* e.emp
-and e.has_insurance = 1 
-group by e.emp
-
--- Use this table to determine #insurance_adjustment.applicable_hours
-select emp, requires_billing, requires_payment, sum (hours) "hours"
-into #billable_nonbillable_hrs
-from  pay_amount 
-group by emp, requires_billing, requires_payment
-
--- This update is to adjust #insurance_adjustment.applicable_hours 
---  for non-billable, but payable hours.
--- (where total non-billable/payable hours <= $SAL3_PAY_NONBILL_THRESHOLD)
-update #insurance_adjustment
-set applicable_hours = bnh.hours 
-from #insurance_adjustment ia, #billable_nonbillable_hrs bnh
-where ia.emp = bnh.emp
-and bnh.requires_payment = 1
-and bnh.requires_billing = 0
-and bnh.hours <= $SAL3_PAY_NONBILL_THRESHOLD 
-	
--- This update is to adjust #insurance_adjustment.applicable_hours 
---  for non-billable, but payable hours.
--- (where total non-billable/payable hours > $SAL3_PAY_NONBILL_THRESHOLD)
-update #insurance_adjustment
-set applicable_hours = $SAL3_PAY_NONBILL_THRESHOLD 
-from #insurance_adjustment ia, #billable_nonbillable_hrs bnh
-where ia.emp = bnh.emp
-and bnh.requires_payment = 1
-and bnh.requires_billing = 0
-and bnh.hours > $SAL3_PAY_NONBILL_THRESHOLD 
-
--- This update is to adjust #insurance_adjustment.applicable_hours 
---  for billable/payable hours.
-update #insurance_adjustment
-set applicable_hours = applicable_hours + hours 
-from #insurance_adjustment ia, #billable_nonbillable_hrs bnh
-where ia.emp = bnh.emp
-and bnh.requires_payment = 1
-and bnh.requires_billing = 1
-
-
-update #insurance_adjustment
-set insurance_adjustment = ( $(round applicable_hours/10 1 D ) 
-                             * $SAL3_MULTIPLIER ) - insurance_adjustment
+calc_insurance_contribution @start_date = '[start_date]'                      ?!check_date
+calc_insurance_contribution @check_date = '[check_date]'                      ??check_date
 
 set nocount off
 
-select ia.emp, 
-       $(employee_name e) "employee",
-	   ia.total_hours,
-	   ia.applicable_hours,
-	   ia.insurance_adjustment "SAL3 Adjustment"
-from #insurance_adjustment ia, employee e
+select ia.emp Emp,
+       $(employee_name e) 'Employee',
+       ia.total_hours 'Total Hours',
+       ia.applicable_hours 'Applicable Hrs',
+       ia.barefoot_contribution 'Barefoot Contribution',
+       ia.insurance_adjustment 'SAL3 Adjustment'
+from insurance_amount ia, employee e
 where ia.emp = e.emp
 order by ia.emp
 go
