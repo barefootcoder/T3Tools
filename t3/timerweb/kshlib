@@ -1,0 +1,446 @@
+#!/bin/ksh
+
+#	$Header$
+#	$Log$
+#	Revision 1.6  1998/07/30 02:21:47  bburden
+#	commented most constants
+#	added many constants (TERMINATED_STATUS, rate types for rims_contracts_rates,
+#	  lengths and values for RIMS input files)
+#	added remove_sp_returns() and remove_bcp_rows()
+#	added FIXED option to bcp_file()
+#	fixed bug with make_midnight()
+#	added zero_fill()
+#
+#	Revision 1.5  1998/07/02 19:05:07  bburden
+#	added constants: BEGINNING_OF_TIME, MERGER_DATE, CONTRACTED,
+#	  NON_CONTRACTED, SINGLE_RATE, FEE_SCHEDULE, IND_SCHEDTYPE,
+#	  DISC_SCHEDTYPE, ZIP_LOCTYPE, INVALID_TO_LINK
+#	fixed bug in daterange_is_current()
+#	added function make_midnight()
+#
+#	Revision 1.4  1998/06/21 19:07:17  bburden
+#	added constants for primary and service addtypes
+#	added copy structure function
+#	added constant for exception schedule type
+#	some general cleanup
+#
+#	Revision 1.3  1998/04/20 19:08:45  bburden
+#	changed update_rownumber to allow for a column name other than rownumber
+#
+#	Revision 1.2  1998/03/29 08:57:59  bburden
+#	added function to update row numbers (e.g., prov_net)
+#	polished up overwrite table function
+#
+#	Revision 1.1  1998/03/20 04:40:08  bburden
+#	Initial revision
+#
+
+#<TITLE>
+# kshlib
+#</TITLE>
+
+#<AUTHOR>
+# Buddy Burden
+#</AUTHOR>
+
+#<DATE>
+# July 18, 1997
+#</DATE>
+
+#<OVERVIEW>
+#</OVERVIEW>
+
+
+# constants
+
+	# general stuff
+	readonly me=${0##*/}
+
+	# date stuff
+	readonly BEGINNING_OF_TIME="'1/1/1753'"			# according to Sybase docs
+	readonly END_OF_TIME="'12/31/9999'"
+		# these are for the "smalldatetime" type
+	readonly SMALL_BEGINNING_OF_TIME="'1/1/1900'"
+	readonly SMALL_END_OF_TIME="'12/6/2079'"
+		# the "first" Barefoot date
+		# (this is day 1 of the very first pay period known to Barefoot)
+	readonly BAREFOOT_EPOCH="'1/31/1994'"
+
+
+############################################################################
+###                     input / display utilities                        ###
+############################################################################
+
+function get_return
+{
+	echo
+	read return?"Press return to continue: "
+}
+
+
+############################################################################
+###                          file utilities                              ###
+############################################################################
+
+function blank_file
+{
+	file=$1
+
+	if [ -e $file ]
+	then
+		/bin/rm -f $file
+	fi
+	touch $file
+}
+
+function remove_sp_returns
+{
+	# designed to be used as a filter which will remove those
+	# annoying "return status = 0" lines without overbuffering your
+	# SQL output so it takes forever to see what's going on
+	perl -ne '
+		BEGIN	{ $| = 1; }			# causes perl to autoflush
+		print if not /^\(return status = 0\)$/;
+	'
+}
+
+function remove_bcp_rows
+{
+	# designed to be used as a filter which will remove those
+	# annoying "1000 lines copied" lines without overbuffering your
+	# bcp output so it takes forever to see what's going on
+	perl -ne '
+		BEGIN	{ $| = 1; }			# causes perl to autoflush
+		print if not /^1000 rows successfully bulk-copied to host-file\.$/;
+	'
+}
+
+function bcp_file
+{
+	# variables server and user are expected to be set before calling
+	db=$1
+	table=$2
+	file=$3
+	direction=$4					# "in" or "out"
+	fmtfile=$5						# this is optional, or can be "FIXED"
+
+	if [ -z "$db" -o -z "$table" -o -z "$file" -o -z "$direction" ]
+	then
+		echo "bcp_file: missing argument" >&2
+		return
+	fi
+	if [ -z "$server" -o -z "$user" ]
+	then
+		echo "bcp_file: server and user must be set before calling" >&2
+		return
+	fi
+
+	bcp_input=$(sybpasswd $server $user)			# start with password
+
+	if [ -z "$fmtfile" ]
+	then
+		format="-c"
+	elif [ "$fmtfile" = "FIXED" ]
+	then
+		bcp_input="$bcp_input\n"					# add a newline first
+
+		# we need to build an input string, one set of values for each field
+		colquery="select name from syscolumns where id = object_id('$table')"
+		for field in $(get_sql "$colquery" -S$server -U$user -D$db)
+		do
+			# 1st \n: type, 0 and 2nd \n: prefix length, 3rd \n: field
+			# length, 4th \n: field separator (should default to [none])
+			bcp_input="$bcp_input\n0\n\n\n"
+		done
+		# lastly, add a "n" to cover the "do you want to save format file?"
+		bcp_input="${bcp_input}n"
+		# don't really need a format now
+		format=
+	else
+		format="-f $fmtfile"
+	fi
+
+	echo "$bcp_input" | bcp $db..$table $direction $file -S$server -U$user	\
+			$format | grep -v '^Password: *$'
+}
+
+
+############################################################################
+###                           SQL utilities                              ###
+############################################################################
+
+function daterange_is_current
+{
+	from=$1
+	to=$2
+
+	if [ -z "$from" -o -z "$to" ]
+	then
+		echo "daterange_is_current: missing argument" >&2
+		return
+	fi
+
+	echo "getdate() between $from and isnull($to, $END_OF_TIME)"
+}
+
+function make_midnight
+{
+	date=$1
+
+	# if you convert to char and use only the date part (i.e., drop off
+	# the hours and minutes), then convert it back to a datetime,
+	# it will get a time of midnight automatically
+	echo "convert(datetime, convert(char(12), $1, 109))"
+}
+
+function zero_fill
+{
+	column=$1
+	typeset -i length=$2
+
+	if [ $length -eq 0 ]
+	then
+		echo "zero_fill: need non-zero length" >&2
+		return
+	fi
+
+	echo "right(rtrim(replicate('0', $((length - 1)) ) \c"
+	echo "+ convert(char($length), $column)), $length)"
+}
+
+function right_justify
+{
+	column=$1
+	typeset -i length=$2
+
+	if [ $length -eq 0 ]
+	then
+		echo "right_justify: need non-zero length" >&2
+		return
+	fi
+
+	echo "right(rtrim(space( $((length - 1)) ) \c"
+	echo "+ convert(char($length), $column)), $length)"
+}
+
+function round
+{
+	column=$1				# what you want to round
+	round_to=$2				# arbitrary number to round to (e.g., .25)
+	direction=$3			# "U" for up, "D" for down, "O" for off
+
+	case $direction in
+		U)	echo "ceiling(($column) / convert(real, $round_to)) * $round_to"
+			;;
+		D)	echo "floor(($column) / convert(real, $round_to)) * $round_to"
+			;;
+		O)	echo "round(($column) / convert(real, $round_to), 0) * $round_to"
+			;;
+		*)	echo "round: invalid direction specified" >&2
+			;;
+	esac
+}
+
+function overwrite_table
+{
+	table=$1
+	fields=$2
+
+	if [ -z "$table" -o -z "$fields" ]
+	then
+		echo "overwrite_table: missing argument" >&2
+		return
+	fi
+
+	cat <<-END
+
+		if object_id('$table') is not null drop table $table
+		go
+		create table $table ($fields)
+		go
+		grant select on $table to public
+		go
+
+	END
+}
+
+function copy_structure
+{
+	from_table=$1
+	to_table=$2
+
+	if [ -z "$from_table" -o -z "$to_table" ]
+	then
+		echo "copy_structure: missing argument" >&2
+		return
+	fi
+
+	cat <<-END
+
+		if object_id('$to_table') is not null drop table $to_table
+		go
+		set nocount on
+		select *
+		into $to_table
+		from $from_table
+		where 1 = 0
+		set nocount off
+		go
+		grant select on $to_table to public
+		go
+
+	END
+}
+
+
+############################################################################
+###                     TIMER specific SQL utilities                     ###
+############################################################################
+
+# gives the employee first name, with last initial if showlast is turned on
+
+function employee_name
+{
+	table_alias=$1		# most commonly, "e"
+
+	echo "rtrim($table_alias.name) + ' ' + \c"
+	echo "substring($table_alias.lname, $table_alias.showlast, 1)"
+}
+
+# builds the temp table necessary for the billing/payroll stored procedures,
+# then fills it up appropriately based on the SQL query it is given
+
+function build_emp_comm
+{
+	log_where_clause="$1"
+	op_where_clause="$2"
+	tc_where_clause="$3"
+
+	if [ -z "$log_where_clause" ]
+	then
+		echo "build_emp_comm: missing argument" >&2
+		return
+	fi
+
+	# if op and tc where clauses not specified, simply adjust for the 
+	# fact that not all of the tables use the same column name for "date"
+	if [ -z "$op_where_clause" ]
+	then
+		op_where_clause=$(echo "$log_where_clause" |
+				perl -pe 's/\bdate\b/date_delivered/')
+	fi
+	if [ -z "$tc_where_clause" ]
+	then
+		tc_where_clause=$(echo "$log_where_clause" |
+				perl -pe 's/\bdate\b/start_time/')
+	fi
+
+	cat <<-END
+
+		create table #emp_comm
+		(
+			id          numeric(6,0)    identity,   -- for the cursor
+			source_tbl	varchar(30)		NOT NULL,	-- source table name
+			source_id	numeric(6,0)	NULL,		-- id from source table
+			emp         char(3)         NOT NULL,   -- employee code
+			client      char(3)         NOT NULL,   -- client code
+			proj        char(3)         NOT NULL,   -- project code
+			date        datetime        NOT NULL,   -- date of work done
+			hours       numeric(6,2)    NOT NULL,   -- how many hours
+			payrate     money           NULL,       -- how much emp gets paid
+			paytype     char(1)         NULL,       -- employee or subcontr?
+			billrate    money           NULL,       -- billing rate per hour
+			bill_hours	numeric(6,2)	NULL,		-- hours adj by bill ratio
+			amt_billed  money           NULL,       -- total client was billed
+			salescomm   smallmoney      NULL,       -- total sales commission 
+			refcomm     smallmoney      NULL,       -- total referral commission
+			amt_paid    money           NULL,       -- total employee was paid
+			gross       money           NULL,       -- amt_billed - sales - ref
+			diff        money           NULL,       -- 'simple' profit
+			empcomm     money           NULL        -- total employee comm
+		)
+
+		insert #emp_comm
+		    (source_tbl, source_id, emp, client, proj, date, hours)
+		select 'log', id, emp, client, proj, date, hours
+		from log l
+		where $log_where_clause
+
+		insert #emp_comm
+			(source_tbl, emp, client, proj, date, hours, amt_billed, amt_paid)
+		select 'other_profits', '', client, '', date_delivered, 0,
+				amount_billed, amount_paid
+		from other_profits op
+		where $op_where_clause
+
+		insert #emp_comm
+			(source_tbl, emp, client, proj, date, hours)
+		select 'training_class', '', client, proj, start_time,
+			$(round 'datediff(minute, start_time, end_time) / 60.0
+					- num_breaks * .25' .25 'U'
+			)
+		from training_class tc
+		where $tc_where_clause
+
+	END
+}
+
+# the period functions are designed to make it easy to figure out what
+# week (7-day period) you're in, and what the beginning of the week is, and
+# stuff like that ... of course, it works well for other things too (e.g.,
+# fixed-price contracts where you bill every two weeks or payroll periods,
+# which are also two weeks; just use a 14-day period and you can figure out
+# the period begin/end dates given any date within the period)
+
+function period_num
+{
+	date="$1"				# the date to find the period number for
+	period_len="$2"			# how many days a period is
+
+	echo "datediff(day, $BAREFOOT_EPOCH, $date) / $period_len"
+}
+
+function period_day
+{
+	date="$1"				# the date you want to know the day number for
+	period_len="$2"			# how many days a period is
+
+	echo "datediff(day, $BAREFOOT_EPOCH, $date) % $period_len"
+}
+
+function period_date
+{
+	period_num="$1"			# the period number (probably from period_num)
+	day_number="$2"			# which day w/in the period (prob. from period_day)
+	period_len="$3"			# how many days a period is
+
+	echo "dateadd(day, $period_num * $period_len + $day_number, \c"
+	echo "$BAREFOOT_EPOCH)"
+}
+
+function period_start		# same as $(period_date num 0 len)
+{
+	period_num="$1"			# the period number (probably from period_num)
+	period_len="$2"			# how many days a period is
+
+	echo "dateadd(day, $period_num * $period_len, $BAREFOOT_EPOCH)"
+}
+
+function period_end			# same as $(period_date num $((len - 1)) len)
+{
+	period_num="$1"			# the period number (probably from period_num)
+	period_len="$2"			# how many days a period is
+
+	echo "dateadd(day, $period_num * $period_len + $period_len - 1, \c"
+	echo "$BAREFOOT_EPOCH)"
+}
+
+function period_name		# a string that describes the period
+{
+	period_num="$1"			# the period number (probably from period_num)
+	period_len=$2			# how many days a period is
+
+	echo "convert(char(10), $(period_start "$period_num" $period_len), 101) \c"
+	echo "+ ' to ' + \c"
+	echo "convert(char(10), $(period_end "$period_num" $period_len), 101)"
+}
