@@ -15,18 +15,27 @@ package Barefoot::T3Timer;
 
 use strict;
 
-1;
-
-use Env qw(TIMERDIR HOME USER);
-use Storable;
 #use Barefoot::debug;							# comment out for production
 
-#use Barefoot::timerdata;
-use Barefoot::config_file;
+use base qw<Exporter>;
+use vars qw<@EXPORT_OK>;
+@EXPORT_OK = (qw<get_timer_info do_timer_command calc_date calc_time>,
+		qw<get_emp_id default_client valid_employees valid_clients>,
+		qw<valid_projects proj_requirements phase_list valid_trackings>,
+		qw<client_rounding this_week_totals insert_time_log>);
+
+
+use POSIX qw<strftime>;
+use Storable;
+
+use Barefoot::base;
 use Barefoot::file;
-use Barefoot::array;
 use Barefoot::date;
+use Barefoot::array;
 use Barefoot::range;
+use Barefoot::exception;
+use Barefoot::DataStore;
+use Barefoot::config_file;
 
 
 # Timer constants
@@ -36,41 +45,34 @@ use constant CONFIG_FILE => '/etc/t3.conf';
 use constant DBSERVER_DIRECTIVE => 'DBServer';
 use constant DATABASE_DIRECTIVE => 'Database';
 use constant TIMERDIR_DIRECTIVE => 'TimerDir';
-use constant TALKERPATH => "./talker/";     # where message box files are found
-use constant USER_FILE => TALKERPATH . "users.dat";
 
 use constant TIMEFILE_EXT => '.timer';
 use constant HISTFILE => 'timer.history';
 
-use constant SAMBAGRP => 'guestpc';
-
 use constant DEFAULT_WORKGROUP => 'Barefoot';
 #use constant DEFAULT_WORKGROUP => 'TestCompany';
-use constant FALLBACK_TIMER => '';   #'default';
+use constant FALLBACK_TIMER => 'default';
+
 
 # Timer command map
+our %timer_commands =
+(
+	START		=>	\&start,
+	PAUSE		=>	\&pause,
+	CANCEL		=>	\&cancel,
+	DONE		=>	\&done,
+	LIST		=>	\&list,
+	RENAME		=>	\&rename,
+	LOG			=>	\&log_time,
+);
 
-use constant TIMER_COMMANDS =>
-    ("START", \&start,
-     "PAUSE", \&pause,
-	 "CANCEL", \&cancel,
-	 "DONE", \&done,
-	 "LIST", \&list,
-	 "RENAME", \&rename);
-
-my @VALID_COMMANDS =
-	("START", 
-	 "PAUSE", 
-	 "CANCEL", 
-	 "LIST", 
-	 "RENAME");
+# data store for database operations
+our $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
 
 
+true;
 
 
-#functions
-
-sub processMessage;
 
 # ------------------------------------------------------------
 # Main Procedures
@@ -80,67 +82,105 @@ sub processMessage
 {
 	my ($message) = @_;
 
-    my $cfg_file = config_file->read(CONFIG_FILE);
-    my $timerinfo = {};
+	my $timerinfo = {};
+	my $send = "";
 
-	my %commands = TIMER_COMMANDS;
-    my $workgroup = defined($::ENV{T3_WORKGROUP})
-            ? $::ENV{T3_WORKGROUP} : DEFAULT_WORKGROUP;
-	my $send;
-	#my $ping;
-
-	eval
+	try
 	{
-		#die "FAIL:name = $message->{name}";
-		setuptimer($timerinfo, $message,$cfg_file,$workgroup);	
-		readfile($timerinfo);
-		die "FAIL:Command not supported" if 
-			!Barefoot::array::in(@VALID_COMMANDS, $message->{command}, 's');
+		# transfer some stuff from $message to $timerinfo
+		# the loop is the stuff that transfers directly
+		# attributes whose names must change follow
+		foreach my $attrib ( qw<halftime client project phase>,
+				qw<employee tracking date hours comments> )
+		{
+			$timerinfo->{$attrib} = $message->{$attrib}
+					if exists $message->{$attrib};
+		}
+		$timerinfo->{newname} = $message->{_DATA_}
+				if exists $message->{_DATA_};
 
-#    timerdata::set_connection($cfg_file->lookup($workgroup, DBSERVER_DIRECTIVE),
-#            $cfg_file->lookup($workgroup, DATABASE_DIRECTIVE));
-
-		$send = &{$commands{$message->{command}}}($timerinfo,$message);
-		$send = $send . "\n" . ping($timerinfo);
+		$send = ack($message->{command}, $message->{name}, "OK")
+				. "\n" . ping_response($timerinfo);
+	}
+	catch
+	{
+		$send = ack($message->{command}, $message->{name}, "FAIL: $_")
+				. "\n" . ping_response($timerinfo);
 	};
 
-	$@ =~ s/(.*?)\s+at.*/$1/;
-	$send = ack($message->{command},$message->{name},$@) . "\n" . 
-			ping($timerinfo) if $@;
+	return $send;
+}
 
-	return($send);
-}    
+
+sub get_timer_info
+{
+	my ($timername, $timerinfo) = @_;
+
+	setuptimer($timername, $timerinfo);
+	readfile($timerinfo);
+
+	# try to find a more reasonable default timer
+	if ($timerinfo->{giventimer} eq FALLBACK_TIMER)
+	{
+		if ($timerinfo->{curtimer})
+		{
+			# if there's a current timer, use that
+			$timerinfo->{giventimer} = $timerinfo->{curtimer};
+		}
+		elsif (keys %{$timerinfo->{timers}} == 1)
+		{
+			# if there's only 1 timer, use that
+			$timerinfo->{giventimer} = (keys %{$timerinfo->{timers}})[0];
+		}
+		# if none of those work, you're stuck with FALLBACK_TIMER
+	}
+}
+
+
+sub do_timer_command
+{
+	my ($command, $timerinfo) = @_;
+
+	# save command in case later functions need it
+	$timerinfo->{command} = $command;
+
+	die("command not supported ($command)")
+			unless exists $timer_commands{$command};
+	die("half-time flag only makes sense when starting a timer")
+			if $timerinfo->{halftime} and $command ne 'START';
+	$timer_commands{$command}->($timerinfo);
+}
 
 
 sub setuptimer						# Set up
 {
-	my ($timerinfo,$message,$cfg_file,$workgroup) = @_;
-	my $users = retrieve(USER_FILE);
-	my $username = "";	
-	
-    foreach my $userid (keys %$users)
-    {
-		# replace nickname with username
-        $username = $users->{$userid}->{username} and last 
-				if $users->{$userid}->{nickname} eq $message->{user};
-    }
-	die "FAIL:Invalid user.  Change username or talk to administrator."
-			if $username eq "";
+	my ($timername, $timerinfo) = @_;
+    my $cfg_file = config_file->read(CONFIG_FILE);
+    my $workgroup = $ENV{T3_WORKGROUP} || DEFAULT_WORKGROUP;
 
-    $timerinfo->{user} = $username;
-    $timerinfo->{giventimer} = $message->{name}
-            ? $message->{name} : FALLBACK_TIMER;
-    $timerinfo->{halftime} = $message->{halftime};
-    $timerinfo->{client} = $message->{client};
-    $timerinfo->{project} = $message->{project};
-    $timerinfo->{phase} = $message->{phase};
-    $timerinfo->{newname} = $message->{_DATA_};
+    $timerinfo->{timers} = {};
+
+    $timerinfo->{giventimer} = $timername || FALLBACK_TIMER;
+
+    unless ($timerinfo->{user})
+	{
+		$timerinfo->{user} = $ENV{T3_USER} if exists $ENV{T3_USER};
+		die("Invalid user.  Change username or talk to administrator.")
+				unless $timerinfo->{user};
+	}
+
     $timerinfo->{tdir} = $cfg_file->lookup($workgroup, TIMERDIR_DIRECTIVE);
+	die("don't have a directory for timer files") unless $timerinfo->{tdir};
+	die("cannot write to directory $timerinfo->{tdir}")
+			unless -d $timerinfo->{tdir} and -w $timerinfo->{tdir};
+
     $timerinfo->{tfile} = "$timerinfo->{tdir}/$timerinfo->{user}"
             . TIMEFILE_EXT;
     $timerinfo->{hfile} = "$timerinfo->{tdir}/" . HISTFILE;
-    $timerinfo->{timers} = {};
+
+	return true;
 }
+
 
 # ------------------------------------------------------------
 # Command Procedures
@@ -149,72 +189,73 @@ sub setuptimer						# Set up
 
 sub start                   # start a timer
 {
-	my ($timerinfo,$message) = @_;
+	my ($timerinfo) = @_;
 	my $timersent = $timerinfo->{giventimer};
 
-	my $func = $message->{command};
-
-    if ($timerinfo->{giventimer} ne $timerinfo->{curtimer})
-    {
-    	$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ','
-        	    if $timerinfo->{curtimer};
-    	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time} .=
-        	    ($timerinfo->{halftime} ? "2/" : "") . time . '-';
-    	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{client}
-        	    = $message->{client};
-    	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{project}
-        	    = $message->{project};
-    	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{phase}
-        	    = $message->{phase};
-  	  	$timerinfo->{curtimer} = $timerinfo->{giventimer};
-
-    	writefile($timerinfo);
-		return(ack("START",$timersent,"OK"));
-	}
-	else
+	# if new and old are the same, make sure a difference in full/half is
+	# being requested, else it's an error
+    if ($timersent eq $timerinfo->{curtimer})
 	{
 		# $halftime indicates if timer is currently running in halftime mode
-		# $givenhalftime indicates if halftime is begining requested
+		# $givenhalftime indicates if halftime is being requested
 
-		my $halftime = ($timerinfo->{timers}->{$timerinfo->{curtimer}}->{time}
-				=~ m{2/\d+-$}) ? 1:0;
-		my $givenhalftime = ($timerinfo->{halftime} eq "YES") ? 1:0; 
+		my $halftime = $timerinfo->{timers}->{$timerinfo->{curtimer}}->{time}
+				=~ m{ 2/ \d+ - $ }x;
+		my $givenhalftime = $timerinfo->{halftime};
 
-		if ($halftime != $givenhalftime)
+		die("Timer already started in that mode")
+				if ($halftime == $givenhalftime);
+	}
+
+	# if currently timing, pause the current timer
+	if ($timerinfo->{curtimer})
+	{
+		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ',';
+		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{posted} = false;
+	}
+
+	# if not restarting an existing timer, got to build up some structure
+    if (not exists $timerinfo->{timers}->{$timersent})
+	{
+		foreach my $attrib ( qw<client project phase> )
 		{
-    		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} 
-					.= time . ',';
-    		$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time} .=
-        		    ($timerinfo->{halftime} ? "2/" : "") . time . '-';
-
-    		writefile($timerinfo);
-			return(ack("START",$timersent,"OK"));
-		}
-		else
-		{
-			return(ack("START",$timersent,
-					"FAIL: Timer already started in that mode"));
+			$timerinfo->{timers}->{$timersent}->{$attrib}
+					= $timerinfo->{$attrib} if exists $timerinfo->{$attrib};
 		}
 	}
+
+	# add start time, mark unposted
+	$timerinfo->{timers}->{$timersent}->{time} .=
+			($timerinfo->{halftime} ? "2/" : "") . time . '-';
+	$timerinfo->{timers}->{$timersent}->{posted} = false;
+
+	# change current timer marker (in case caller wishes to display something)
+	$timerinfo->{curtimer} = $timersent;
+
+	# write the file and get out
+	writefile($timerinfo);
+	return true;
 }
 
 
 sub pause                   # pause all timers
 {
 	my ($timerinfo) = @_;
-	my $timersent = $timerinfo->{giventimer};
 
+	# make sure pause makes sense
     if (!$timerinfo->{curtimer})
     {
-		return(ack("PAUSE",$timersent,"FAIL:No timer is running"));
+		die("No timer is running");
     }
 
-
+	# provide end time, mark unposted, clear current timer
     $timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ',';
-    delete $timerinfo->{curtimer};
+    $timerinfo->{timers}->{$timerinfo->{curtimer}}->{posted} = false;
+    $timerinfo->{curtimer} = "";
 
+	# write the file and get out
     writefile($timerinfo);
-	return(ack("PAUSE", $timersent, "OK"));
+	return true;
 }
 
 
@@ -223,54 +264,66 @@ sub cancel                   # cancel a timer
 	my ($timerinfo) = @_;
 	my $timersent = $timerinfo->{giventimer};
 
-   	if (!exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
+	# make sure timer to cancel really exists
+   	unless (exists $timerinfo->{timers}->{$timersent})
     {
-		return(ack("CANCEL",$timersent,
-				"FAIL:Can't cancel; No such timer."));
+		die("Can't cancel; no such timer.");
     }
 
-    save_history($timerinfo, "cancel");
-    delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
-    delete $timerinfo->{curtimer}
-            if $timerinfo->{curtimer} eq $timerinfo->{giventimer};
+	# get rid of timer
+	_remove_timer($timerinfo, $timersent);
 
+	# write the file and get out
     writefile($timerinfo);
-	return(ack("CANCEL",$timersent,"OK"));
+	return true;
 }
 
 
 sub done                   # done with a timer
 {
 	my ($timerinfo) = @_;
+	my $timersent = $timerinfo->{giventimer};
 
-    if (!exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
+    unless (exists $timerinfo->{timers}->{$timersent})
     {
-		return(ack("DONE",$timerinfo->{curtimer},
-				"FAIL:No such timer as $timerinfo->{giventimer}"));
-        #error(1, "no such timer as $timerinfo->{giventimer}\n");
+		die("No such timer as $timersent");
     }
 
-    #my $thistimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
-    #my $minutes = calc_time($thistimer->{time});
-    #my $hours = range::round($minutes / 60, range::ROUND_DOWN),
-    #my $date = calc_date($thistimer->{time});
-    #my $client = $thistimer->{client};
-    #print "\ntotal time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
-    #    " mins) on $date for $client\n";
-    #print "please remember this in case there is a problem!\n\n";
+	# cheat by calling the log command, which does exactly what we need
+	log_time($timerinfo);
 
-    log_to_sybase($timerinfo, $timerinfo->{giventimer});
+	# get rid of timer
+	_remove_timer($timerinfo, $timersent);
 
-    save_history($timerinfo, "done");
-    delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
-
-    if ($timerinfo->{curtimer} eq $timerinfo->{giventimer})
+    if ($timerinfo->{curtimer} eq $timersent)
     {
         undef($timerinfo->{curtimer});
     }
 
     writefile($timerinfo);
-	return(ack("DONE",$timerinfo->{giventimer},"OK"));
+	return true;
+}
+
+
+sub log_time
+{
+	my ($timerinfo) = @_;
+
+	# build arg list for insert_time_log and make sure all are there
+	my @insert_args = ();
+	foreach my $attrib ( qw<user employee client project phase>,
+			qw<tracking date hours comments> )
+	{
+		die("cannot log to database without attribute $attrib")
+				unless exists $timerinfo->{$attrib};
+		push @insert_args, $timerinfo->{$attrib};
+	}
+
+	# stuff it into the database (this dies if it fails)
+	insert_time_log(@insert_args);
+
+	# surprisingly, no need to write the file on this one
+	return true;
 }
 
 
@@ -278,558 +331,805 @@ sub list
 {
 	my ($timerinfo) = @_;
 
-	return(ack("LIST",$timerinfo->{giventimer},"OK"));
+	return true;
 }
 
 
 sub rename                   # new name for a timer
 {
 	my ($timerinfo) = @_;
-	my ($func) = 0;
-	my $timersent = $timerinfo->{giventimer};
- 
+
     # just a shortcut here
     my $oldname = $timerinfo->{giventimer};
-    if (!exists $timerinfo->{timers}->{$oldname})
+    unless (exists $timerinfo->{timers}->{$oldname})
     {
-		return(ack("RENAME",$timersent,
-				"FAIL:Can't rename, no such timer."));
+		die("Can't rename; no such timer.");
     }
 
-    my $newname;
-    if ($timerinfo->{newname})
+    if (not $timerinfo->{newname})
     {
-        $newname = $timerinfo->{newname};
-    }
-    else
-    {
-		return(ack("RENAME",$timersent,
-				"FAIL:New name not specified"));
+		die("New name not specified");
     }
 
-    # if we're renaming ...
+    my $newname = $timerinfo->{newname};
+
+    # if changing timer name
     if ($newname ne $oldname)
     {
+		# can't rename to same name as an existing timer, of course
         if (exists $timerinfo->{timers}->{$newname})
         {
-			return(ack("RENAME",$timersent,
-					"FAIL:That timer already exists"));
+			die("That timer already exists");
         }
 
+		# copy old to new
         $timerinfo->{timers}->{$newname} = $timerinfo->{timers}->{$oldname};
+		# delete new
         delete $timerinfo->{timers}->{$oldname};
-        # got to do this so get_client() (below) will work
-        $timerinfo->{giventimer} = $newname;
     }
 
-    # but of course we might just be changing the client
-	# not checking client with database
-    #$timerinfo->{timers}->{$newname}->{client} = get_client($func, $timerinfo);
+    # change other parameters
+	# (not checking these against database)
     $timerinfo->{timers}->{$newname}->{client} = $timerinfo->{client}
-			if $timerinfo->{client} ne "";
+			if $timerinfo->{client};
     $timerinfo->{timers}->{$newname}->{project} = $timerinfo->{project}
-			if $timerinfo->{project} ne "";
+			if $timerinfo->{project};
     $timerinfo->{timers}->{$newname}->{phase} = $timerinfo->{phase}
-			if $timerinfo->{phase} ne "";
+			if $timerinfo->{phase};
 
+	# timer should be marked unposted so changes can go to database
+	$timerinfo->{timers}->{$newname}->{posted} = false;
+
+	# switch current timer marker if renaming current timer
     $timerinfo->{curtimer} = $newname if $timerinfo->{curtimer} eq $oldname;
-	
+
+	# write the file and get out
     writefile($timerinfo);
-	return(ack("RENAME",$timersent,"OK"));
+	return true;
 }
 
+
+# ------------------------------------------------------------
+# Helper Procedures
+# ------------------------------------------------------------
+
+
+sub _remove_timer
+{
+	my ($timerinfo, $timer_to_remove) = @_;
+
+	# save to history file, get rid of timer, and reset current timer marker
+	# if the removed timer is the current one
+
+    save_history($timerinfo, $timerinfo->{command});
+    delete $timerinfo->{timers}->{$timer_to_remove};
+    $timerinfo->{curtimer} = ""
+            if $timerinfo->{curtimer} eq $timer_to_remove;
+}
 
 
 # ------------------------------------------------------------
 # File manipulation Procedures
 # ------------------------------------------------------------
 
+
 sub readfile
 {
-    my ($timerinfo) = @_;
+	my ($timerinfo) = @_;
 
-    open(TFILE, $timerinfo->{tfile}) or return 0;
-    while ( <TFILE> )
-    {
-        chomp;
-        my ($key, $time, $client, $project, $phase) = split(/\t/);
-        my $curtimer = {};
-        $curtimer->{time} = $time;
-        $curtimer->{client} = $client;
-        $curtimer->{project} = $project;
-        $curtimer->{phase} = $phase;
-        $timerinfo->{timers}->{$key} = $curtimer;
-        $timerinfo->{curtimer} = $key if ($time =~ /-$/);
-    }
+	open(TFILE, $timerinfo->{tfile}) or die("can't read timer file");
+	$timerinfo->{curtimer} = "";
+	while ( <TFILE> )
+	{
+		chomp;
+		my ($key, $time, $client, $proj, $phase, $posted) = split(/\t/);
+		my $curtimer = {};
+		$curtimer->{time} = $time;
+		$curtimer->{client} = $client;
+		$curtimer->{project} = string::upper($proj);
+		$curtimer->{phase} = string::upper($phase);
+		$curtimer->{posted} = string::upper($posted);
+		$timerinfo->{timers}->{$key} = $curtimer;
+		$timerinfo->{curtimer} = $key if ($time =~ /-$/);
+	}
 	close(TFILE);
 }
 
 
 sub writefile
 {
-    my ($timerinfo) = @_;
+	my ($timerinfo) = @_;
 
-    open(TFILE, ">$timerinfo->{tfile}") or die "can't open timer file";
-    my $timer;
-    foreach $timer (keys %{$timerinfo->{timers}})
-    {
-       my $timerstuff = $timerinfo->{timers}->{$timer};
-       print TFILE $timer, "\t", $timerstuff->{time}, "\t",
-                $timerstuff->{client}, "\t", $timerstuff->{project},
-				"\t", $timerstuff->{phase}, "\n";
-    }
-    close(TFILE);
+	# don't really care whether this succeeds or not
+	save_to_db($timerinfo);
 
-    # if these don't work, no big deal, but if running under Linux, they
-    # should reset the file to be accessible from 4DOS/Win95
-    eval { chown -1, scalar(getgrnam(SAMBAGRP)), $timerinfo->{tfile} };
-    eval { chmod 0660, $timerinfo->{tfile} };
+	open(TFILE, ">$timerinfo->{tfile}") or die("can't write to timer file");
+	foreach my $timername (keys %{$timerinfo->{timers}})
+	{
+		my $timerstuff = $timerinfo->{timers}->{$timername};
+		my $phase = $timerstuff->{phase} ? $timerstuff->{phase} : "";
+		print TFILE join("\t",
+				$timername, $timerstuff->{time},
+				$timerstuff->{client}, $timerstuff->{project},
+				$phase, $timerstuff->{posted},
+			), "\n";
+	}
+	close(TFILE);
 }
 
 
 sub save_history
 {
-    my ($timerinfo, $func) = @_;
-    my $timerstuff = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	my ($timerinfo, $command) = @_;
+	my $timerstuff = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
-    open(HIST, ">>$timerinfo->{hfile}") or die("couldn't open history file");
-    local ($,) = "\t";              # put tabs between elements
-    print HIST $timerinfo->{user}, $::USER, $func, $timerinfo->{giventimer},
-            $timerstuff->{time}, $timerstuff->{client}, "\n";
-    close(HIST);
+	open(HIST, ">>$timerinfo->{hfile}") or die("couldn't open history file");
+	print HIST join("\t",
+			$timerinfo->{user}, $ENV{USER}, $command,
+			$timerinfo->{giventimer}, $timerstuff->{time},
+			$timerstuff->{client}, $timerstuff->{project},
+			$timerstuff->{phase},
+		), "\n";
+	close(HIST);
 }
 
+
 # ------------------------------------------------------------
-# Support Procedures
+# Database Procedures for timing
+# ------------------------------------------------------------
+
+
+sub save_to_db
+{
+	my ($timerinfo) = @_;
+
+	my $posted_timers = $t3->do("
+			select t.timer_name
+			from {%timer}.timer t, {%t3}.workgroup_user wu
+			where t.wuser_id = wu.wuser_id
+			and wu.nickname = '$timerinfo->{user}'
+	");
+	return false unless $posted_timers;
+
+	my $old_timernames = [];
+	while ($posted_timers->next_row())
+	{
+		push @$old_timernames, $posted_timers->col(0);
+	}
+
+	foreach my $timer (keys %{$timerinfo->{timers}})
+	{
+		my $timerstuff = $timerinfo->{timers}->{$timer};
+		return false unless db_post_timer($timerinfo->{user}, $timer,
+				$timerstuff, $old_timernames);
+	}
+
+	foreach my $timer (@$old_timernames)
+	{
+		db_delete_timer($timerinfo->{user}, $timer);
+	}
+
+	return true;
+}
+
+
+sub db_post_timer
+{
+	my ($user, $name, $timer, $timernames) = @_;
+
+	my $element_num = aindex(@$timernames, $name);
+	# if the name was found in the list ...
+	if ( $element_num >= $[ )
+	{
+		# if it hasn't been posted ...
+		if (not $timer->{posted})
+		{
+			# try to delete it from the db
+			return false unless db_delete_timer($user, $name);
+		}
+		# remove it from the list
+		splice(@$timernames, $element_num, 1);
+	}
+	else
+	{
+		# not found in the list, mark it as unposted
+		$timer->{posted} = false;
+	}
+
+	# if it hasn't been posted ...
+	if (not $timer->{posted})
+	{
+		my $client = exists $timer->{client} ? "'$timer->{client}'" : "NULL";
+		my $proj = exists $timer->{project} ? "'$timer->{project}'" : "NULL";
+		my $phase = exists $timer->{phase} ? "'$timer->{phase}'" : "NULL";
+		my $result = $t3->do("
+				insert {%timer}.timer
+				select wu.wuser_id, '$name', $client, $proj, $phase
+				from {%t3}.workgroup_user wu
+				where wu.nickname = '$user'
+		");
+		print STDERR $t3->last_error() and
+		return false unless $result and $result->rows_affected() == 1;
+
+		foreach my $chunk (split(',', $timer->{time}))
+		{
+			my $divisor; $chunk =~ s@^(\d+)/@@ and $divisor = $1;
+			$divisor = 1 unless $divisor;
+
+			my ($start_secs, $end_secs) = split('-', $chunk);
+			my $start = "'" . strftime("%b %d, %Y %H:%M:%S",
+					localtime($start_secs)) . "'";
+			my $end = $end_secs ? "'" . strftime("%b %d, %Y %H:%M:%S",
+					localtime($end_secs)) . "'" : "NULL";
+
+			my $result = $t3->do("
+					insert {%timer}.timer_chunk
+					select wu.wuser_id, '$name', $divisor, $start, $end
+					from {%t3}.workgroup_user wu
+					where wu.nickname = '$user'
+			");
+			print STDERR $t3->last_error() and
+			return false unless $result and $result->rows_affected() == 1;
+		}
+
+		# note that timers that are still timing (easy to tell because their
+		# time chunks string ends in a dash) are never considered posted
+		$timer->{posted} = true unless substr($timer->{time}, -1) eq '-';
+	}
+
+	return true;
+}
+
+
+sub db_delete_timer
+{
+	my ($user, $name) = @_;
+
+	my $result = $t3->do("
+			delete {%timer}.timer_chunk
+			where timer_name = '$name'
+			and exists
+			(
+				select 1
+				from {%t3}.workgroup_user
+				where wu.wuser_id = tc.wuser_id
+				and wu.nickname = '$user'
+			)
+	");
+	return false unless $result;
+
+	$result = $t3->do("
+			delete {%timer}.timer
+			where timer_name = '$name'
+			and exists
+			(
+				select 1
+				from {%t3}.workgroup_user
+				where wu.wuser_id = tc.wuser_id
+				and wu.nickname = '$user'
+			)
+	");
+	return false unless $result and $result->rows_affected() == 1;
+
+	return true;
+}
+
+
+# ------------------------------------------------------------
+# Database Procedures for Timer data
+# ------------------------------------------------------------
+
+
+sub get_emp_id
+{
+	my ($user) = @_;
+
+	my $res = $t3->do("
+			select e.emp_id
+			from {%t3}.workgroup_user wu, {%t3}.person pe, {%timer}.employee e
+			where wu.nickname = '$user'
+			and wu.person_id = pe.person_id
+			and pe.person_id = e.person_id
+	");
+	die("default client query failed") unless $res and $res->next_row();
+	return $res->col(0);
+}
+
+
+sub default_client
+{
+	my ($emp) = @_;
+
+	my $res = $t3->do("
+			select e.def_client
+			from {%timer}.employee e
+			where e.emp_id = '$emp'
+	");
+	die("default client query failed") unless $res and $res->next_row();
+	return $res->col(0);
+}
+
+
+sub valid_employees
+{
+	my $res = $t3->do("
+			select e.emp_id, pe.first_name, pe.last_name
+			from {%timer}.employee e, {%t3}.person pe
+			where e.person_id = pe.person_id
+			and exists
+			(
+				select 1
+				from {%timer}.client_employee ce
+				where e.emp_id = ce.emp_id
+				and {&curdate} between ce.start_date and ce.end_date
+			)
+	");
+	die("valid employees query failed:", $t3->last_error()) unless $res;
+
+	my $emps = {};
+	while ($res->next_row())
+	{
+		$emps->{$res->col(0)} = $res->col(1) . " " . $res->col(2);
+	}
+	return $emps;
+}
+
+
+sub valid_clients
+{
+	my ($emp) = @_;
+
+	my $res = $t3->do("
+			select c.client_id, c.name
+			from {%timer}.client c
+			where exists
+			(
+				select 1
+				from {%timer}.employee e, {%timer}.client_employee ce
+				where e.emp_id = '$emp'
+				and e.emp_id = ce.emp_id
+				and c.client_id = ce.client_id
+				and {&curdate} between ce.start_date and ce.end_date
+			)
+	");
+	die("valid clients query failed:", $t3->last_error()) unless $res;
+
+	my $clients = {};
+	while ($res->next_row())
+	{
+		# print STDERR "valid cli: ", $res->col(0), " => ", $res->col(1), "\n";
+		$clients->{$res->col(0)} = $res->col(1);
+	}
+	return $clients;
+}
+
+
+sub valid_projects
+{
+	my ($emp, $client) = @_;
+
+	my $res = $t3->do("
+			select p.proj_id, p.name
+			from {%timer}.project p
+			where p.client_id = '$client'
+			and {&curdate} between p.start_date and p.end_date
+			and exists
+			(
+				select 1
+				from {%timer}.employee e, {%timer}.client_employee ce
+				where e.emp_id = '$emp'
+				and e.emp_id = ce.emp_id
+				and p.client_id = ce.client_id
+				and
+				(
+					p.proj_id = ce.proj_id
+					or ce.proj_id is NULL
+				)
+				and {&curdate} between ce.start_date and ce.end_date
+			)
+	");
+	die("valid projects query failed:", $t3->last_error()) unless $res;
+
+	my $projects = {};
+	while ($res->next_row())
+	{
+		# print STDERR "valid proj: ", $res->col(0), " => ", $res->col(1), "\n";
+		$projects->{$res->col(0)} = $res->col(1);
+	}
+	return $projects;
+}
+
+
+sub proj_requirements
+{
+	my ($client, $proj, $date) = @_;
+	print STDERR "client: $client, proj: $proj\n";
+
+	my $res = $t3->do("
+			select pt.requires_phase, pt.requires_tracking,
+					pt.requires_comments
+			from {%timer}.project p, {%timer}.project_type pt
+			where p.client_id = '$client'
+			and p.proj_id = '$proj'
+			and '$date' between p.start_date and p.end_date
+			and p.project_type = pt.project_type
+	");
+	die("project requirements query failed:", $t3->last_error())
+			unless $res;
+
+	if ($res->next_row())
+	{
+		return $res->all_cols();
+	}
+	else
+	{
+		return (0,0,0);
+	}
+}
+
+
+sub phase_list
+{
+	my $res = $t3->do("
+			select ph.phase_id, ph.name
+			from {%timer}.phase ph
+	");
+	die("phase list query failed:", $t3->last_error()) unless $res;
+
+	my $phases = {};
+	while ($res->next_row())
+	{
+		$phases->{$res->col(0)} = $res->col(1);
+	}
+	return $phases;
+}
+
+
+sub valid_trackings
+{
+	my ($client) = @_;
+
+	my $res = $t3->do("
+			select ct.tracking_code, ct.name
+			from {%timer}.client_tracking ct
+			where ct.client_id = '$client'
+	");
+	die("valid trackings query failed:", $t3->last_error()) unless $res;
+
+	my $track = {};
+	while ($res->next_row())
+	{
+		$track->{$res->col(0)} = $res->col(1);
+	}
+	return $track;
+}
+
+
+sub client_rounding
+{
+	my ($client) = @_;
+
+	my $res = $t3->do("
+			select c.rounding, c.to_nearest
+			from {%timer}.client c
+			where c.client_id = '$client'
+	");
+	die("client rounding query failed:", $t3->last_error())
+			unless $res and $res->next_row();
+
+	return $res->all_cols();
+}
+
+
+sub this_week_totals
+{
+=comment
+	my ($user) = @_;
+
+	# we'll have to do the rounding in three goes for the three types
+	# of rounding ... let's start by building up this rather complex
+	# expression bit by bit so we can easily see what's going on
+	# (also we can use some of the pieces in the queries below)
+	#
+	# first, figure out what "now" means
+	my $now = strftime("%b %e %Y %l:%M%p", localtime(time));
+	# if the end_time is NULL, we're still timing, so use current time
+	my $end = "{&ifnull tc.end_time, '$now'}";
+	# now, figure out the number of seconds in each chunk
+	my $seconds = "datediff(second, tc.start_time, $end) / tc.divisor";
+	# add up all chunks and round up to the nearest minute
+	my $minutes = "ceiling(sum($seconds) / 60.0)";
+	# now turn into hours
+	my $hours = "$minutes / 60.0";
+	# now we can round the hours appropriately and multiply back by to nearest
+	my %rounded_hours;
+	$rounded_hours{U} = "ceiling($hours / c.to_nearest) * c.to_nearest";
+	$rounded_hours{D} = "floor($hours / c.to_nearest) * c.to_nearest";
+	$rounded_hours{O} = "round($hours / c.to_nearest, 0) * c.to_nearest";
+
+	# we need to know Monday's date to get this week's time already logged
+	my $monday = date::MondayDate();
+
+	# do the SQL to get the table correct for totals
+	my $result = run_query qq(
+
+			-- clean out pay_amount
+			delete pay_amount
+
+			-- we need three of these ... I probably should do a loop,
+			-- but this saves me doing separate connections to the DB
+			-- without having to build up the query as a long complex
+			-- string beforehand
+
+			select t.login, t.timer_name, t.client, t.proj, t.phase,
+					max($end) "timer_date", $rounded_hours{U} "hours"
+			into #timer_totals
+			from timer t, timer_chunk tc, client c
+			where t.login = '$user'
+			and t.login = tc.login
+			and t.timer_name = tc.timer_name
+			and t.client = c.client
+			and c.rounding = 'U'
+			group by t.login, t.timer_name, t.client, t.proj, t.phase,
+					c.to_nearest
+
+			insert #timer_totals
+			select t.login, t.timer_name, t.client, t.proj, t.phase,
+					max($end), $rounded_hours{D}
+			from timer t, timer_chunk tc, client c
+			where t.login = '$user'
+			and t.login = tc.login
+			and t.timer_name = tc.timer_name
+			and t.client = c.client
+			and c.rounding = 'D'
+			group by t.login, t.timer_name, t.client, t.proj, t.phase,
+					c.to_nearest
+
+			insert #timer_totals
+			select t.login, t.timer_name, t.client, t.proj, t.phase,
+					max($end), $rounded_hours{O}
+			from timer t, timer_chunk tc, client c
+			where t.login = '$user'
+			and t.login = tc.login
+			and t.timer_name = tc.timer_name
+			and t.client = c.client
+			and c.rounding = 'O'
+			group by t.login, t.timer_name, t.client, t.proj, t.phase,
+					c.to_nearest
+
+			-- get all times for outstanding timers
+			insert pay_amount
+				(log_source, log_id, emp, client, proj, phase, pay_date,
+						hours, requires_payment, requires_billing)
+			select 'timer', 0, e.emp, tt.client, tt.proj, tt.phase,
+					tt.timer_date, tt.hours, pt.requires_payment,
+					pt.requires_billing
+			from #timer_totals tt, employee e, project p, project_type pt
+			where tt.login = e.login
+			and tt.client = p.client
+			and tt.proj = p.proj
+			and tt.timer_date between p.start_date and p.end_date
+			and p.proj_type = pt.proj_type
+
+			-- get any time that has already been logged for "this week"
+			insert pay_amount
+				(log_source, log_id, emp, client, proj, phase, log_date,
+						hours, requires_payment, requires_billing)
+			select tl.log_source, tl.log_id, tl.emp, tl.client,
+					tl.proj, tl.phase, tl.log_date, tl.hours,
+					pt.requires_payment, pt.requires_billing
+			from time_log tl, employee e, project p, project_type pt
+			where tl.emp = e.emp
+			and e.login = '$user'
+			and tl.log_date between '$monday' and dateadd(day, 6, '$monday')
+			and tl.client = p.client
+			and tl.proj = p.proj
+			and tl.log_date between p.start_date and p.end_date
+			and p.proj_type = pt.proj_type
+
+			-- figure out pay amounts
+			exec calc_pay_amount
+
+			-- this should really be handled by the stored procedure,
+			-- but, since it isn't right now, we'll do it
+			update pay_amount
+			set pay_rate = 0
+			where requires_payment = 0
+
+			go
+	);
+	my $rows_affected = '\(\d+ rows? affected\)';
+	my $result_pattern = ($rows_affected . '\n') x 6
+			. '\(return status = 0\)\n' . $rows_affected;
+	# print STDERR ">>$result<<\n>>$result_pattern<<\n" and
+	return undef unless $result =~ /\A$result_pattern\Z/;
+
+	# now get the results
+	my $totals = query_results("
+
+		select pa.client, c.name, pa.pay_rate, sum(pa.hours)
+		from pay_amount pa, client c
+		where pa.client = c.client
+		group by pa.client, c.name, pa.pay_rate
+
+	");
+
+	# and get bad project rows
+	my $bad_proj = timerdata::query_results("
+
+		select t.client, $hours
+		from timer t, timer_chunk tc
+		where t.login = '$user'
+		and t.login = tc.login
+		and t.timer_name = tc.timer_name
+		and not exists
+		(
+			select 1
+			from project p
+			where t.client = p.client
+			and t.proj = p.proj
+			and $end between p.start_date and p.end_date
+		)
+		group by t.client
+
+	");
+
+	return ($totals, $bad_proj);
+=cut
+	die("this weeks totals function not yet implemented");
+}
+
+
+sub insert_time_log
+{
+	my ($user, $emp, $client, $proj, $phase, $tracking, $date,
+			$hours, $comments) = @_;
+
+	$emp = "'$emp'";
+	$client = "'$client'";
+	$proj = "'$proj'";
+	$phase = $phase ? "'$phase'" : "NULL";
+	$tracking = $tracking ? "'$tracking'" : "NULL";
+	$date = "'$date'";
+	$comments =~ s/'/''/g;			# handle literal single quotes
+	$comments = defined $comments ? "'$comments'" : "NULL";
+
+	my $query = "
+			insert {%timer}.time_log
+				(	emp_id, client_id, proj_id, phase_id, tracking_code,
+					log_date, hours, comments,
+					create_user, create_date
+				)
+			values
+			(	$emp, $client, $proj, $phase, $tracking,
+				$date, $hours, $comments,
+				'$user', {&curdate}
+			)
+	";
+
+	# print STDERR "$query\n";
+	my $result = $t3->do($query);
+	die("database error: ", $t3->last_error())
+			unless defined $result and $result->rows_affected() == 1;
+	return true;
+}
+
+
+# ------------------------------------------------------------
+# Communication Procedures
 # ------------------------------------------------------------
 
 sub ack
 {
 	my ($command, $name, $result) = @_;
 
-	my $sendback = '<MESSAGE module="TIMER" command="' . $command 
+	my $sendback = '<MESSAGE module="TIMER" command="' . $command
 			. '" name="' . $name . '">' . $result . '</MESSAGE>';
 
 	return ($sendback);
 }
 
-sub ping
+
+sub ping_response
 {
 	my ($timerinfo) = @_;
 
 	my $timers = $timerinfo->{timers};
 	my $lines;
-	
-	#close(TFILE);
 
 	foreach my $key (keys (%$timers))
 	{
 		my $thistimer  = $timers->{$key};
-		
+
 		my $line = '<MESSAGE module="TIMER"';
 
 # debugging lines
-#		$line = $line . ' tfile="' . $timerinfo->{tfile} .'"';
-#		$line = $line . ' newname="' . $timerinfo->{newname} .'"';
+#		$line .= ' tfile="' . $timerinfo->{tfile} .'"';
+#		$line .= ' newname="' . $timerinfo->{newname} .'"';
 
-		$line = $line . ' user="' . $timerinfo->{user} .'"';
-		$line = $line . ' name="' . $key .'"';
-		$line = $line . ' client="' . $thistimer->{client} . '"' 
-				if $thistimer->{client};
-		$line = $line . ' project="' . $timers->{$key}->{project} . '"' 
-				if $thistimer->{project};
-		$line = $line . ' phase="' . $timers->{$key}->{phase} . '"' 
-				if $thistimer->{phase};
-				
+		$line .= ' user="' . $timerinfo->{user} .'"';
+		$line .= ' name="' . $key .'"';
+		$line .= ' client="' . $thistimer->{client} . '"'
+				if exists $thistimer->{client};
+		$line .= ' project="' . $timers->{$key}->{project} . '"'
+				if exists $thistimer->{project};
+		$line .= ' phase="' . $timers->{$key}->{phase} . '"'
+				if exists $thistimer->{phase};
+
 		if ($thistimer->{time} =~ /-$/)
 		{
 			$line = $line . ' status="ACTIVE"';
 		}
 
-		$line = $line . ' date="' 
+		$line = $line . ' date="'
 			. calc_date($thistimer->{time}) . '"';
 		$line = $line . ' halftime="YES"' if $thistimer->{time} =~ m{/\d+-$};
 		$line = $line . ' elapsed="' . calc_time($thistimer->{time}) . '"';
 
-		# Not sending BD-DATA anymore 
+		# Not sending BD-DATA anymore
 		#$line = $line . '>' . $thistimer->{time} . '</MESSAGE>';
 		$line = $line . '></MESSAGE>' . "\n";
 
-		$lines = $lines . $line;
+		$lines .= $line;
 	}
 
-	return ($lines);
+	return $lines;
 }
 
-sub get_client
-{
-    my ($func, $timerinfo) = @_;
-    # a little shortcut here
-    my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
-    # this is somewhat complicated ...  we need to figure out what the
-    # proper client should be, and then use it as the default ... now,
-    # we have three possible places to get the potential client from:
-    # the default client for this user (out of Sybase), the client
-    # already set for a pre-existing timer, or the client specified on
-    # the command line (if given) ... for starting a timer, the priority
-    # is: pre-existing, command line, default ... for renaming a timer,
-    # the priority is command line, pre-existing, default ... now! if -f
-    # (force) was specified, we can quit right here ... also, if we're
-    # _start_ing a pre-existing timer, the user isn't allowed to change
-    # the client, so we quit in that case too ...
-
-    # got it? here we go ...
-    my $defclient;
-    if ($func ne 'RENAME')                           # anything but new name
-    {                                           # (probably start)
-        if (exists $giventimer->{client})       # pre-existing client first
-        {
-            $defclient = $giventimer->{client};
-        }
-        elsif ($timerinfo->{client})            # then -C option
-        {
-            $defclient = $timerinfo->{client};
-        }
-        else                                    # defclient from Sybase
-        {
-            $defclient = timerdata::default_client($timerinfo->{user});
-        }
-    }
-    else                                        # must be new name
-    {
-        if ($timerinfo->{client})               # -C option first
-        {
-            $defclient = $timerinfo->{client};
-        }
-        elsif (exists $giventimer->{client})    # then pre-existing client
-        {
-            $defclient = $giventimer->{client};
-        }
-        else                                    # defclient from Sybase
-        {
-            $defclient = timerdata::default_client($timerinfo->{user});
-        }
-    }
-    return $defclient if $timerinfo->{force}
-            or ($func eq 'START' and exists $giventimer->{client});
-
-    my $client;
-    # make a block so redo will work
-    CLIENT: {
-        print "which client is this for? ($defclient)  ";
-        $client = <STDIN>;
-        chomp $client;
-        $client = $defclient if not $client;    # use default if not specified
-        my $fullname = timerdata::client_name($client);
-        if (defined($fullname))
-        {
-            print "illegal client number!\n" and redo CLIENT if not $fullname;
-            print "client is $client: $fullname; is this right? (y/N)  ";
-        }
-        else
-        {
-            print "can't verify client number! are you sure you want to ",
-                    "proceed? (y/N)  ";
-        }
-        redo CLIENT unless <STDIN> =~ /^y/i;
-    }
-    return $client;
-}
+# ------------------------------------------------------------
+# Calculation Procedures
+# ------------------------------------------------------------
 
 
 sub calc_time
 {
-    my ($line) = @_;
-    my @times = split(/,/, $line);
-    my $total_time = 0;
+	my ($line) = @_;
+	my @times = split(',', $line);
+	my $total_time = 0;
 
-    my $current_time = 0;
-    foreach my $time (@times)
-    {
-        if ($time =~ /^([+-]\d+)$/)
-        {
-            $total_time += $1 * 60;
-            next;
-        }
+	my $current_time = false;
+	foreach my $time (@times)
+	{
+		if ($time =~ /^([+-]\d+)$/)
+		{
+			$total_time += $1 * 60;
+			next;
+		}
 
-        my ($divisor, $from, $to) = $time =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
-        die "illegal format in time file" unless $from;
-        if (!$to)
-        {
-            die "more than one current time in time file" if $current_time;
-            $current_time = 1;
-            $to = time;
-        }
-        $total_time += ($to - $from) / ($divisor ? $divisor : 1);
-    }
-    return range::round($total_time / 60, range::ROUND_UP);
+		my ($divisor, $from, $to) = $time =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
+		die("illegal format in time file") unless $from;
+		if (!$to)
+		{
+			die("more than one current time in time file") if $current_time;
+			$current_time = true;
+			$to = time;
+		}
+		$total_time += ($to - $from) / ($divisor ? $divisor : 1);
+	}
+	return range::round($total_time / 60, range::ROUND_UP);
 }
 
 
 sub calc_date
 {
-    my ($line) = @_;
+	my ($line) = @_;
 
-    my $seconds;
-    if ($line =~ /(\d+),$/)     # ends in a comma, must be paused
-    {
-        $seconds = $1;
-    }
-    else                        # must be current
-    {
-        $seconds = time;
-    }
+	my $seconds;
+	if ($line and $line =~ /(\d+),$/)	# ends in a comma, must be paused
+	{
+		$seconds = $1;
+	}
+	else								# current or no time given
+	{
+		$seconds = time;
+	}
 
-    # adjust for working after midnight ... if the time is before 6am,
-    # we'll just subtract a day
-    my ($hour) = (localtime $seconds)[2];
-    $seconds -= 24*60*60 if $hour < 6;
+	# adjust for working after midnight ... if the time is before 6am,
+	# we'll just subtract a day
+	my ($hour) = (localtime $seconds)[2];
+	$seconds -= 24*60*60 if $hour < 6;
 
-    my ($day, $mon, $year) = (localtime $seconds)[3..5];
-    return ++$mon . "/" . $day . "/" . ($year + 1900);
-}
-
-
-sub log_to_sybase
-{
-    my ($timerinfo, $log_timer) = @_;
-    # a shortcut
-    my $timer = $timerinfo->{timers}->{$log_timer};
-
-    my ($emp, $client, $rounding, $to_nearest, $date, $hours, $proj, $phase,
-            $cliproj, $comments);
-
-    # please note that the order you ask for the data elements in is
-    # *very* important ... the following things are true:
-    #   you have to do employee before you do client
-    #   you have to do employee before you do project
-    #   you have to do date before you do client
-    #   you have to do date before you do project
-    #   you have to do client before you do hours
-    #   you have to do client before you do project
-    #   you have to do client before you do cliproj
-    #   you have to do project before you do phase
-    #   you have to do project before you do cliproj
-    #   you have to do project before you do comments
-    # based on this, there is not a whole lot you can do differently in
-    # the order chosen below, so DON'T MUCK WITH IT!
-
-    # a bunch of anonymous blocks for purposes of redo
-    # (well, they're called "anonymous" even tho they're named ... go figure)
-    EMP: {
-        my $valid_employees = timerdata::query_results("
-                select e.emp, e.fname, e.lname
-                from employee e
-                order by e.emp
-            ");
-        $emp = input("Employee number or ? for list:",
-                timerdata::emp_number($timerinfo->{user}));
-        if ($emp eq "?")
-        {
-            foreach my $row (@$valid_employees)
-            {
-                print "  {", $row->[0], " - ",
-                        $row->[1], " ", $row->[2], "}\n";
-            }
-            redo EMP;
-        }
-        my $fullname = timerdata::emp_fullname($emp);
-        print "  {Invalid employee!}\n" and redo EMP unless $fullname;
-        print "  {Employee is $fullname}\n";
-    }
-
-    DATE: {
-        $date = input("Date:", calc_date($timer->{time}));
-        print "  {Invalid date!}\n" and redo DATE unless date::isValid($date);
-    }
-
-    CLIENT: {
-        my $valid_clients = timerdata::query_results("
-                select c.client, c.name
-                from client c
-                where exists
-                (
-                    select 1
-                    from client_employee ce
-                    where ce.emp = '$emp'
-                    and ce.client = c.client
-                    and '$date' between ce.start_date and ce.end_date
-                )
-            ");
-        $client = input("Client number or ? for list:", $timer->{client});
-        if ($client eq "?")
-        {
-            foreach my $row (@$valid_clients)
-            {
-                print "  {", $row->[0], " - ", $row->[1], "}\n";
-            }
-            redo CLIENT;
-        }
-        # check for valid client
-        foreach my $row (@$valid_clients)
-        {
-            if ($client eq $row->[0])
-            {
-                print "  {Client is ", $row->[1], "}\n";
-                ($rounding, $to_nearest) = timerdata::client_rounding($client);
-                last CLIENT;
-            }
-        }
-        print "  {Invalid client!}\n";
-        redo CLIENT;
-    }
-
-    HOURS: {
-        $hours = input("Hours:",
-                range::round(calc_time($timer->{time}) / 60,
-                        $rounding, $to_nearest));
-        print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
-                unless $hours == range::round($hours,
-                    range::ROUND_OFF, $to_nearest);
-        print "  {Hours must be greater than zero}\n" and redo HOURS
-                unless $hours > 0;
-    }
-
-    PROJECT: {
-        my $valid_projs = timerdata::query_results("
-                select proj, name
-                from project p
-                where client = '$client'
-                and '$date' between start_date and end_date
-                and exists
-                (
-                    select 1
-                    from client_employee ce
-                    where ce.emp = '$emp'
-                    and ce.client = p.client
-                    and isnull(ce.proj, p.proj) = p.proj
-                    and '$date' between ce.start_date and ce.end_date
-                )
-            ");
-        $proj = input("Project or ? for list:");
-        if ($proj eq "?")
-        {
-            foreach my $row (@$valid_projs)
-            {
-                print "  {", $row->[0], " - ", $row->[1], "}\n";
-            }
-            redo PROJECT;
-        }
-        # uppercase it for 'em
-        $proj = string::upper($proj);
-        # check for valid project
-        foreach my $row (@$valid_projs)
-        {
-            print "  {Project is ", $row->[1], "}\n" and last PROJECT
-                    if $proj eq $row->[0];
-        }
-        print "  {Invalid project!}\n";
-        redo PROJECT;
-    }
-
-    my ($phase_needed, $cliproj_needed, $comments_needed)
-            = timerdata::proj_requirements($client, $proj, $date);
-
-    PHASE: {
-        last PHASE unless $phase_needed;
-        my $valid_phases = timerdata::query_results("
-                select phase, name
-                from phase
-            ");
-        $phase = input("Phase or ? for list:");
-        if ($phase eq "?")
-        {
-            foreach my $row (@$valid_phases)
-            {
-                print "  {", $row->[0], " - ", $row->[1], "}\n";
-            }
-            redo PHASE;
-        }
-        # uppercase it for 'em
-        $phase = string::upper($phase);
-        # check for valid phase
-        foreach my $row (@$valid_phases)
-        {
-            print "  {Phase is ", $row->[1], "}\n" and last PHASE
-                    if $phase eq $row->[0];
-        }
-        print "  {Invalid phase!}\n";
-        redo PHASE;
-    }
-
-    CLIPROJ: {
-        last CLIPROJ unless $cliproj_needed;
-        my $valid_cliprojs = timerdata::query_results("
-                select project_id, name
-                from client_project
-                where client = '$client'
-            ");
-        $cliproj = input("Client Project ID or ? for list:");
-        if ($cliproj eq "?")
-        {
-            foreach my $row (@$valid_cliprojs)
-            {
-                print "  {", $row->[0], " - ", $row->[1], "}\n";
-            }
-            redo CLIPROJ;
-        }
-        # uppercase it for 'em
-        $cliproj = string::upper($cliproj);
-        # check for valid project
-        foreach my $row (@$valid_cliprojs)
-        {
-            print "  {Client project is ", $row->[1], "}\n" and last CLIPROJ
-                    if $cliproj eq $row->[0];
-        }
-        print "  {Invalid client project ID!}\n";
-        redo CLIPROJ;
-    }
-
-    COMMENTS: {
-        last unless $comments_needed;
-        print "\nEnter comments below (maximum 255 chars):\n";
-        print "  (255 chars is a little over 3 lines if your screen is 80\n";
-        print "   columns wide and you don't hit RETURN at all (which you ",
-                "shouldn't))\n";
-        print "Enter ^D (control-D) on a line by itself to finish the ",
-                "comments.\n";
-        local ($/) = undef;
-        $comments = input();
-        while ($comments =~ s/^\s+$//) {};  # no completely blank lines
-        while ($comments =~ s/^\n//) {};    # no extra newlines in front
-        $comments =~ s/\s*\n+\s*$//;        # none at the end either
-        print "  {You must have comments}\n\n" and redo COMMENTS
-                if not $comments;
-        print "  {Comments too long!}\n\n" and redo COMMENTS
-                if length($comments) > 255;
-    }
-
-    print "working.....\n";
-
-    # show everything and double check:
-    #writeln(Log, $emp, timerdata::emp_fullname($emp),
-    #        $client, timerdata::client_name($client), $date,
-    #        $proj, timerdata::proj_name($client, $proj),
-    #        $phase, timerdata::phase_name($phase), $hours,
-    #        $cliproj, timerdata::cliproj_name($client, $cliproj));
-    #writeln(Log_Comments, $comments);
-
-    print "\n\nis everything okay? (y/N)  ";
-    print "\n  {Try to log this timer out again later.}\n" and exit
-            unless <STDIN> =~ /^y/i;
-
-    my $error = timerdata::insert_log($emp, $client, $proj, $phase, $cliproj,
-            $date, $hours, $comments);
-    if ($error)
-    {
-        print "\nthere was some error!\n";
-        print "{$error}\n";
-        print "please report this to a system administrator for resolution\n";
-        exit();
-    }
-    else
-    {
-        print "\ntime has been logged to Sybase\n\n";
-    }
+	my ($day, $mon, $year) = (localtime $seconds)[3..5];
+	return ++$mon . "/" . $day . "/" . ($year + 1900);
 }
