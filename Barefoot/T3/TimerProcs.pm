@@ -46,6 +46,7 @@ use Barefoot::date epoch => BAREFOOT_EPOCH;
 # have to "register" all procs with DataStore
 $DataStore::procs->{build_pay_amount} = \&build_pay_amount;
 $DataStore::procs->{build_profit_item} = \&build_profit_item;
+$DataStore::procs->{calc_sales_commission} = \&calc_sales_commission;
 $DataStore::procs->{calc_insurance_contribution}
 		= \&calc_insurance_contribution;
 $DataStore::procs->{calc_salary_bank} = \&calc_salary_bank;
@@ -69,11 +70,8 @@ sub _fatal
 
 sub _do_or_error
 {
-	my ($ds, $query, @values) = @_;
-
-	croak("not ready to handle placeholders") if @values;
-
-	my $res = $ds->do($query);
+	my $ds = $_[0];
+	my $res = &DataStore::do;
 	_fatal($ds) unless $res;
 }
 
@@ -698,6 +696,132 @@ sub build_profit_item
 	");
 
 	# we don't really want any output from this
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_sales_commission
+#
+# #########################################################################
+#
+# Use this procedure to calculate the sales commission for a given set
+# of profit items.  Be sure and call build_profit_item (above) before calling
+# this procedure.
+#
+# Since this procedure uses the existing profit_item table, it requires no
+# arguments of its own.
+#
+###########################################################################
+
+
+sub calc_sales_commission
+{
+	my ($ds) = @_;
+
+	my $data = $ds->load_table('
+
+		-- first, the project specific sales commissions
+		select pi.profit_id, sc.pay_type, sc.pay_to, pi.client_id, pi.proj_id,
+				pi.total_price, sc.commission_percent
+		from {@profit_item} pi, {@sales_commission} sc
+		where pi.client_id = sc.client_id
+		and pi.proj_id = sc.proj_id
+		and pi.end_date between sc.start_date and sc.end_date
+
+		-- now, the general client sales comms, but not if already superseded
+		union
+		select pi.profit_id, sc.pay_type, sc.pay_to, pi.client_id, pi.proj_id,
+				pi.total_price, sc.commission_percent
+		from {@profit_item} pi, {@sales_commission} sc
+		where pi.client_id = sc.client_id
+		and sc.proj_id is NULL
+		and pi.end_date between sc.start_date and sc.end_date
+		and not exists
+		(
+			select 1
+			from {@profit_item} pi2, {@sales_commission} sc2
+			where pi.profit_id = pi2.profit_id
+			and pi2.client_id = sc2.client_id
+			and pi2.proj_id = sc2.proj_id
+			and pi2.end_date between sc2.start_date and sc2.end_date
+		)
+
+	') or _fatal($ds);
+
+		# now figure the amounts of the commissions (not too tough)
+		# also take advantage of this opportunity to transform the dataset
+		# into the form we want (i.e., to match the sales_comm_amount table)
+	$data->alter_dataset({
+			add_columns		=>	[ qw<name amount> ],
+			remove_columns	=>	[ qw<total_price> ],
+			foreach_row		=>	sub
+			{
+				$_->{amount} = range::round(
+						$_->{total_price} * $_->{commission_percent} / 100,
+						range::ROUND_OFF, .01);
+			}
+	});
+
+	# jam it in the table
+	$ds->replace_table('{@sales_comm_amount}', $data)
+			or _fatal($ds);
+
+		# get the name of the commission payee if an employee
+	_do_or_error($ds, q<
+
+		update {@sales_comm_amount}
+		set name = pe.first_name
+		from {@sales_comm_amount} sca, {@employee} e, {@person} pe
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp_id
+		and e.person_id = pe.person_id
+	>);
+
+		# get the name of the commission payee if a salesman
+	_do_or_error($ds, q<
+
+		update {@sales_comm_amount}
+		set name = s.name
+		from {@sales_comm_amount} sca, {@salesman} s
+		where sca.pay_type = 'S'
+		and sca.pay_to = s.salesman_id
+	>);
+
+		# create a grouped dataset we can use to update the profit_item table
+	$data = $data->group(
+
+			group_by	=>	[ qw<profit_id> ],
+			new_columns	=>	[ qw<profit_id total_sales_comm> ],
+			on_new_group=>	sub
+							{
+								$_->{total_sales_comm} = 0;
+							},
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+
+								$dst->{total_sales_comm} += $src->{amount};
+							},
+	);
+	return "couldn't group commissions by profit_id for some reason\n"
+			unless $data;
+
+	# finally update the profit item table
+	foreach (@$data)
+	{
+		_do_or_error($ds, '
+
+			update {@profit_item}
+			set sales_commission = {total_sales_comm}
+			where profit_id = {profit_id}
+		',
+			%$_
+		);
+	}
+
+	# no output necessary
 	return "";
 }
 
