@@ -22,32 +22,7 @@ use Barefoot::DataStore;
 
 my $user = "sa";
 my $destds = "t3test";
-my $srcdb = "old_timer";
-my $timer_owner = "timer";
-
-my $talker_users =
-{
-	Christy		=>	"Christy Brunker",
-	Claudio		=>	"Claudio Borgiotti",
-	Danny		=>	"Danny Burden",
-	David		=>	"Dave Lee",
-	GPS			=>	"Greg Sluck",
-	Gregg		=>	"Gregg Thomason",
-	Jay			=>	"Jay Vilhena",
-	Marcus		=>	"Marcus Everidge",
-	beeker		=>	"Jim Horner",
-	buddy		=>	"Buddy Burden",
-	marcw		=>	"Marc Ward",
-	mike		=>	"Mike Whitted",
-	spyder		=>	"Chris Weber",
-	strick		=>	"Chris Strickland",
-	tweber		=>	"Tim Weber",
-	wayner		=>	"Wayne Loy",
-	Tom			=>	"Tom Ryan",
-	raminr		=>	"Ramin Rad",
-	sarah		=>	"Sarah Hager",
-	gcallah		=>	"Gene Callahan",
-};
+my $srcdb = "t3";
 
 
 my $opt = {};
@@ -86,254 +61,182 @@ system("make_timer_tables -s$destds");
 
 # now fill them up
 
+set_identityins("t3", "person", "on");
 build_table("person", <<END);
 
-		insert {%t3}.person
-			(first_name, last_name, company_name)
-		select fname, lname, 'Barefoot Software'
-		from $srcdb..employee
-		where emp != '999'
-		;
-		update {%t3}.person
-		set company_name = 'Tessera'
-		where first_name = 'Q'
-		;
-		update {%t3}.person
-		set company_name = 'Plus Computing'
-		where last_name = 'Sheridan'
-		;
-		update {%t3}.person
-		set company_name = 'SET, Inc.'
-		where last_name = 'Santomartino'
-		;
-		update {%t3}.person
-		set company_name = 'St. George Technologies'
-		where last_name = 'Callahan'
-		;
-		update {%t3}.person
-		set company_name = 'C/S Systems'
-		where last_name = 'Borgiotti'
-		;
-		update {%t3}.person
-		set company_name = 'End Results'
-		where last_name = 'Garland'
-		;
-		update {%t3}.person
-		set company_name = 'Cooperative Networking'
-		where last_name = 'Poulin'
-		;
-		update {%t3}.person
-		set company_name = 'Arinbe'
-		where last_name = 'Horner'
-		;
-		update {%t3}.person
-		set company_name = 'Sirius Systems'
-		where first_name = 'Erik'
-		;
-		update {%t3}.person
-		set company_name = 'Phaedo'
-		where last_name in ('Kilmartin','Bubel')
-		;
-		update {%t3}.person
-		set company_name = 'Oaesys'
-		where last_name = 'Vilhena'
-		;
-		update {%t3}.person
-		set company_name = 'Data Technology Consulting'
-		where last_name = 'Choat'
-		;
-		update {%t3}.person
-		set company_name = 'Rad Software'
-		where last_name = 'Rad'
-		;
-		insert {%t3}.person
-			(first_name, last_name, company_name)
-		values ("Danny", "Burden", "International Paper")
-		;
-		insert {%t3}.person
-			(first_name, last_name, company_name)
-		values ("Greg", "Sluck", "Packexpo.com")
-		;
+	insert {~t3}.person
+		(person_id, first_name, last_name, company_name)
+	select * from $srcdb.t3.person
+	;
 
 END
+set_identityins("t3", "person", "off");
 
-build_workgroup_user();
+set_identityins("t3", "workgroup_user", "on");
+build_table("workgroup_user", <<END);
 
-build_table_unchanged("category");
-
-build_table("internal_project", <<END);
-
-		insert {%timer}.internal_project
-		select * from $srcdb..int_project
-		;
-
-END
-
-build_table_unchanged("phase");
-
-build_table_unchanged("client");
-
-build_table("client_tracking", <<END);
-
-		insert {%timer}.client_tracking
-		select * from $srcdb..client_project
-		;
+	insert {~t3}.workgroup_user
+		(wuser_id, person_id, nickname, start_date, end_date)
+	select * from $srcdb.t3.workgroup_user
+	;
 
 END
+set_identityins("t3", "workgroup_user", "off");
 
-build_table_unchanged("project");
+build_table_unchanged("timer", "category");
 
-build_table("employee", <<END);
+build_table_unchanged("timer", "internal_project");
 
-		insert {%timer}.employee
-		select e.emp, pe.person_id, e.show_last, e.def_client, e.has_insurance
-		from $srcdb..employee e, {%t3}.person pe
-		where e.fname = pe.first_name
-		and e.lname = pe.last_name
-		;
+build_table_unchanged("timer", "phase");
 
-END
+build_table_unchanged("timer", "client");
 
-build_table_unchanged("client_employee");
+build_table_unchanged("timer", "client_tracking");
 
-build_table_unchanged("project_type");
+build_table_unchanged("timer", "project");
 
-build_table_unchanged("commission_type");
+build_table_unchanged("timer", "employee");
 
-build_table_unchanged("admin_commission_type");
+build_table_unchanged("timer", "client_employee");
 
-build_table_unchanged("pay_rate");
+build_table_unchanged("timer", "project_type");
 
-build_table_unchanged("bill_rate");
+build_table_unchanged("timer", "commission_type");
 
-build_table_unchanged("billing_ratio");
+build_table_unchanged("timer", "admin_commission_type");
 
-build_table_unchanged("resource_rate");
+build_table_unchanged("timer", "pay_rate");
 
-build_table_unchanged("resource_employee");
+build_table_unchanged("timer", "bill_rate");
 
-build_table_unchanged("salesman");
+build_table_unchanged("timer", "billing_ratio");
 
-build_table_unchanged("admin_commission");
+build_table_unchanged("timer", "resource_rate");
 
-build_table_unchanged("sales_commission");
+build_table_unchanged("timer", "resource_employee");
 
-build_table_unchanged("referral_commission");
+build_table_unchanged("timer", "salesman");
 
-set_identityins("invoice", "on");
+build_table_unchanged("timer", "admin_commission");
+
+build_table_unchanged("timer", "sales_commission");
+
+build_table_unchanged("timer", "referral_commission");
+
+set_identityins("timer", "invoice", "on");
 build_table("invoice", <<END);
 
-	insert {%timer}.invoice
+	insert {~timer}.invoice
 		(invoice_id, client_id, invoice_number, invoice_amount,
 				invoice_billdate, invoice_paydate,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..invoice
+	select * from $srcdb.timer.invoice
 	;
 
 END
-set_identityins("invoice", "off");
+set_identityins("timer", "invoice", "off");
 
-set_identityins("payroll", "on");
+set_identityins("timer", "payroll", "on");
 build_table("payroll", <<END);
 
-	insert {%timer}.payroll
+	insert {~timer}.payroll
 		(payroll_id, period_start, period_end, payroll_amount,
 				overhead_amount, check_date,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..payroll
+	select * from $srcdb.timer.payroll
 	;
 
 END
-set_identityins("payroll", "off");
+set_identityins("timer", "payroll", "off");
 
-set_identityins("commission_payment", "on");
+set_identityins("timer", "commission_payment", "on");
 build_table("commission_payment", <<END);
 
-	insert {%timer}.commission_payment
+	insert {~timer}.commission_payment
 		(payment_id, pay_type, pay_to, payment_amount,
 				check_number, check_date, comments,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..commission_payment
+	select * from $srcdb.timer.commission_payment
 	;
 
 END
-set_identityins("commission_payment", "off");
+set_identityins("timer", "commission_payment", "off");
 
-db_do_or_die("alter table {%timer}.time_log "
+db_do_or_die("alter table {~timer}.time_log "
 		. "replace log_source default 'time_log'");
-db_do_or_die("alter table {%timer}.time_log "
+db_do_or_die("alter table {~timer}.time_log "
 		. "add check (log_source = 'time_log')");
-set_identityins("time_log", "on");
+set_identityins("timer", "time_log", "on");
 build_table("time_log", <<END);
 
-	insert {%timer}.time_log
+	insert {~timer}.time_log
 		(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 				tracking_code, log_date, hours, comments,
 				invoice_id, payroll_id,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..time_log l
+	select * from $srcdb.timer.time_log l
 	;
 
 END
-set_identityins("time_log", "off");
+set_identityins("timer", "time_log", "off");
 
-db_do_or_die("alter table {%timer}.materials_log "
+db_do_or_die("alter table {~timer}.materials_log "
 		. "replace log_source default 'materials_log'");
-db_do_or_die("alter table {%timer}.materials_log "
+db_do_or_die("alter table {~timer}.materials_log "
 		. "add check (log_source = 'materials_log')");
-set_identityins("materials_log", "on");
+set_identityins("timer", "materials_log", "on");
 build_table("materials_log", <<END);
 
-	insert {%timer}.materials_log
+	insert {~timer}.materials_log
 		(log_source, log_id, client_id, proj_id, log_date,
 				amount_billed, amount_paid, comments, invoice_id,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..materials_log op
+	select * from $srcdb.timer.materials_log op
 	;
 
 END
-set_identityins("materials_log", "off");
+set_identityins("timer", "materials_log", "off");
 
-db_do_or_die("alter table {%timer}.class_log "
+db_do_or_die("alter table {~timer}.class_log "
 		. "replace log_source default 'class_log'");
-db_do_or_die("alter table {%timer}.class_log "
+db_do_or_die("alter table {~timer}.class_log "
 		. "add check (log_source = 'class_log')");
-set_identityins("class_log", "on");
+set_identityins("timer", "class_log", "on");
 build_table("class_log", <<END);
 
-	insert {%timer}.class_log
+	insert {~timer}.class_log
 		(log_source, log_id, client_id, proj_id, num_students, num_breaks,
 				log_date, start_time, end_time, comments, invoice_id,
 				create_user, create_date, chguser, chgdate)
-	select * from $srcdb..class_log
+	select * from $srcdb.timer.class_log
 	;
 
 END
-set_identityins("class_log", "off");
+set_identityins("timer", "class_log", "off");
 
-build_table_unchanged("commission_modifier");
+build_table_unchanged("timer", "commission_modifier");
 
-set_identityins("commission", "on");
+set_identityins("timer", "commission", "on");
 build_table("commission", <<END);
 
-	insert {%timer}.commission
+	insert {~timer}.commission
 		(commission_id, comm_type, pay_type, pay_to, period_start, period_end,
 				amount, payment_id, create_user, create_date, chguser, chgdate)
-	select * from $srcdb..commission
+	select * from $srcdb.timer.commission
 	;
 
 END
-set_identityins("commission", "off");
+set_identityins("timer", "commission", "off");
 
-build_table_unchanged("log_commission");
+build_table_unchanged("timer", "log_commission");
 
-build_table_unchanged("salary_bank");
+build_table_unchanged("timer", "salary_bank");
 
-build_table_unchanged("salary_draw");
+build_table_unchanged("timer", "salary_draw");
 
-build_table_unchanged("insurance_rate");
+build_table_unchanged("timer", "insurance_rate");
 
-build_table_unchanged("insurance_contribution");
+build_table_unchanged("timer", "insurance_contribution");
 
 
 
@@ -362,11 +265,11 @@ sub build_table
 
 sub build_table_unchanged
 {
-	my ($table) = @_;
+	my ($schema, $table) = @_;
 
 	my $query = "
-			insert {%timer}.$table
-			select * from $srcdb..$table
+			insert {~$schema}.$table
+			select * from $srcdb.$schema.$table
 			;
 	";
 	build_table($table, $query);
@@ -374,28 +277,8 @@ sub build_table_unchanged
 
 sub set_identityins
 {
-	my ($table, $state) = @_;
+	my ($schema, $table, $state) = @_;
 
-	db_do_or_die("set identity_insert {%timer}.$table $state",
+	db_do_or_die("set identity_insert {~$schema}.$table $state",
 			"set identity insert failed for $table");
-}
-
-sub build_workgroup_user
-{
-	my $query = "";
-	foreach my $tuser (keys %$talker_users)
-	{
-		my ($fname, $lname) = split(' ', $talker_users->{$tuser});
-		$query .= "
-				insert {%t3}.workgroup_user
-					(person_id, nickname, start_date, end_date)
-				select pe.person_id, '$tuser',
-						{BEGINNING_OF_TIME}, {END_OF_TIME}
-				from {%t3}.person pe
-				where pe.first_name = '$fname'
-				and pe.last_name = '$lname'
-				;
-		";
-	}
-	build_table("workgroup_user", $query);
 }
