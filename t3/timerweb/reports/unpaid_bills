@@ -1,12 +1,15 @@
--- SORT GROUP: Error Checkers
--- TITLE: Unpaid Invoices Report
+# SORT GROUP: Error Checkers
+# TITLE: Unpaid Invoices Report
 
-select i.invoice_number "Number:", i.client "C", c.name "Client:",
-		convert(char(10), i.invoice_amount, 1) "Amount:",
-		convert(char(10), i.invoice_billdate, 101) "Billed on:",
-		isnull(convert(char(10), i.invoice_paydate, 101), "unpaid") "Paid on:"
-from invoice i, client c
-where i.client = c.client
-and i.invoice_paydate is NULL
-order by i.invoice_number
-go
+	select i.invoice_number, i.client_id, c.name, i.invoice_amount,
+			i.invoice_billdate, {*paid_on = %invoice_paydate || "unpaid"},
+			i.invoice_paydate
+	from {@invoice} i, {@client} c
+	where i.client_id = c.client_id
+	and i.invoice_paydate is NULL
+	order by i.invoice_number
+->format
+	H=>Inv Num:     C  Client:                         Amount:   Billed On:  Paid On:
+	H=>----------  --- ------------------------------  --------  ----------- -----------
+	B->@<<<<<<<<<  @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @####.##  @<x11 @<x11
+;
