@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.5  1999/01/21 00:50:36  buddy
+# made sure valid payroll dates didn't get overwritten (few as they are)
+#
 # Revision 1.4  1999/01/14 19:51:53  buddy
 # client types now moved to project_types
 # bproj now combined with project (for easier joins)
@@ -204,6 +207,12 @@ run_query -S$server -U$user -D$destdb <<-END
 		where client = "508"
 		and proj = "NET"
 		go
+		-- ILJ
+		update project
+		set proj_type = "R"
+		where client = "509"
+		and proj in ("GEN","PH1","REP","SPL")
+		go
 		-- SIMS, Inc.
 		update project
 		set proj_type = "N"
@@ -347,6 +356,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	where emp = "119"
 	and client = "001"
 	and proj = "SEC"
+	and date < "1/1/1999"
 	go
 	
 	print "fixing payroll dates for 1998"
