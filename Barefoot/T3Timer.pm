@@ -27,7 +27,7 @@ use Barefoot::DataStore;
 use Barefoot::config_file;
 
 use Barefoot::T3::base;
-use Barefoot::T3::Timer qw<calc_date calc_time>;
+use Barefoot::T3::Timer qw<timer_command calc_date calc_time>;
 
 
 # Timer constants
@@ -35,19 +35,6 @@ use Barefoot::T3::Timer qw<calc_date calc_time>;
 use constant FALLBACK_TIMER => 'default';
 
 
-# Timer command map
-our %timer_commands =
-(
-	START		=>	\&start,
-	PAUSE		=>	\&pause,
-	CANCEL		=>	\&cancel,
-	DONE		=>	\&done,
-	LIST		=>	\&list,
-	RENAME		=>	\&rename,
-	LOG			=>	\&log_time,
-);
-
-# data store for database operations
 unless ($ENV{USER})
 {
 	$ENV{USER} = "www";
@@ -138,6 +125,7 @@ sub do_timer_command
 {
 	my ($command, $timerinfo) = @_;
 
+=comment
 	# save command in case later functions need it
 	$timerinfo->{command} = $command;
 
@@ -146,6 +134,8 @@ sub do_timer_command
 	die("half-time flag only makes sense when starting a timer")
 			if $timerinfo->{halftime} and $command ne 'START';
 	$timer_commands{$command}->($timerinfo);
+=cut
+	timer_command($command, $timerinfo);
 }
 
 
@@ -160,239 +150,9 @@ sub setuptimer						# Set up
 	$timerinfo->{user} = t3_username() unless $timerinfo->{user};
 
 	($timerinfo->{tfile}, $timerinfo->{hfile})
-			= t3_filenames("timer", $timerinfo->{user});
+			= t3_filenames(TIMER => $timerinfo->{user});
 
 	return true;
-}
-
-
-# ------------------------------------------------------------
-# Command Procedures
-# ------------------------------------------------------------
-
-
-sub start                   # start a timer
-{
-	my ($timerinfo) = @_;
-	my $timersent = $timerinfo->{giventimer};
-
-	# if new and old are the same, make sure a difference in full/half is
-	# being requested, else it's an error
-    if ($timersent eq $timerinfo->{curtimer})
-	{
-		# $halftime indicates if timer is currently running in halftime mode
-		# $givenhalftime indicates if halftime is being requested
-
-		my $halftime = $timerinfo->{timers}->{$timerinfo->{curtimer}}->{time}
-				=~ m{ 2/ \d+ - $ }x;
-		my $givenhalftime = $timerinfo->{halftime} || 0;
-
-		die("Timer already started in that mode")
-				if ($halftime == $givenhalftime);
-	}
-
-	# if currently timing, pause the current timer
-	if ($timerinfo->{curtimer})
-	{
-		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ',';
-		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{posted} = false;
-	}
-
-	# if not restarting an existing timer, got to build up some structure
-    if (not exists $timerinfo->{timers}->{$timersent})
-	{
-		$timerinfo->{timers}->{$timersent}->{name} = $timersent;
-
-		foreach my $attrib ( qw<client project phase> )
-		{
-			$timerinfo->{timers}->{$timersent}->{$attrib}
-					= $timerinfo->{$attrib} if exists $timerinfo->{$attrib};
-		}
-	}
-
-	# add start time, mark unposted
-	$timerinfo->{timers}->{$timersent}->{time} .=
-			($timerinfo->{halftime} ? "2/" : "") . time . '-';
-	$timerinfo->{timers}->{$timersent}->{posted} = false;
-
-	# change current timer marker (in case caller wishes to display something)
-	$timerinfo->{curtimer} = $timersent;
-
-	# write the file and get out
-	writefile($timerinfo);
-	return true;
-}
-
-
-sub pause                   # pause all timers
-{
-	my ($timerinfo) = @_;
-
-	# make sure pause makes sense
-    if (!$timerinfo->{curtimer})
-    {
-		die("No timer is running");
-    }
-
-	# provide end time, mark unposted, clear current timer
-    $timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ',';
-    $timerinfo->{timers}->{$timerinfo->{curtimer}}->{posted} = false;
-    $timerinfo->{curtimer} = "";
-
-	# write the file and get out
-    writefile($timerinfo);
-	return true;
-}
-
-
-sub cancel                   # cancel a timer
-{
-	my ($timerinfo) = @_;
-	my $timersent = $timerinfo->{giventimer};
-
-	# make sure timer to cancel really exists
-   	unless (exists $timerinfo->{timers}->{$timersent})
-    {
-		die("Can't cancel; no such timer.");
-    }
-
-	# get rid of timer
-	_remove_timer($timerinfo, $timersent);
-
-	# write the file and get out
-    writefile($timerinfo);
-	return true;
-}
-
-
-sub done                   # done with a timer
-{
-	my ($timerinfo) = @_;
-	my $timersent = $timerinfo->{giventimer};
-
-    unless (exists $timerinfo->{timers}->{$timersent})
-    {
-		die("No such timer as $timersent");
-    }
-
-	# cheat by calling the log command, which does exactly what we need
-	log_time($timerinfo);
-
-	# get rid of timer
-	_remove_timer($timerinfo, $timersent);
-
-    if ($timerinfo->{curtimer} eq $timersent)
-    {
-        undef($timerinfo->{curtimer});
-    }
-
-    writefile($timerinfo);
-	return true;
-}
-
-
-sub log_time
-{
-	my ($timerinfo) = @_;
-
-	# build arg list for insert_time_log and make sure all are there
-	my @insert_args = ();
-	foreach my $attrib ( qw<user employee client project phase>,
-			qw<tracking date hours comments> )
-	{
-		die("cannot log to database without attribute $attrib")
-				unless exists $timerinfo->{$attrib};
-		push @insert_args, $timerinfo->{$attrib};
-	}
-
-	# stuff it into the database (this dies if it fails)
-	insert_time_log(@insert_args);
-
-	# surprisingly, no need to write the file on this one
-	return true;
-}
-
-
-sub list
-{
-	my ($timerinfo) = @_;
-
-	return true;
-}
-
-
-sub rename                   # new name for a timer
-{
-	my ($timerinfo) = @_;
-
-    # just a shortcut here
-    my $oldname = $timerinfo->{giventimer};
-    unless (exists $timerinfo->{timers}->{$oldname})
-    {
-		die("Can't rename; no such timer.");
-    }
-
-    if (not $timerinfo->{newname})
-    {
-		die("New name not specified");
-    }
-
-    my $newname = $timerinfo->{newname};
-
-    # if changing timer name
-    if ($newname ne $oldname)
-    {
-		# can't rename to same name as an existing timer, of course
-        if (exists $timerinfo->{timers}->{$newname})
-        {
-			die("That timer already exists");
-        }
-
-		# change name attribute
-		$timerinfo->{timers}->{$oldname}->{name} = $newname;
-		# copy old to new
-        $timerinfo->{timers}->{$newname} = $timerinfo->{timers}->{$oldname};
-		# delete new
-        delete $timerinfo->{timers}->{$oldname};
-    }
-
-    # change other parameters
-	# (not checking these against database)
-    $timerinfo->{timers}->{$newname}->{client} = $timerinfo->{client}
-			if $timerinfo->{client};
-    $timerinfo->{timers}->{$newname}->{project} = $timerinfo->{project}
-			if $timerinfo->{project};
-    $timerinfo->{timers}->{$newname}->{phase} = $timerinfo->{phase}
-			if $timerinfo->{phase};
-
-	# timer should be marked unposted so changes can go to database
-	$timerinfo->{timers}->{$newname}->{posted} = false;
-
-	# switch current timer marker if renaming current timer
-    $timerinfo->{curtimer} = $newname if $timerinfo->{curtimer} eq $oldname;
-
-	# write the file and get out
-    writefile($timerinfo);
-	return true;
-}
-
-
-# ------------------------------------------------------------
-# Helper Procedures
-# ------------------------------------------------------------
-
-
-sub _remove_timer
-{
-	my ($timerinfo, $timer_to_remove) = @_;
-
-	# save to history file, get rid of timer, and reset current timer marker
-	# if the removed timer is the current one
-
-    save_history($timerinfo, $timerinfo->{command});
-    delete $timerinfo->{timers}->{$timer_to_remove};
-    $timerinfo->{curtimer} = ""
-            if $timerinfo->{curtimer} eq $timer_to_remove;
 }
 
 
@@ -423,17 +183,24 @@ sub readfile
 sub writefile
 {
 	my ($timerinfo) = @_;
+	print STDERR "entering writefile function\n" if DEBUG >= 5;
 
+=comment
 	# don't really care whether this succeeds or not
 	try
 	{
-		save_to_db($timerinfo);
+		print STDERR "in try block\n" if DEBUG >= 5;
+		# save_to_db($timerinfo);
 	}
 	catch
 	{
+		print "returning from catch block\n" if DEBUG >= 5;
 		return;					# from catch block
 	};
+	print STDERR "made it past exception block\n" if DEBUG >= 5;
+=cut
 
+	print STDERR "going to print to file $timerinfo->{tfile}\n" if DEBUG >= 3;
 	open(TFILE, ">$timerinfo->{tfile}") or die("can't write to timer file");
 	foreach my $timerstuff (values %{$timerinfo->{timers}})
 	{
