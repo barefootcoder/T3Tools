@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl -w
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -23,6 +23,64 @@
 #
 ###########################################################################
 
+
+###########################################################################
+#
+# constants are placed in a separate package, so they can be accessed thus:
+#
+#	my $reqfile = T3::REQUEST_FILE;
+#
+###########################################################################
+
+package T3;
+
+
+# config file and directives for same
+
+use constant CONFIG_FILE => '/etc/t3.conf';
+
+use constant DBSERVER_DIRECTIVE => 'DBServer';
+use constant DATABASE_DIRECTIVE => 'Database';
+use constant TIMERDIR_DIRECTIVE => 'TimerDir';
+
+
+# files for use by client/server routines
+
+use constant REQUEST_FILE => 't3.request';
+use constant OUTPUT_FILE => 't3.output.';
+
+
+# workgroup names
+
+use constant DEFAULT_WORKGROUP => 'Barefoot';
+#use constant DEFAULT_WORKGROUP => 'TestCompany';
+
+
+# one sub; just don't want to clutter anybody's namespace with this
+
+sub debug
+{
+	if (main::DEBUG)
+	{
+		my $level = 2;							# default in case not specified
+		my $msg;
+		if (@_ > 1)
+		{
+			($level, $msg) = @_;
+		}
+		else
+		{
+			($msg) = @_;
+		}
+
+		print STDERR "$0 ($$): $msg at ", scalar(localtime(time())), "\n"
+				if main::DEBUG >= $level;
+	}
+}
+
+
+###########################################################################
+
 package Barefoot::T3::base;
 
 ### Private ###############################################################
@@ -31,22 +89,10 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
-@EXPORT = qw<t3 t3_username t3_filenames>;
+@EXPORT = qw<t3 t3_username t3_filenames timer_fields todo_fields>;
 
 use Barefoot::base;
 use Barefoot::config_file;
-
-
-# constants
-
-use constant CONFIG_FILE => '/etc/t3.conf';
-
-use constant DBSERVER_DIRECTIVE => 'DBServer';
-use constant DATABASE_DIRECTIVE => 'Database';
-use constant TIMERDIR_DIRECTIVE => 'TimerDir';
-
-use constant DEFAULT_WORKGROUP => 'Barefoot';
-#use constant DEFAULT_WORKGROUP => 'TestCompany';
 
 
 our $t3;									# DataStore for singleton
@@ -96,10 +142,10 @@ sub t3_filenames
 	die("don't know history file for module $module")
 			unless exists $t3_hist_file{$module};
 
-    my $cfg_file = config_file->read(CONFIG_FILE);
-    my $workgroup = $ENV{T3_WORKGROUP} || DEFAULT_WORKGROUP;
+    my $cfg_file = config_file->read(T3::CONFIG_FILE);
+    my $workgroup = $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
 
-    my $t3dir = $cfg_file->lookup($workgroup, TIMERDIR_DIRECTIVE);
+    my $t3dir = $cfg_file->lookup($workgroup, T3::TIMERDIR_DIRECTIVE);
 	die("don't have a directory for timer files") unless $t3dir;
 	die("cannot write to directory $t3dir") unless -d $t3dir and -w $t3dir;
 
@@ -108,6 +154,35 @@ sub t3_filenames
 	print "timer file is $t3file\n" if DEBUG >= 2;
 
 	return ($t3file, $histfile);
+}
+
+
+# THE *_fields() SUBS
+#
+# these looks very esoteric, but they just encapsulate a single place where
+# a timer, todo item, etc can be broken into their various components.
+# by having this function, the fields will always be in the same order,
+# and since the subs are marked lvalue and return slices, you can assign
+# to it too.
+# (Warning! default context for lvalue subs in Perl is scalar, so this is
+# not going to work:
+#
+#		todo_fields($todo) = split("\t");
+#
+# it ought to give you a warning.  proper syntax is this:
+#
+#		(todo_fields($todo)) = split("\t");
+#
+# don't shoot us; we didn't make the rules.)
+
+sub timer_fields : lvalue
+{
+	@{$_[0]}{ qw<name time client project phase posted todo_link> };
+}
+
+sub todo_fields : lvalue
+{
+	@{$_[0]}{ qw<name descr client project due> };
 }
 
 
