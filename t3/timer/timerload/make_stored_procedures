@@ -3,6 +3,12 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.6  2000/03/29 20:25:56  buddy
+# changed stored procedures to match new commission table structure
+# added new table (profit_client) to calc_profit
+# changed *_comm_amount tables to have consistent columns (needed)
+#     by mark_commission script)
+#
 # Revision 1.5  2000/03/16 17:03:11  buddy
 # updated to work with new timer db
 #
@@ -139,6 +145,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		emp					internal_id		NOT NULL,
 		client				internal_id		NOT NULL,
 		proj				internal_id		NOT NULL,
+		phase				internal_id		NULL,
 		date				datetime		NOT NULL,
 		hours				numeric(5,2)	NOT NULL,
 		start_date			datetime		NOT NULL,
@@ -253,6 +260,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		where tlp.emp = brat.emp
 		and tlp.client = brat.client
 		and brat.proj is NULL
+		and brat.phase is NULL
 		and tlp.date between brat.start_date and brat.end_date
 		-- STEP 2: project specific billing ratios
 		update time_log_profit
@@ -261,6 +269,16 @@ run_query -S$server -U$user -D$destdb <<-END
 		where tlp.emp = brat.emp
 		and tlp.client = brat.client
 		and tlp.proj = brat.proj
+		and brat.phase is NULL
+		and tlp.date between brat.start_date and brat.end_date
+		-- STEP 3: phase specific billing ratios
+		update time_log_profit
+		set billing_ratio = brat.ratio
+		from time_log_profit tlp, billing_ratio brat
+		where tlp.emp = brat.emp
+		and tlp.client = brat.client
+		and tlp.proj = brat.proj
+		and tlp.phase = brat.phase
 		and tlp.date between brat.start_date and brat.end_date
 
 		-- now figure billing rate
@@ -273,13 +291,27 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.client = br.client
 		and tlp.proj = br.proj
 		and tlp.date between br.start_date and br.end_date
-		-- STEP 2: resource billing rates
+		-- STEP 2: resource billing rates (all phases)
 		update time_log_profit
 		set bill_rate = rr.rate
 		from time_log_profit tlp, resource_employee re, resource_rate rr
 		where tlp.resource_billing = 1
 		and tlp.class_billing = 0
 		and tlp.emp = re.emp
+		and re.phase is NULL
+		and tlp.client = re.client
+		and tlp.date between re.start_date and re.end_date
+		and re.client = rr.client
+		and re.resrc = rr.resrc
+		and tlp.date between rr.start_date and rr.end_date
+		-- STEP 3: resource billing rates (phase specific)
+		update time_log_profit
+		set bill_rate = rr.rate
+		from time_log_profit tlp, resource_employee re, resource_rate rr
+		where tlp.resource_billing = 1
+		and tlp.class_billing = 0
+		and tlp.emp = re.emp
+		and tlp.phase = re.phase
 		and tlp.client = re.client
 		and tlp.date between re.start_date and re.end_date
 		and re.client = rr.client
@@ -673,6 +705,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		update employee_comm_amount
 		set amount = diff * .04
 		where date < '9/7/98'
+		and diff > 0
 		-- (this formula is somewhat bitchy)
 		declare @rate_factor real, @breakeven_factor real, @flare_factor real
 		select @rate_factor = 12.0
@@ -686,6 +719,7 @@ run_query -S$server -U$user -D$destdb <<-END
 				) / 100.0
 			)
 		where date >= '9/7/98'
+		and diff > 0
 
 		-- round to avoid silly summing mismatches
 		update employee_comm_amount
