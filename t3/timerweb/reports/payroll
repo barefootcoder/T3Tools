@@ -1,218 +1,254 @@
--- SORT GROUP: Financial Reports
--- TITLE: Payroll Report
+# SORT GROUP: Financial Reports
+# TITLE: Payroll Report
 
-print "Period from {start_date} to {end_date}"					{!check_date}
-print ""														{!check_date}
-print ""														{!check_date}
-go																{!check_date}
+&print
+{if !check_date}
+Period from {start_date} to {end_date}
+{endif}
+{if check_date}
+Payroll Checks paid on {check_date}
+{endif}
 
-print "Payroll Checks paid on {check_date}"						{?check_date}
-print ""														{?check_date}
-print ""														{?check_date}
-go																{?check_date}
 
-$(build_pay_amount "
-	exists														{?check_date}
-	(															{?check_date}
-		select 1												{?check_date}
-		from payroll pay										{?check_date}
-		where log.payroll_id = pay.payroll_id					{?check_date}
-		and pay.check_date = '{check_date}'						{?check_date}
-	)															{?check_date}
+;
 
-	log.log_date <= '{end_date}'								{!check_date}
-	and log.payroll_id is NULL									{!check_date}
-	and exists													{!check_date}
-	(															{!check_date}
-		select 1												{!check_date}
-		from pay_rate pr										{!check_date}
-		where log.emp = pr.emp									{!check_date}
-		and log.client = isnull(pr.client, log.client)			{!check_date}
-		and log.proj = isnull(pr.proj, log.proj)				{!check_date}
-		and log.log_date between pr.start_date and pr.end_date	{!check_date}
-		and pr.rate_type != 'S'									{!check_date}
-	)															{!check_date}
-")
-print "done building"
+&proc build_pay_amount
 
-exec calc_pay_amount
-go
+	{if check_date}
+		exists
+		(
+			select 1
+			from {~timer}.payroll pay
+			where log.payroll_id = pay.payroll_id
+			and pay.check_date = '{check_date}'
+		)
+	{endif}
 
-delete pay_amount where requires_payment = 0
-go
+	{if !check_date}
+		log.log_date <= '{end_date}'
+		and log.payroll_id is NULL
+		and exists
+		(
+			select 1
+			from {~timer}.pay_rate pr
+			where log.emp_id = pr.emp_id
+			and log.client_id = isnull(pr.client_id, log.client_id)
+			and log.proj_id = isnull(pr.proj_id, log.proj_id)
+			and log.log_date between pr.start_date and pr.end_date
+			and pr.rate_type != 'S'
+		)
+	{endif}
 
--- for debugging
-/*
-select emp, client, proj, convert(char(10), pay_date, 101) "pay_date", hours,
-	convert(char(6), pay_rate) "payrate", pay_rate_type "PayT",
-	convert(char(12), total_pay, 1) "total_pay"
-from pay_amount
-order by emp, client, proj, pay_date
-*/
-go
+;
 
-select count(*) "time logs to be updated"
-from pay_amount
-go
+# print "done building"
 
-if exists (select 1 from pay_amount where pay_rate_type is NULL)
-	or exists (select 1 from pay_amount where total_pay = 0)
-begin
-	print ""
-	print ""
-	print "<H1>WARNING!!! The following log entries had errors:</H1>"
-	print ""
-	select pa.emp "E", e.fname "employee", pa.client "C", c.name "client",
-			pa.proj, convert(char(10), pa.pay_date, 101) "pay_date", pa.hours,
-			convert(char(6), pa.pay_rate) "payrate", pa.pay_rate_type "PT",
-			convert(char(12), pa.total_pay)
-	from pay_amount pa, employee e, client c
-	where pa.emp = e.emp
-	and pa.client = c.client
-	and
+
+	delete {~reporting}.pay_amount where requires_payment = 0
+->format
+;
+
+
+##################
+### ERROR CHECKING
+##################
+
+
+	# for debugging
+&ignore
+	select emp_id, client_id, proj_id, pay_date, hours,
+			pay_rate, pay_rate_type as PayT, total_pay
+	from {~reporting}.pay_amount
+	order by emp_id, client_id, proj_id, pay_date
+;
+
+	select count(*)
+	from {~reporting}.pay_amount
+->format
+	B=>time logs to be updated: %1
+;
+
+	select pa.emp_id, pe.first_name, pa.client_id, c.name,
+			pa.proj_id, pa.pay_date, pa.hours, pa.pay_rate,
+			pa.pay_rate_type, pa.total_pay
+	from {~reporting}.pay_amount pa, {~timer}.employee e, {~t3}.person pe,
+			{~timer}.client c
+	where pa.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and pa.client_id = c.client_id
+	order by pa.emp_id, pa.client_id, pa.proj_id, pa.pay_date
+->suppress_empty
+->format
+	H->
+	H->
+	H-><H1>WARNING!!! The following log entries had errors:</H1>
+	H->
+	H->E   employee             C   client               PRJ date        hours pay $  PT total pay
+	H->--- -------------------- --- -------------------- --- ----------- ----- ------ -- -------
+	B->@<< @<<<<<<<<<<<<<<<<<<< @<< @<<<<<<<<<<<<<<<<<<< @<< @>>>>>>>>>> @#.## @##.## @< @###.##
+;
+
+{if !check_date}
+	select pa.emp_id, pe.first_name, pa.client_id, c.name,
+			pa.proj_id, pa.pay_date, pa.hours, pa.pay_rate,
+			pa.pay_rate_type, pa.total_pay
+	from {~reporting}.pay_amount pa, {~timer}.employee e, {~t3}.person pe,
+			{~timer}.client c
+	where pa.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and pa.client_id = c.client_id
+	and pa.pay_rate_type != 'S'
+	and pa.pay_date < '{start_date}'
+	order by pa.emp_id, pa.client_id, pa.proj_id, pa.pay_date
+->suppress_empty
+->format
+	H->
+	H->
+	H->WARNING!  The following log entries are suspicious,
+	H->because they are for hours before the start date of
+	H->the payroll period.
+	H->
+	H->E   employee             C   client               PRJ date        hours pay $  PT total pay
+	H->--- -------------------- --- -------------------- --- ----------- ----- ------ -- -------
+	B->@<< @<<<<<<<<<<<<<<<<<<< @<< @<<<<<<<<<<<<<<<<<<< @<< @>>>>>>>>>> @#.## @##.## @< @###.##
+{endif}
+;
+
+
+##################
+### MAIN REPORT
+##################
+
+
+# get $(employee_name e) here
+	select pa.emp_id as EMP, pe.first_name as employee, c.name as client,
+		p.name as project, pa.pay_rate as rate, sum(pa.hours) as hours,
+		sum(pa.total_pay) as total_pay
+	from {~reporting}.pay_amount pa, {~timer}.employee e,
+		{~timer}.client c, {~timer}.project p,
+		{~t3}.person pe
+	where pa.emp_id = e.emp_id
+	and pa.client_id = c.client_id
+	and pa.client_id = p.client_id
+	and pa.proj_id = p.proj_id
+	and pa.pay_date between p.start_date and p.end_date
+	and pa.pay_rate_type != 'S'
+	and e.person_id = pe.person_id
+	group by pa.emp_id, pe.first_name, c.name, p.name, pa.pay_rate
+->format
+	H=>%default
+	B->@<< @<x20 @<x30 @<x30 @##.## @#.## @#####.##
+;
+
+#-----------------------------------------------------------------------------
+# calculate salary stuff
+#-----------------------------------------------------------------------------
+
+&proc calc_salary_bank
+
+	{if !check_date}
+
+		'{start_date}' between sd.start_date and sd.end_date
+
+	{endif}
+
+	{if check_date}
+
+		exists
+		(
+			select 1
+			from {~timer}.payroll pay
+			where pay.check_date = '{check_date}'
+			and pay.period_start between sd.start_date and sd.end_date
+		)
+
+	{endif}
+
+;
+
+#-----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+	#get $(employee_name e) here
+	select pa.emp_id as EMP, pe.first_name as employee,
+		pa.pay_rate as rate, sum(pa.hours) as hours,
+		sum(pa.total_pay) as total
+	from {~reporting}.pay_amount pa, {~timer}.employee e, {~t3}.person pe
+	where pa.emp_id = e.emp_id
+	and pa.pay_rate_type != 'S'
+	and e.person_id = pe.person_id
+	and not exists
 	(
-		pa.pay_rate_type is NULL		-- this should never happen
-		or pa.total_pay = 0				-- there better be some pay there
+		select 1
+		from {~reporting}.salary_amount sa
+		where sa.emp_id = pa.emp_id
 	)
-	order by pa.emp, pa.client, pa.proj, pa.pay_date
-end
-go
+	group by pa.emp_id, pe.first_name, pa.pay_rate
+->format
+	H=>
+	H=>
+	H=>Employee hours by rate
+	H=>
+	H=>%default
+	B->@<< @<x20  @##.##   @##.##   @########.##
+;
 
-if exists														{!check_date}
-(																{!check_date}
-	select 1 from pay_amount where pay_date < '{start_date}'	{!check_date}
-)																{!check_date}
-begin															{!check_date}
-	print ""													{!check_date}
-	print ""													{!check_date}
-	print "WARNING!  The following log entries are suspicious,"	{!check_date}
-	print "because they are for hours before the start date of"	{!check_date}
-	print "the payroll period."									{!check_date}
-	print ""													{!check_date}
-	select pa.emp "E", e.fname "employee", pa.client "C",		{!check_date}
-			c.name "client", pa.proj,							{!check_date}
-			convert(char(10), pa.pay_date, 101) "pay_date",		{!check_date}
-			pa.hours, convert(char(6), pa.pay_rate) "payrate",	{!check_date}
-			pa.pay_rate_type "PT",								{!check_date}
-			convert(char(12), pa.total_pay) "pay"				{!check_date}
-	from pay_amount pa, employee e, client c					{!check_date}
-	where pa.emp = e.emp										{!check_date}
-	and pa.client = c.client									{!check_date}
-	and pa.pay_rate_type != 'S'									{!check_date}
-	and pa.pay_date < '{start_date}'							{!check_date}
-	order by pa.emp, pa.client, pa.proj, pa.pay_date			{!check_date}
-end																{!check_date}
-go																{!check_date}
+	#get $(employee_name e) here
+	select pa.emp_id, pe.first_name,
+		sum(pa.hours), sa.actual_pay "total"
+	from {~reporting}.pay_amount pa, {~timer}.employee e,
+		{~reporting}.salary_amount sa, {~t3}.person pe
+	where pa.emp_id = e.emp_id
+	and pa.emp_id = sa.emp_id
+	and pa.pay_rate_type != 'S'
+	and e.person_id = pe.person_id
+	group by pa.emp_id, pe.first_name, sa.actual_pay
+->format
+	B->@<< @<x20  Salary   @##.##   @########.##
+;
 
-print ""
-print ""
-print "Employee hours by project"
-print ""
-go
-select pa.emp, $(employee_name e) "employee", c.name "client", p.name "project",
-	convert(char(6), pa.pay_rate) "rate",
-	convert(numeric(6,2), sum(pa.hours)) "hours",
-	convert(char(12), sum(pa.total_pay)) "total pay"
-from pay_amount pa, employee e, client c, project p
-where pa.emp = e.emp
-and pa.client = c.client
-and pa.client = p.client
-and pa.proj = p.proj
-and pa.pay_date between p.start_date and p.end_date
-and pa.pay_rate_type != 'S'
-group by pa.emp, $(employee_name e), c.name, p.name, pa.pay_rate
-go
 
--- Add calc_salary_pay here
-exec calc_salary_pay @start_date = '{start_date}',				{!check_date}
-		@end_date = '{end_date}'								{!check_date}
-exec calc_salary_pay @check_date = '{check_date}'				{?check_date}
+#-----------------------------------------------------------------------------
+# calculate company contributions to health insurance
+#-----------------------------------------------------------------------------
 
-print ""
-print ""
-print "Employee hours by rate"
-print ""
-go
+&proc calc_insurance_contribution
+;
 
-set nocount on 
-select pa.emp, $(employee_name e) "employee",
-    convert(char(6), pa.pay_rate) "rate",
-    convert(numeric(6,2), sum ( pa.hours )) "hours",
-    convert(money, sum ( pa.total_pay) ) "total"
-into #payroll_final
-from pay_amount pa, employee e
-where pa.emp = e.emp
-and pa.pay_rate_type != 'S'
-and not exists ( select 1
-                 from salary_amount sa
-                 where sa.emp = pa.emp )
-group by pa.emp, $(employee_name e), pa.pay_rate
+	# use $(employee_name) here
+	select ia.emp_id as EMP, pe.first_name as employee,
+		   ia.total_hours as total_hours,
+		   ia.applicable_hours as applicable_hrs,
+		   ia.company_contribution as contribution
+	from {~reporting}.insurance_amount ia, {~timer}.employee e,
+		{~t3}.person pe
+	where ia.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	order by ia.emp_id
+->format
+	H=>
+	H=>Insurance Contributions for Employees
+	H=>
+	H=>%default
+	B->@<< @<x20 @#######.## @##########.## @########.##
+;
 
-insert #payroll_final
-select pa.emp, $(employee_name e) "employee",
-    "Salary",
-    convert(numeric(6,2), sum ( pa.hours)) "hours",
-    convert(money, sa.actual_pay) "total"
-from pay_amount pa, employee e, salary_amount sa
-where pa.emp = e.emp
-and pa.emp = sa.emp
-and pa.pay_rate_type != 'S'
-group by pa.emp, $(employee_name e), sa.actual_pay
+#-----------------------------------------------------------------------------
 
-select *
-from #payroll_final
-order by emp, rate
-compute sum(hours), sum(total) by emp
-compute sum(hours), sum(total)
-set nocount off 
 
---------------------------------------------------------------------------------
-
-set nocount on
-print ""
-print ""
-print "Insurance Contributions for Employees"
-print ""
-go
-
-calc_insurance_contribution @start_date = '{start_date}'		{!check_date}
-calc_insurance_contribution @check_date = '{check_date}'		{?check_date}
-
-set nocount off
-
-select ia.emp Emp,
-       $(employee_name e) 'Employee',
-       ia.total_hours 'Total Hours',
-       ia.applicable_hours 'Applicable Hrs',
-       ia.barefoot_contribution 'Barefoot Contribution'
-from insurance_amount ia, employee e
-where ia.emp = e.emp
-order by ia.emp
-go
-
---------------------------------------------------------------------------------
-
-print ""
-print "Summary for Salary/Draw Employees"
-print ""
-if exists ( select  1
-			from salary_amount sa, employee e
-			where sa.emp = e.emp  )
-begin
-
-	select  sa.emp,
-		$(employee_name e) "employee",
-	convert (numeric(8,2),sa.total_pay ) total_pay,
-	convert (numeric(8,2),sa.actual_pay ) actual_pay,
-	convert (numeric(8,2),sa.bank_before ) bank_before,
-	convert (numeric(8,2),sa.bank_adjust ) bank_adjust,
-	convert (numeric(8,2),sa.bank_after ) bank_after
-	from salary_amount sa, employee e
-	where sa.emp = e.emp 
-
-end
-else
-begin
-	print "*** There are no currently employees on salary/draw ***"
-end
-go
+	# use $(employee_name) here
+	select  sa.emp_id as EMP, pe.first_name as employee,
+		sa.total_pay as total, sa.actual_pay as actual,
+		sa.bank_before as before, sa.bank_adjustment as adjustmt,
+		sa.bank_after as after
+	from {~reporting}.salary_amount sa, {~timer}.employee e, {~t3}.person pe
+	where sa.emp_id = e.emp_id 
+	and e.person_id = pe.person_id
+->format
+	H=>
+	H=>Summary for Salary/Draw Employees
+	H=>
+	H=>                         <===== PAY =====> <========= BANK =========>
+	H=>%default
+	B->@<< @<x20 @####.## @####.## @####.## @####.## @####.##
+;
