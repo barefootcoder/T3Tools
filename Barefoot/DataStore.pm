@@ -45,6 +45,12 @@ use Barefoot::DataStore::DataSet;
 use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
 
 
+# load_table is just an alias for load_data
+# it's just there for people who feel more comfortable matching it up
+# with replace_table and append_table
+*load_table = \&load_data;
+
+
 our $data_store_dir = DEBUG ? "." : "/etc/data_store";
 
 our $base_types =
@@ -616,12 +622,11 @@ sub rollback
 }
 
 
-# despite its name, load_table can be used to load part of a table,
-# or even data from a multiple-table join
-# the primary difference between load_table and other methods such as do()
-# is that load_table returns a DataSet, whereas do() et al return a ResultSet
+# the primary difference between load_data and other methods such as do()
+# is that load_data returns a DataSet, whereas do() et al return a ResultSet
 # with a DataSet, all the data is in memory at once (not so with a ResultSet)
-sub load_table
+# NOTE: load_table is an alias for load_data
+sub load_data
 {
 	my $this = shift;
 	my ($query) = @_;
@@ -633,9 +638,8 @@ sub load_table
 }
 
 
-# for append_table, you need to send it a reference to an array of hash refs
-# all the hash keys in the hashes should be the same
-# your best bet is to only use a structure returned from load_table()
+# for append_table, you need to send it a DataSet
+# your best bet is to only use a structure returned from load_data()
 sub append_table
 {
 	my $this = shift;
@@ -662,7 +666,7 @@ sub append_table
 	}
 
 	# build an insert statement
-	my @colnames = sort keys %{$data->[0]};
+	my @colnames = $data->colnames();
 	print STDERR "column names are: @colnames\n" if DEBUG >= 3;
 	my $columns = join(',', @colnames);
 	my $placeholders = join(',', ("?") x scalar(@colnames));
@@ -684,9 +688,9 @@ sub append_table
 		if (DEBUG >= 4)
 		{
 			print STDERR "row: $_ => $row->{$_}\n" foreach @colnames;
-			print STDERR "sending bind values: @$row{@colnames}\n"
+			print STDERR "sending bind values: @$row\n"
 		}
-		my $rows = $sth->execute(@$row{@colnames});
+		my $rows = $sth->execute(@$row);
 		unless ($rows)
 		{
 			$this->{last_err} = $sth->errstr();
@@ -853,6 +857,12 @@ sub rows_affected
 sub num_cols
 {
 	return $_[0]->{sth}->{NUM_OF_FIELDS};
+}
+
+
+sub colnames
+{
+	return @{ $_[0]->{sth}->{NAME} };
 }
 
 
