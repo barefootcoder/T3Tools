@@ -1,0 +1,93 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::debug;					# comment out for production use
+
+use Barefoot::exception;
+
+
+# main ()
+
+# test try/catch
+my $caught = 0;
+try {
+	# do nothing, thus no error to catch
+}
+catch
+{
+	$caught = 1;
+};
+die("falsely caught exception") if $caught;
+
+my $line = 0;
+try
+{
+	$line = __LINE__; die("test");
+}
+catch
+{
+	$caught = 1;
+	die("exception incorrectly named") unless $_ eq "test";
+	die("__FILE__ not set") unless $__FILE__ eq $0;
+	die("__LINE__ not set") unless $__LINE__ == $line;
+	return;
+	die("didn't return from catch handler");
+};
+die("didn't catch simple exception") unless $caught;
+
+$caught = 0;
+try
+{
+    $line = __LINE__; rethrow;
+}
+catch
+{
+    die("__FILE__ not set") unless $__FILE__ eq $0;
+    die("__LINE__ not set") unless $__LINE__ == $line;
+    $caught = 1 and return if /^rethrow outside catch block$/;
+};
+die("rethrow out of catch didn't cause exception") unless $caught;
+
+$caught = 0;
+try
+{
+	try
+	{
+		$line = __LINE__; die("test2");
+	}
+	catch
+	{
+		$caught = 1 and return if /bogus/;
+		rethrow;
+	};
+	# note that we can't die for this error, because the try would catch it
+	print STDERR "rethrow didn't work" and exit 1;
+}
+catch
+{
+	die("very confusing error") if $caught;
+			# confusing because the print and exit above should have fired
+	die("nested exception didn't make it") unless /^test2$/;
+	# print "line is $line; LINE is $__LINE__; FILE is $__FILE__\n";
+	die("__FILE__ not set") unless $__FILE__ eq $0;
+	die("__LINE__ not set") unless $__LINE__ == $line;
+	$caught = 1 and return if /^test2$/;
+};
+die("rethrow wasn't caught") unless $caught;
+
+# test timeout
+die("timeout didn't return false") if timeout { while (1) {} } 2;
+die("timeout didn't return true") unless timeout { while (0) {} } 2;
+$caught = 0;
+try
+{
+	timeout { die("test3"); } 2
+}
+catch
+{
+	$caught = 1 and return if /^test3$/;
+};
+die("timeout didn't pass through exception") unless $caught;
+
+print "ALL TESTS PASSED\n";
