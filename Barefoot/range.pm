@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  2001/08/05 02:24:39  buddy
+# moved stuff from comp.pm (in order to phase out that module)
+# changed min and max to be able to handle lists of arbitrary length
+#
 # Revision 1.2  2000/08/28 21:06:18  buddy
 # first truly working version
 #
@@ -65,7 +69,7 @@ sub min
 	return undef unless @_;
 
 	my $min = shift @_;
-	$min = $_ < $min ? $_ : $min foreach @_;
+	$_ < $min ? ($min = $_) : 0 foreach @_;
 	return $min;
 }
 
@@ -75,7 +79,8 @@ sub max
 	return undef unless @_;
 
 	my $max = shift @_;
-	$max = $_ > $max ? $_ : $max foreach @_;
+	$_ > $max ? ($max = $_) : 0 foreach @_;
+	return $max;
 }
 
 
