@@ -14,10 +14,24 @@ use Barefoot::format;
 use constant SIMPLE_FORMAT => '@<< @|| @>> @#.##';
 use constant SIMPLE_FORMAT_RESULT => "A    B    C 12.35";
 
+use constant MLINE_FORMAT => 'Test: ^<<<<<<<<<<<<<<<<<<&'
+		. "\n" . '~~    ^<<<<<<<<<<<<<<<<<<<' . "\n";
+use constant MLINE_FORMAT_RESULT => "Test: this is a test of\n"
+		. "      some very long text\n      that even has some\n"
+		. "      embedded newlines in\n      it.  hopefully this\n"
+		. "      will work. \n\n";
+
+my $mline_text = <<END;
+this is a test of some very long text that even has some embedded newlines
+in it.  hopefully this will work.
+END
+
 
 # test swrite()
 test_format("simple format test",
 		swrite(SIMPLE_FORMAT, qw<A B C>, 12.345), SIMPLE_FORMAT_RESULT);
+test_format("multiline format test",
+		swrite(MLINE_FORMAT, $mline_text), MLINE_FORMAT_RESULT);
 
 # test writeln()
 my $testfile = "format.tst";
