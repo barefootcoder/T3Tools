@@ -1,0 +1,42 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Time Log Review
+
+select distinct tl.emp, $(employee_name e) "employee"
+from time_log tl, employee e
+where tl.emp = e.emp
+and e.login = "[user]"										??user
+and tl.client = "[client]"
+and tl.proj = "[proj]"										??proj
+and tl.date between "[start_date]" and "[end_date]"
+order by tl.emp
+go
+
+select tl.log_id, tl.emp, tl.proj "PRJ",
+		tl.phase "PHASE", tl.cliproj "CLI",
+		convert(char(10), tl.date, 101) "date", tl.hours, tl.comments
+from time_log tl, employee e
+where tl.emp = e.emp
+and e.login = "[user]"										??user
+and tl.client = "[client]"
+and tl.proj = "[proj]"										??proj
+and tl.date between "[start_date]" and "[end_date]"
+order by tl.emp, tl.proj, tl.phase, tl.cliproj
+compute sum(tl.hours)
+	by tl.emp
+go
+
+print ""
+print ""
+print "Totals by Project"
+select tl.emp, $(employee_name e) "employee", tl.proj, tl.phase,
+		tl.cliproj, sum(tl.hours)
+from time_log tl, employee e
+where tl.emp = e.emp
+and e.login = "[user]"										??user
+and tl.client = "[client]"
+and tl.proj = "[proj]"										??proj
+and tl.date between "[start_date]" and "[end_date]"
+group by tl.emp, $(employee_name e), tl.proj, tl.phase, tl.cliproj
+order by tl.proj, tl.phase, tl.cliproj
+compute sum(sum(tl.hours)) by tl.proj
+go
