@@ -132,6 +132,15 @@ sub get_timer_info
 		}
 		# if none of those work, you're stuck with FALLBACK_TIMER
 	}
+
+	try
+	{
+		$timerinfo->{connected} = test_connection($timerinfo);
+	}
+	catch
+	{
+		$timerinfo->{connected} = false;
+	};
 }
 
 
@@ -448,7 +457,14 @@ sub writefile
 	my ($timerinfo) = @_;
 
 	# don't really care whether this succeeds or not
-	save_to_db($timerinfo);
+	try
+	{
+		save_to_db($timerinfo);
+	}
+	catch
+	{
+		return;
+	};
 
 	open(TFILE, ">$timerinfo->{tfile}") or die("can't write to timer file");
 	foreach my $timername (keys %{$timerinfo->{timers}})
@@ -484,6 +500,19 @@ sub save_history
 # ------------------------------------------------------------
 # Database Procedures for timing
 # ------------------------------------------------------------
+
+
+sub test_connection
+{
+	my ($timerinfo) = @_;
+	print STDERR "Entered test_connection\n" if DEBUG >= 4;
+
+	my $test_query = &t3->do(" select 1 ");
+	return false unless $test_query;
+
+	print STDERR "Leaving test_connection w/o error\n" if DEBUG >= 4;
+	return true;
+}
 
 
 sub save_to_db
