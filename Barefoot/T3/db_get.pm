@@ -30,8 +30,8 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_emp_id default_client client_rounding proj_requirements
-		phase_list>;
+@EXPORT_OK = qw<one_datum get_emp_id default_client client_rounding
+		proj_requirements phase_list>;
 
 use Barefoot::DataStore;
 
@@ -41,6 +41,18 @@ use Barefoot::T3::base;
 ###########################
 # Subroutines:
 ###########################
+
+
+sub one_datum
+{
+	my ($query, $err_msg) = @_;
+	$err_msg ||= "query failed : $query";
+
+	my $res = &t3->do($query);
+	die($err_msg) unless $res and $res->next_row();
+
+	return $res->col(0);
+}
 
 
 sub get_emp_id
