@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.9  1999/09/05 05:12:38  buddy
+# added check against client_employee table to verify client for log entry
+#
 # Revision 1.8  1999/07/13 19:44:05  mike
 # Fixed "no timer active" bug
 #
@@ -583,7 +586,7 @@ sub get_client
 
 	my $client;
 	# make a block so redo will work
-	CLIENT {
+	CLIENT: {
 		print "which client is this for? ($defclient)  ";
 		$client = <STDIN>;
 		chomp $client;
