@@ -3,11 +3,16 @@
 
 set nocount on
 go
-print ""
-print "*** Please note: 'if exists' clauses have been installed ***"
-print "*** (Don't be alarmed if the report is smaller than expected) ***"
-print ""
+--print ""
+--print "*** Please note: 'if exists' clauses have been installed ***"
+--print "*** (Don't be alarmed if the report is smaller than expected) ***"
+--print ""
 go
+declare @error_occur int
+
+print "<h4>Part I:</h4>"
+
+select @error_occur = 0
 
 if exists ( select *
 			from project
@@ -18,8 +23,10 @@ begin
 	select *
 	from project
 	where end_date < start_date
+
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 	
 				select p.*
@@ -40,8 +47,10 @@ begin
 		select c.client
 		from client c
 	)
+
+	select @error_occur = 1
+
 end
-go
 
 if exists (
 				select p.*
@@ -62,8 +71,9 @@ begin
 		select pt.proj_type
 		from project_type pt
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select *
@@ -76,8 +86,9 @@ begin
 	select *
 	from project
 	where end_date = '12/31/99'
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -90,8 +101,9 @@ begin
 	select *
 	from bill_rate
 	where end_date < start_date
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select br.*
@@ -116,8 +128,9 @@ begin
 		where p.client = br.client
 		and p.proj = br.proj
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select br.*
@@ -146,8 +159,9 @@ begin
 	)
 	and p.proj_type = pt.proj_type
 	and pt.resource_billing = 1
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select br.*
@@ -190,8 +204,9 @@ begin
 		and p.proj = br.proj
 		and br.end_date between p.start_date and p.end_date
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select *
@@ -205,7 +220,6 @@ begin
 	from bill_rate
 	where end_date = '12/31/99'
 end
-go
 
 if exists ( 
 				select *
@@ -218,8 +232,9 @@ begin
 	select *
 	from resource_employee
 	where end_date < start_date
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select rr.*
@@ -244,8 +259,9 @@ begin
 		re.start_date < rr.start_date
 		or re.end_date > rr.end_date
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select *
@@ -258,8 +274,9 @@ begin
 	select *
 	from resource_rate
 	where end_date < start_date
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select rr.*
@@ -286,8 +303,9 @@ begin
 		and p.proj_type = pt.proj_type
 		and pt.resource_billing = 1
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -300,8 +318,9 @@ begin
 	select *
 	from resource_rate
 	where end_date = '12/31/99'
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -314,8 +333,9 @@ begin
 	select *
 	from resource_employee
 	where end_date = '12/31/99'
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -343,8 +363,9 @@ begin
 		and pr.client  = p.client
 		and isnull ( pr.proj, p.proj )= p.proj
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -371,8 +392,9 @@ begin
 		where sc.client = p.client
 		and sc.proj = p.proj
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select e.*
@@ -397,8 +419,9 @@ begin
 		where ce.emp = e.emp
 		and ce.client = '011'
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists ( 
 				select *
@@ -411,8 +434,9 @@ begin
 	select *
 	from client_employee
 	where end_date < start_date
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select ce.*
@@ -441,8 +465,9 @@ begin
 		and ce.start_date between p.start_date and p.end_date
 		and ce.end_date between p.start_date and p.end_date
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select tl.*
@@ -464,8 +489,9 @@ begin
 		from employee e
 	)
 	order by emp, client, proj, phase
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select tl.*
@@ -493,8 +519,9 @@ begin
 		and tl.proj = p.proj
 	)
 	order by emp, client, proj, phase
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select tl.*
@@ -525,8 +552,9 @@ begin
 		and tl.proj = isnull(ce.proj, tl.proj)
 		and tl.date between ce.start_date and ce.end_date
 	)
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select tl.*
@@ -557,6 +585,15 @@ begin
 		and tl.proj = p1.proj
 		and tl.date between p1.start_date and p1.end_date
 	)
+
+	select @error_occur = 1
+end
+
+if @error_occur = 0
+begin 
+	print ""
+	print "No errors were found in the database."
+	print ""
 end
 go
 
@@ -565,9 +602,13 @@ $(build_profit_item "
 ")
 exec calc_total_price
 exec calc_total_cost
-go
 set nocount on
 go
+declare @error_occur int
+
+print "<h4>Part II:</h4>"
+
+select @error_occur = 0
 
 if exists (
 				select * from time_log_profit
@@ -580,8 +621,9 @@ begin
 	select * from time_log_profit
 	where bill_rate is null
 	and class_billing = 0
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select * from pay_amount
@@ -594,8 +636,9 @@ begin
 	select * from pay_amount
 	where requires_payment = 1
 	and pay_rate is null
+
+	select @error_occur = 1
 end
-go
 
 if exists (
 				select  *
@@ -635,5 +678,14 @@ begin
 	and pt.requires_cliproj = 1
 	and e.emp = tl.emp
 	order by substring ( e.fname,1,10)
+
+	select @error_occur = 1
+end
+
+if @error_occur = 0
+begin 
+	print ""
+	print "No errors were found in the database."
+	print ""
 end
 go
