@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -40,7 +40,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2001 Barefoot Software.
+# licensing agreement.  Copyright (c) 2001-2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -49,6 +49,8 @@ package Barefoot::debug;
 ### Private ###############################################################
 
 use strict;
+
+use Carp;
 
 use Barefoot::cvs;
 
@@ -67,15 +69,9 @@ BEGIN
 }
 
 
-use Barefoot::base;
-
-
-1;
-
-
-#
+###########################
 # Subroutines:
-#
+###########################
 
 
 sub import
@@ -87,9 +83,26 @@ sub import
 
 	my $caller_package = caller;
 	# print STDERR "my calling package is $caller_package\n";
-	die("DEBUG already defined; make use statement earlier in code")
+	croak("DEBUG already defined; make use statement earlier in code")
 			if defined eval "${caller_package}::DEBUG();";
 
 	$debug_value = 1 unless defined $debug_value;
 	eval "sub ${caller_package}::DEBUG () { return $debug_value; }";
+
+	# also have to tuck this value into the Barefoot namespace
+	# this will serve as the master value
+	# (sort of like main:: but it'll work under mod_perl too)
+	# NOTE: it is possible for there to already be a value here; that means
+	# that this is changing the debug value for a module or other sub-script
+	# after it has already been set in the main script.  this is perfectly
+	# acceptable (and in fact desireable sometimes), so check for it first.
+	eval "sub Barefoot::DEBUG () { return $debug_value; }"
+			unless defined eval "Barefoot::DEBUG();";
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
