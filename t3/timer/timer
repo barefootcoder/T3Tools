@@ -3,6 +3,12 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.4  1999/05/04 01:27:23  buddy
+# added time logging directly to Sybase
+# changed -d and -r options
+# polished up history saving
+# added input() function
+#
 # Revision 1.3  1999/04/23 03:59:57  buddy
 # added total function
 # fixed bug with "done" not transmitting proper date to FoxPro
@@ -807,9 +813,17 @@ sub log_to_sybase
 	print "\n  {Try to log this timer out again later.}\n" and exit
 			unless <STDIN> =~ /^y/i;
 
-	timerdata::insert_log($emp, $client, $proj, $phase, $cliproj, $date,
-			$hours, $comments);
-	print "\ntime has been logged to Sybase\n\n";
+	if (timerdata::insert_log($emp, $client, $proj, $phase, $cliproj, $date,
+			$hours, $comments))
+	{
+		print "\ntime has been logged to Sybase\n\n";
+	}
+	else
+	{
+		print "\nthere was some error!\n";
+		print "please report this to a system administrator for resolution\n";
+		exit();
+	}
 }
 
 # rounding function ... note that if $whichway is not specified, it will
