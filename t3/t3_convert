@@ -5,27 +5,38 @@ use strict;
 use Barefoot::T3;
 use Time::Local;
 
+use constant HIST_FILE => 'Timer.his';
+use constant BAK_FILE => 'Timer.bak';
+
 T3::initialize($::ENV{HOME});
 
 print STDERR "$0: no user name defined in ini file\n" and exit(1)
         unless defined($T3::username);
 
-if (! -e "Timer.his") { die ("Error: No history file -- wrong directory?"); }
-if (-e "Timer.bak") { die ("Error: Timer.bak exists -- already converted?"); }
+my $bak_filename = $ARGV[0] . "/" . BAK_FILE;
+my $hist_filename = $ARGV[0] . "/" . HIST_FILE;
 
-rename "Timer.his", "Timer.bak";
+if (! -e $hist_filename) { die ("Error: No history file -- wrong directory?"); }
+if (-e $bak_filename) { die ("Error: " . $bak_filename . " exists -- already converted?"); }
 
-open(IN, "Timer.bak") or die("Error: Can't open Timer.bak file for reading");
-open(OUT, ">Timer.his") or die("Error: Can't create new Timer.his file");
+rename ($hist_filename, $bak_filename);
+
+open(IN, $bak_filename) or die("Error: Can't open Timer.bak file for reading");
+open(OUT, ">" . $hist_filename) or die("Error: Can't create new Timer.his file");
 
 my $perlsecs = time;
 
 while ( <IN> )
 {
 	chomp;
-	my @fields = split /> /;
-	print OUT @fields[0], "><$T3::username><$perlsecs><>";
-	shift @fields;
-	print OUT join('> ', @fields), "\n";
+	
+	s/<BR>/&#13;&#10;/g;
+	s/\cM//g;
+	/<(.*?)><(.*?)><(.*?)><(.*?)>(.*)/;
+	
+	print OUT "<MESSAGE from=\"$1\" location=\"\"";
+	print OUT " time=\"$3\" to=\"$2\" status=\"NORMAL\"";
+	print OUT " subject=\"$4\">$5</MESSAGE>\n";
 }
-close OUT;
+close(OUT);
+close(IN);
