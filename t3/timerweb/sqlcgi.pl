@@ -1,29 +1,5 @@
 #! /usr/bin/perl
 
-# $Header$
-# $Log$
-# Revision 1.6  1999/09/15 17:04:52  buddy
-# changed script to remove annoying "return status = 0" messages from reports
-#
-# Revision 1.5  1999/06/03 16:13:09  buddy
-# added "not" conditional tags (?!)
-#
-# Revision 1.4  1999/05/27 20:44:55  buddy
-# added check for conditional tokens
-# added some comments
-#
-# Revision 1.3  1999/02/18 06:28:55  buddy
-# changed web base path
-# synced to work with new showreports.pl
-#
-# Revision 1.2  1999/02/18 06:16:52  buddy
-# changed to handle cookies turned into environment variables
-# now builds ksh script so can use kshlib functions as well
-#
-# Revision 1.1  1998/12/30 06:24:55  buddy
-# Initial revision
-#
-
 use strict;
 
 use CGI;
@@ -32,6 +8,7 @@ $| = 1;
 my $cgi = new CGI;
 my $script = "/tmp/sqlcgi$$.ksh";
 my $basepath = "/home/httpd/sybase/timer_reports/";
+# my $basepath = "/home/buddy/proj/timerweb/reports/";
 my $lib = "/usr/local/bin/kshlib";
 my $db = "timer";
 my $title = "";
@@ -40,9 +17,10 @@ my $debug_string = "";
 set_environment();
 print $cgi->header();
 
-if ($ARGV[0])
+my $file = $ARGV[0] ? $ARGV[0] : $cgi->param("file");
+if ($file)
 {
-	my $file=$basepath . $ARGV[0];
+	$file=$basepath . $file;
 
 	if (create_script($file, $script))
 	{
@@ -77,8 +55,15 @@ sub set_environment
 	foreach my $name (@cookies)
 	{
 		my $value = $cgi->cookie($name);
-		# print "setting environment value for $name to $value<BR>\n";
 		$ENV{$name} = $value;
+	}
+
+	# get CGI attributes and stick them in the environment too
+	my @attribs = $cgi->param();
+	foreach my $attr (@attribs)
+	{
+		my $value = $cgi->param($attr);
+		$ENV{$attr} = $value;
 	}
 }
 
@@ -109,10 +94,10 @@ END
 		}
 		# check for "only if this var is set" lines
 		# format: any line containing a token like this:
-		#		??var
+		#		{?var}					(depracated form: ??var)
 		# will be removed unless "var" is set; if "var" _is_ set, the
 		# "conditional" token is removed and the line is processed normally
-		if (s/\?\?(\w+)//)
+		if (s/{\?(\w+)}// or s/\?\?(\w+)//)
 		{
 								debug("got conditional $1");
 			next unless defined $ENV{$1};
@@ -120,10 +105,10 @@ END
 		}
 		# check for "only if this var is _not_ set" lines
 		# format: any line containing a token like this:
-		#		?!var
+		#		{!var}					(depracated form:: ?!var)
 		# will be removed if "var" is set; if "var" is _not_ set, the
 		# conditional token is removed and the line is processed normally
-		if (s/\?!(\w+)//)
+		if (s/{!(\w+)}// or s/\?!(\w+)//)
 		{
 								debug("got not conditional $1");
 			next if defined $ENV{$1};
@@ -131,19 +116,22 @@ END
 		}
 		# check for var substitutions
 		# format: any token like this:
-		#		[var]
+		#		{var}					(depracated form: [var])
 		# will be replaced with the value of "var"; there can be any number
 		# of these "substitution" tokens on a given line; it is an error
 		# if "var" is not defined (but see conditional tokens, above)
-		while (/\[(.*?)\]/)
+		while (/{(.*?)}/ or /\[(.*?)\]/)
 		{
+								debug("substituting var $1");
 			my $var = $1;
 			if (!$ENV{$var})
 			{
 				error("$var variable not set");
 				return 0;
 			}
-			s/\[.*?\]/\${$var}/;
+								debug("before substitution: $_");
+			s/\Q$&\E/$ENV{$var}/;
+								debug("after substitution: $_");
 		}
 		print SCRIPT;
 	}
