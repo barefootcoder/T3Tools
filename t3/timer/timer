@@ -8,7 +8,7 @@
 
 use strict;
 
-#use Barefoot::debug;
+#use Barefoot::debug(1);
 
 use CGI;
 use Getopt::Std;
@@ -19,19 +19,18 @@ use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw<get_yn input>;
-use Barefoot::T3Timer qw<get_timer_info do_timer_command calc_date calc_time
-		this_week_totals insert_time_log>;
+use Barefoot::T3Timer qw<get_timer_info do_timer_command this_week_totals
+		insert_time_log>;
+
+use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
+use Barefoot::T3::Timer qw<calc_date calc_time>;
 use Barefoot::T3::db_get qw<client_rounding proj_requirements>;
 
 
 #################################
 # CONSTANTS
 #################################
-
-use constant DBSERVER_DIRECTIVE => 'DBServer';
-use constant DATABASE_DIRECTIVE => 'Database';
-use constant TIMERDIR_DIRECTIVE => 'TimerDir';
 
 
 #################################
@@ -60,7 +59,7 @@ use constant Log_Comments =>
 	'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
 
-#################################';
+#################################
 # OPTIONS AND ENVIRONMENT VARS
 #################################
 
@@ -84,7 +83,7 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcprbtfhu:C:P:H:@:', $opt);
+	getopts('sedlcprbtfhu:C:P:H:@:', $opt) or usage();
 	$timerinfo->{force} = defined $opt->{f};
 	$timerinfo->{noconfirm} = defined $opt->{f};
 	$timerinfo->{halftime} = defined $opt->{h};
@@ -131,10 +130,13 @@ else
 #################################
 
 
+usage() unless $command;
+
 
 #################################
 # main()
 #################################
+
 
 # fill up some basic info in our timerinfo object
 try
@@ -148,6 +150,37 @@ catch
 
 if ($command eq 'START')					# start a timer
 {
+	# integration with TODO module
+	if ($timerinfo->{giventimer} =~ /^todo:(.*)$/)
+	{
+		my $todo_name = $1;
+
+		# don't care about history file name
+		my ($todo_file, undef) = t3_filenames("todo", $timerinfo->{user});
+
+		open(TODO, $todo_file)
+				or die("can't open todo file for $timerinfo->{user}");
+		my $todo = {};
+		my $found = false;
+		while ( <TODO> )
+		{
+			if ( /^$todo_name\t/ )
+			{
+				chomp;
+				(todo_fields($todo)) = split("\t");
+				$found = true;
+				last;
+			}
+		}
+		close(TODO);
+
+		die("can't find todo name $todo_name") unless $found;
+
+		$timerinfo->{giventimer} = $todo_name;
+		$timerinfo->{client} = $todo->{client};
+		$timerinfo->{project} = $todo->{project};
+	}
+
 	unless ($timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
@@ -240,6 +273,11 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 	{
 		print_elapsed($timerinfo);
 		get_giventimer("break down", $timerinfo);
+	}
+
+	if (!exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
+	{
+		error(1, "no such timer as $timerinfo->{giventimer}");
 	}
 
 	my @parts = split(/,/,
@@ -468,6 +506,8 @@ sub get_giventimer
 sub get_timer_parameter
 {
 	my ($parmname) = @_;
+	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n"
+			if DEBUG >= 4;
 
 	# timerinfo can double as parminfo inside get_parameter
 	# objinfo would be the current timer, which we get here
@@ -602,11 +642,14 @@ sub gather_log_info
 	# $timerinfo->{user} may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
-	DATE: {
-		$date = input("Date:", $timer ? calc_date($timer->{time}) : date::today());
-		print "  {Invalid date!}\n" and redo DATE unless date::isValid($date);
-	}
-	$timerinfo->{date} = $date;
+	$timerinfo->{date} = $date = input(
+			"Date:",
+			$timer ? calc_date($timer->{time}) : date::today(),
+			{
+				VALID		=>	\&date::isValid,
+				VALID_ERR	=>	"  {Invalid date!}\n",
+			}
+	);
 
 
 	# Get client info
