@@ -1,0 +1,27 @@
+-- SORT GROUP: Customer Reports
+-- TITLE: Task Status for FEMA Project
+
+select $(period_name "$(period_num tl.date 7 "'2/28/02'")" 7 "'2/28/02'")
+				"Week",
+		cp.name "Task", sum(tl.hours) "Hours"
+from time_log tl, client_project cp
+where tl.client = cp.client
+and tl.cliproj = cp.project_id
+and tl.client = '811'
+group by $(period_name "$(period_num tl.date 7 "'2/28/02'")" 7 "'2/28/02'"),
+		cp.name
+order by $(period_name "$(period_num tl.date 7 "'2/28/02'")" 7 "'2/28/02'"),
+		cp.name
+compute sum(sum(tl.hours))
+	by $(period_name "$(period_num tl.date 7 "'2/28/02'")" 7 "'2/28/02'")
+go
+
+
+select cp.name "Task", sum(tl.hours) "Hours",
+		convert(numeric(5,2), $(round "sum(tl.hours) / 8" .25 U)) "Days"
+from time_log tl, client_project cp
+where tl.client = cp.client
+and tl.cliproj = cp.project_id
+and tl.client = '811'
+group by cp.name
+go
