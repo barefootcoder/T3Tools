@@ -50,10 +50,6 @@ package Barefoot::debug;
 
 use strict;
 
-use base qw(Exporter);
-use vars qw(@EXPORT);
-@EXPORT = qw(DEBUG);
-
 use Barefoot::cvs;
 
 # if you want to test scripts with the -T switch, you're going to have issues.
@@ -71,11 +67,6 @@ BEGIN
 }
 
 
-sub DEBUG ()
-{
-	return 1;
-}
-
 use Barefoot::base;
 
 
@@ -90,11 +81,15 @@ use Barefoot::base;
 sub import
 {
 	my $pkg = shift;
-	# print STDERR "here i am in debug import!\n";
+	my $debug_value = shift;
+	# print STDERR "here i am in debug import with value ";
+	# print defined $debug_value ? $debug_value : "undefined", "\n";
 
 	my $caller_package = caller;
 	# print STDERR "my calling package is $caller_package\n";
 	die("DEBUG already defined; make use statement earlier in code")
 			if defined eval "${caller_package}::DEBUG();";
-	$pkg->export_to_level(1, $pkg, 'DEBUG');
+
+	$debug_value = 1 unless defined $debug_value;
+	eval "sub ${caller_package}::DEBUG () { return $debug_value; }";
 }
