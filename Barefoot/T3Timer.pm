@@ -74,7 +74,7 @@ unless ($ENV{USER})
 	$ENV{SYBASE} = "/opt/sybase";
 	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/dbutils:/opt/sybase";
 }
-our $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
+our $t3;
 
 
 true;
@@ -401,6 +401,14 @@ sub rename                   # new name for a timer
 # ------------------------------------------------------------
 
 
+sub t3
+{
+	$t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER})
+			unless defined $t3;
+	return $t3;
+}
+
+
 sub _remove_timer
 {
 	my ($timerinfo, $timer_to_remove) = @_;
@@ -491,7 +499,7 @@ sub save_to_db
 	my ($timerinfo) = @_;
 	print STDERR "Entered save_to_db\n" if DEBUG >= 4;
 
-	my $posted_timers = $t3->do("
+	my $posted_timers = &t3->do("
 			select t.timer_name
 			from {%timer}.timer t, {%t3}.workgroup_user wu
 			where t.wuser_id = wu.wuser_id
@@ -560,13 +568,13 @@ sub db_post_timer
 		my $client = exists $timer->{client} ? "'$timer->{client}'" : "NULL";
 		my $proj = exists $timer->{project} ? "'$timer->{project}'" : "NULL";
 		my $phase = exists $timer->{phase} ? "'$timer->{phase}'" : "NULL";
-		my $result = $t3->do("
+		my $result = &t3->do("
 				insert {%timer}.timer
 				select wu.wuser_id, '$name', $client, $proj, $phase
 				from {%t3}.workgroup_user wu
 				where wu.nickname = '$user'
 		");
-		print STDERR $t3->last_error() and
+		print STDERR &t3->last_error() and
 		return false unless $result and $result->rows_affected() == 1;
 
 		foreach my $chunk (split(',', $timer->{time}))
@@ -580,13 +588,13 @@ sub db_post_timer
 			my $end = $end_secs ? "'" . strftime("%b %d, %Y %H:%M:%S",
 					localtime($end_secs)) . "'" : "NULL";
 
-			my $result = $t3->do("
+			my $result = &t3->do("
 					insert {%timer}.timer_chunk
 					select wu.wuser_id, '$name', $divisor, $start, $end
 					from {%t3}.workgroup_user wu
 					where wu.nickname = '$user'
 			");
-			print STDERR $t3->last_error() and
+			print STDERR &t3->last_error() and
 			return false unless $result and $result->rows_affected() == 1;
 		}
 
@@ -605,7 +613,7 @@ sub db_delete_timer
 	my ($user, $name) = @_;
 	print STDERR "Entered db_delete_timer, timer $name, user $user\n" if DEBUG >= 4;
 
-	my $result = $t3->do("
+	my $result = &t3->do("
 			delete {%timer}.timer_chunk 
 			where timer_name = '$name'
 			and exists
@@ -619,7 +627,7 @@ sub db_delete_timer
 	return false unless $result;
 	print STDERR "First delete (timer_chunk) finished w/o error\n" if DEBUG >= 4;
 
-	$result = $t3->do("
+	$result = &t3->do("
 			delete {%timer}.timer
 			where timer_name = '$name'
 			and exists
@@ -646,7 +654,7 @@ sub get_emp_id
 {
 	my ($user) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select e.emp_id
 			from {%t3}.workgroup_user wu, {%t3}.person pe, {%timer}.employee e
 			where wu.nickname = '$user'
@@ -662,7 +670,7 @@ sub default_client
 {
 	my ($emp) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select e.def_client
 			from {%timer}.employee e
 			where e.emp_id = '$emp'
@@ -674,7 +682,7 @@ sub default_client
 
 sub valid_employees
 {
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select e.emp_id, pe.first_name, pe.last_name
 			from {%timer}.employee e, {%t3}.person pe
 			where e.person_id = pe.person_id
@@ -686,7 +694,7 @@ sub valid_employees
 				and {&curdate} between ce.start_date and ce.end_date
 			)
 	");
-	die("valid employees query failed:", $t3->last_error()) unless $res;
+	die("valid employees query failed:", &t3->last_error()) unless $res;
 
 	my $emps = {};
 	while ($res->next_row())
@@ -701,7 +709,7 @@ sub valid_clients
 {
 	my ($emp) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select c.client_id, c.name
 			from {%timer}.client c
 			where exists
@@ -714,7 +722,7 @@ sub valid_clients
 				and {&curdate} between ce.start_date and ce.end_date
 			)
 	");
-	die("valid clients query failed:", $t3->last_error()) unless $res;
+	die("valid clients query failed:", &t3->last_error()) unless $res;
 
 	my $clients = {};
 	while ($res->next_row())
@@ -730,7 +738,7 @@ sub valid_projects
 {
 	my ($emp, $client) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select p.proj_id, p.name
 			from {%timer}.project p
 			where p.client_id = '$client'
@@ -750,7 +758,7 @@ sub valid_projects
 				and {&curdate} between ce.start_date and ce.end_date
 			)
 	");
-	die("valid projects query failed:", $t3->last_error()) unless $res;
+	die("valid projects query failed:", &t3->last_error()) unless $res;
 
 	my $projects = {};
 	while ($res->next_row())
@@ -767,7 +775,7 @@ sub proj_requirements
 	my ($client, $proj, $date) = @_;
 	# print STDERR "client: $client, proj: $proj\n";
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select pt.requires_phase, pt.requires_tracking,
 					pt.requires_comments
 			from {%timer}.project p, {%timer}.project_type pt
@@ -776,7 +784,7 @@ sub proj_requirements
 			and '$date' between p.start_date and p.end_date
 			and p.project_type = pt.project_type
 	");
-	die("project requirements query failed:", $t3->last_error())
+	die("project requirements query failed:", &t3->last_error())
 			unless $res;
 
 	if ($res->next_row())
@@ -792,11 +800,11 @@ sub proj_requirements
 
 sub phase_list
 {
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select ph.phase_id, ph.name
 			from {%timer}.phase ph
 	");
-	die("phase list query failed:", $t3->last_error()) unless $res;
+	die("phase list query failed:", &t3->last_error()) unless $res;
 
 	my $phases = {};
 	while ($res->next_row())
@@ -811,12 +819,12 @@ sub valid_trackings
 {
 	my ($client) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select ct.tracking_code, ct.name
 			from {%timer}.client_tracking ct
 			where ct.client_id = '$client'
 	");
-	die("valid trackings query failed:", $t3->last_error()) unless $res;
+	die("valid trackings query failed:", &t3->last_error()) unless $res;
 
 	my $track = {};
 	while ($res->next_row())
@@ -831,12 +839,12 @@ sub client_rounding
 {
 	my ($client) = @_;
 
-	my $res = $t3->do("
+	my $res = &t3->do("
 			select c.rounding, c.to_nearest
 			from {%timer}.client c
 			where c.client_id = '$client'
 	");
-	die("client rounding query failed:", $t3->last_error())
+	die("client rounding query failed:", &t3->last_error())
 			unless $res and $res->next_row();
 
 	return $res->all_cols();
@@ -1030,8 +1038,8 @@ sub insert_time_log
 	";
 
 	# print STDERR "$query\n";
-	my $result = $t3->do($query);
-	die("database error: ", $t3->last_error())
+	my $result = &t3->do($query);
+	die("database error: ", &t3->last_error())
 			unless defined $result and $result->rows_affected() == 1;
 	return true;
 }
