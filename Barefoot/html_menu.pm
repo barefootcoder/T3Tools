@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  2000/01/05 23:55:15  buddy
+# Initial revision
+#
 #
 # $Id$
 # $Revision$
@@ -153,7 +156,7 @@ sub _escape_uri_value
 
 	# the search is a negated char class containing the only valid chars
 	# the replacement is an expression to turn the char into a hex string
-	$value =~ s/[^A-Za-z0-9_.!~*()-]/'%' . sprintf('%x',ord($&))/eg;
+	$value =~ s/[^A-Za-z0-9_.!~*()-]/'%' . sprintf('%02X',ord($&))/eg;
 	return $value;
 }
 
