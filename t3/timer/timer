@@ -156,7 +156,7 @@ if ($command eq 'START')					# start a timer
 
 	if (not exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
 	{
-		print STDERR "given timer doesn't exist, getting new values\n";
+		# print STDERR "given timer doesn't exist, getting new values\n";
 		$timerinfo->{client} = get_client($command, $timerinfo);
 		$timerinfo->{project} = get_project($command, $timerinfo,
 				$timerinfo->{client});
@@ -182,8 +182,7 @@ if ($command eq 'PAUSE')					# pause all timers
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
-		print STDERR "are you sure you want to pause all timers?  (y/N) ";
-		exit unless <STDIN> =~ /^y/i;
+		exit unless get_yn("are you sure you want to pause all timers?");
 	}
 }
 
