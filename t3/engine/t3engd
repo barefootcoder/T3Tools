@@ -193,8 +193,12 @@ sub open_output_pipe
 	}
 
 	my $pipe_file = t3_pipename(T3::OUTPUT_FILE . $id);
-	log_error("client didn't create pipe for $id or wrong mode on pipe")
-			unless -w $pipe_file;
+	unless (-w $pipe_file)
+	{
+		log_error("client didn't create pipe for $id or wrong mode on pipe");
+		return undef;
+	}
+
 	return new FileHandle(">$pipe_file");
 }
 
