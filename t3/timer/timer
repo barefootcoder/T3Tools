@@ -8,7 +8,7 @@
 
 use strict;
 
-use Barefoot::debug;
+#use Barefoot::debug;
 
 use CGI;
 use Getopt::Std;
