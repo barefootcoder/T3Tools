@@ -30,7 +30,7 @@ use constant DATABASE_DIRECTIVE => 'Database';
 use constant TIMERDIR_DIRECTIVE => 'TimerDir';
 
 use constant TIMEFILE_EXT => '.timer';
-use constant HISTFILE => 'history.timer';
+use constant HISTFILE => 'timer.history';
 
 use constant SAMBAGRP => 'guestpc';
 
