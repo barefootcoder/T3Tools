@@ -150,7 +150,11 @@ sub timeout (&$)
 		catch
 		{
 			# print STDERR "exception is >>$_<<\n";
-			$timed_out = 1 and return if /^timeout$/;
+			if ( /^timeout$/ )
+			{
+				$timed_out = 1;
+				return;
+			}
 			rethrow;					# some other exception; rethrow
 		};
 		return not $timed_out;			# _not_ timing out indicates success
