@@ -2,6 +2,8 @@
 
 use strict;
 
+#use Barefoot::debug;							# comment out for production
+
 use Barefoot::T3;
 
 T3::initialize($::ENV{HOME});
