@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.4  2000/01/26 05:18:13  buddy
+# some changes for training rates to work
+#
 # Revision 1.3  1999/12/10 04:23:23  buddy
 # major changes to the way training rates are calculated:
 #     no calculation until project completed
@@ -25,501 +28,664 @@
 # $Id$
 # $Revision$
 
-. /usr/local/bin/kshlib
+. /home/buddy/proj/timerweb/kshlib
 
 server=SYBASE_1
 user=$USER
-destdb=TIMER
+destdb=timertest
+
+while getopts ":S:U:D:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		h)  echo "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb" >&2
+			exit
+			;;
+		:)  echo "$0: $OPTARG requires an argument ($0 -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $0 -h for usage" >&2
+			exit
+	esac
+done
 
 run_query -S$server -U$user -D$destdb <<-END
 
 	-- stored procedures for figuring billing / commission information
 
 
-	-- we have to create the temp table so that the stored procedures
-	-- will compile ... since we don't need any records, we'll use
-	-- a where clause that will always be false
-	$(build_emp_comm "1 = 0")
+	-- these need several tables to hold temporary calculations
+	-- these tables *must* be cleared out before calling the stored procedures!
+	-- note also that all permissions are granted to public on these tables
+	-- so that any user may use the procedures
 
+	-- table for holding pay rates and pay amounts
+	$(overwrite_table pay_amount "
+		log_source			table_name		NOT NULL,
+		log_id				unique_id		NOT NULL,
+		emp					internal_id		NOT NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		date				datetime		NOT NULL,
+		hours				numeric(5,2)	NOT NULL,
+		requires_payment	bit				NOT NULL,
+		pay_rate			money			NULL,
+		pay_rate_type		type_id			NULL,
+		total_pay			money			NULL,
+	")
 
-	-- stored procedure to calculate how much to bill
-	drop procedure billing_amounts
+	grant insert on pay_amount to public
+	grant update on pay_amount to public
+	grant delete on pay_amount to public
 	go
 
-	create procedure billing_amounts
+	-- table for holding the various calculations results
+	$(overwrite_table profit_item "
+		profit_id			unique_id		IDENTITY,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+		log_source			table_name		NULL,
+		log_id				unique_id		NULL,
+		units				numeric(6,2)	NOT NULL,
+		price_per_unit		money			NOT NULL,
+		total_price			money			NULL,
+		total_cost			money			NULL,
+		sales_commission	money			NULL,
+		ref_commission		money			NULL,
+		emp_commission		money			NULL,
+		simple_profit		money			NULL,
+	")
+
+	grant insert on profit_item to public
+	grant update on profit_item to public
+	grant delete on profit_item to public
+	go
+
+	$(overwrite_table time_log_profit "
+		log_source			table_name		NOT NULL,
+		log_id				unique_id		NOT NULL,
+		emp					internal_id		NOT NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NOT NULL,
+		date				datetime		NOT NULL,
+		hours				numeric(5,2)	NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+		requires_payment	bit				NOT NULL,
+		resource_billing	bit				NOT NULL,
+		class_billing		bit				NOT NULL,
+		fixed_price_days	int				NULL,
+		bill_rate			money			NULL,
+		billing_ratio		numeric(4,3)	NOT NULL,
+		pay_rate_type		type_id			NULL,
+		total_pay			money			NULL,
+		sum_by_proj			bit				NOT NULL,
+	")
+
+	grant insert on time_log_profit to public
+	grant update on time_log_profit to public
+	grant delete on time_log_profit to public
+	go
+
+	-- this one is specifically for sales commissions
+	$(overwrite_table sales_comm_amount "
+		profit_id			unique_id		NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		name				description		NULL,
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		commission_percent	percentage		NOT NULL,
+		amount				money			NULL,
+	")
+
+	grant insert on sales_comm_amount to public
+	grant update on sales_comm_amount to public
+	grant delete on sales_comm_amount to public
+	go
+
+	-- and this one is specifically for referral commissions
+	$(overwrite_table referral_comm_amount "
+		profit_id			unique_id		NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		name				description		NULL,
+		emp					internal_id		NOT NULL,
+		hours				numeric(5,2)	NOT NULL,
+		commission			smallmoney		NOT NULL,
+		amount				money			NULL,
+	")
+
+	grant insert on referral_comm_amount to public
+	grant update on referral_comm_amount to public
+	grant delete on referral_comm_amount to public
+	go
+
+	-- and this one is (surprise, surprise) for employee commissions
+	$(overwrite_table employee_comm_amount "
+		profit_id			unique_id		NOT NULL,
+		emp					internal_id		NOT NULL,
+		date				datetime		NOT NULL,
+		pay_to_employee		money			NOT NULL,
+		total_pay			money			NOT NULL,
+		employee_percent	numeric(6,5)	NULL,
+		gross				money			NULL,
+		diff				money			NULL,
+		amount				money			NULL,
+	")
+
+	grant insert on employee_comm_amount to public
+	grant update on employee_comm_amount to public
+	grant delete on employee_comm_amount to public
+	go
+
+
+	-- first procedure figures total price (i.e., all billing stuff)
+	-- this one expectes both time_log_profit and profit_item to be
+	-- "filled up", so please use the ksh function $build_profit_item
+	-- to insure consistency of initial data
+
+	$(drop_procedure calc_total_price)
+
+	create procedure calc_total_price
 	as
-		-- things that don't get billed have no billing amounts
-		update #emp_comm
-		set amt_billed = 0, empcomm = 0
-		from #emp_comm ec, project p, project_type pt
-		where ec.client = p.client
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.requires_billing = 0
 
-		-- now figure out standard billing rates
-		update #emp_comm
-		set billrate = br.rate, salescomm = 0
-		from #emp_comm ec, bill_rate br, project p, project_type pt
-		where ec.amt_billed is NULL
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.requires_billing = 1
-		and pt.bill_by_employee = 0
-		and pt.use_training_rates = 0
-		and ec.client = br.client
-		and ec.proj = br.proj
-		and br.fixed_price_days is NULL
-		and ec.date between br.start_date and br.end_date
+		-- get any billing ratios that might apply
+		-- STEP 1: general client billing ratios
+		update time_log_profit
+		set billing_ratio = brat.ratio
+		from time_log_profit tlp, billing_ratio brat
+		where tlp.emp = brat.emp
+		and tlp.client = brat.client
+		and brat.proj is NULL
+		and tlp.date between brat.start_date and brat.end_date
+		-- STEP 2: project specific billing ratios
+		update time_log_profit
+		set billing_ratio = brat.ratio
+		from time_log_profit tlp, billing_ratio brat
+		where tlp.emp = brat.emp
+		and tlp.client = brat.client
+		and tlp.proj = brat.proj
+		and tlp.date between brat.start_date and brat.end_date
 
-		-- and likewise for resource billing rates
-		update #emp_comm
-		set billrate = rr.rate, salescomm = 0
-		from #emp_comm ec, resource_rate rr, resource_employee re,
-				project p, project_type pt
-		where ec.amt_billed is NULL
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.requires_billing = 1
-		and pt.bill_by_employee = 1
-		and pt.use_training_rates = 0
-		and ec.emp = re.emp
+		-- now figure billing rate
+		-- STEP 1: "regular" billing rates
+		update time_log_profit
+		set bill_rate = br.rate, fixed_price_days = br.fixed_price_days
+		from time_log_profit tlp, bill_rate br
+		where tlp.resource_billing = 0
+		and tlp.class_billing = 0
+		and tlp.client = br.client
+		and tlp.proj = br.proj
+		and tlp.date between br.start_date and br.end_date
+		-- STEP 2: resource billing rates
+		update time_log_profit
+		set bill_rate = rr.rate
+		from time_log_profit tlp, resource_employee re, resource_rate rr
+		where tlp.resource_billing = 1
+		and tlp.class_billing = 0
+		and tlp.emp = re.emp
+		and tlp.client = re.client
+		and tlp.date between re.start_date and re.end_date
+		and re.client = rr.client
 		and re.resrc = rr.resrc
-		and ec.client = rr.client
-		and ec.date between rr.start_date and rr.end_date
-		and ec.date between re.start_date and re.end_date
+		and tlp.date between rr.start_date and rr.end_date
 
-		-- and likewise for training rates
-		update #emp_comm
-		set billrate = tr.rate * tc.num_students
-		from #emp_comm ec, training_class tc, training_rate tr
-		where ec.source_tbl = 'training_class'
-		and ec.client = tc.client
-		and ec.proj = tc.proj
-		and ec.date = tc.start_time
-		and tc.client = tr.client
-		and tc.proj = tr.proj
-		and tc.start_time between tr.start_date and tr.end_date
-		-- while we're here, may as well zero out the log entries
-		-- attached to training projects
-		update #emp_comm
-		set billrate = 0, amt_paid = 0, salescomm = 0 --, payrate = 0
-		from #emp_comm ec, project p, project_type pt
-		where ec.source_tbl not in ('training_class', 'training work')
-		and ec.client = p.client
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.use_training_rates = 1
+		-- insert individual time logs
+		insert profit_item
+			(client, proj, start_date, end_date, log_source, log_id, units,
+					price_per_unit)
+		select tlp.client, tlp.proj, tlp.start_date, tlp.end_date,
+				tlp.log_source, tlp.log_id,
+				$(round "tlp.hours / tlp.billing_ratio" c.to_nearest U),
+				bill_rate
+		from time_log_profit tlp, client c
+		where tlp.class_billing = 0
+		and tlp.sum_by_proj = 0
+		and tlp.fixed_price_days is NULL
+		and tlp.client = c.client
+		and tlp.bill_rate is not NULL
 
-		-- now figure bill hours (including billing ratios)
-		-- first general client billing ratios
-		update #emp_comm
-		set bill_hours = $(round 'ec.hours / br.ratio' .25 U)
-		from #emp_comm ec, billing_ratio br
-		where ec.billrate > 0
-		and ec.emp = br.emp
-		and ec.client = br.client
-		and br.proj is NULL
-		and ec.date between br.start_date and br.end_date
-		-- now project specific billing ratios
-		update #emp_comm
-		set bill_hours = $(round 'ec.hours / br.ratio' .25 U)
-		from #emp_comm ec, billing_ratio br
-		where ec.billrate > 0
-		and ec.emp = br.emp
-		and ec.client = br.client
-		and ec.proj = br.proj
-		and ec.date between br.start_date and br.end_date
-		-- finally, entries with no billing ratios
-		update #emp_comm
-		set bill_hours = ec.hours
-		from #emp_comm ec
-		where ec.billrate is not NULL
-		and ec.bill_hours is NULL
+		-- sum "full project" time logs
+		insert profit_item
+			(client, proj, start_date, end_date, log_source, units,
+					price_per_unit)
+		select tlp.client, tlp.proj, tlp.start_date, tlp.end_date,
+				'time_log SUM', 1,
+				sum($(round "tlp.hours / tlp.billing_ratio" c.to_nearest U)
+						* tlp.bill_rate)
+		from time_log_profit tlp, client c
+		where tlp.class_billing = 0
+		and tlp.sum_by_proj = 1
+		and tlp.fixed_price_days is NULL
+		and tlp.client = c.client
+		and tlp.bill_rate is not NULL
+		group by tlp.client, tlp.proj, tlp.start_date, tlp.end_date
 
-		-- now billing amount is real easy
-		update #emp_comm
-		set amt_billed = bill_hours * billrate
-		where bill_hours > 0
+		-- in order to figure out fixed price days stuff, we
+		-- have to figure out which periods apply
+		-- note that for this particular one, it won't matter whether
+		-- it's "full project" billing or not
+		-- PLEASE NOTE! if the dates passed to this procedure don't line
+		-- up with the boundaries of fixed price days billing periods,
+		-- you're likely to get pretty strange results
+		insert profit_item
+			(client, proj, start_date, end_date, log_source, units,
+					price_per_unit)
+		select distinct client, proj,
+				$(period_start "$(period_num date fixed_price_days)"		\
+						fixed_price_days),
+				$(period_end "$(period_num date fixed_price_days)"			\
+						fixed_price_days),
+				'time_log FIXED', 1, bill_rate
+		from time_log_profit
+		where fixed_price_days is not NULL
+		and bill_rate is not NULL
 
-		-- now get fixed price billing rates, which are (predictably)
-		-- more difficult to figure
-		-- first figure out which fixed price rates we have to worry about
-		select distinct ec.client, ec.proj, br.rate, br.fixed_price_days,
-				$(period_num ec.date br.fixed_price_days) 'period_num',
-				$(period_day br.start_date br.fixed_price_days) 'start_day',
-				convert(datetime, NULL) 'period_start',
-				convert(datetime, NULL) 'period_end',
-				convert(numeric(5,2), NULL) 'number_hours'
-		into #fixed_price_periods
-		from #emp_comm ec, bill_rate br
-		where ec.amt_billed is NULL
-		and ec.client = br.client
-		and ec.proj = br.proj
-		and br.fixed_price_days is not NULL
-		and ec.date between br.start_date and br.end_date
-		-- do we have any winners?
-		if exists (select 1 from #fixed_price_periods)
-		begin
-			-- we'll need to know the date range we care about
-			declare @min_date datetime, @max_date datetime
-			select @min_date = min(ec.date)
-			from #emp_comm ec
-			select @max_date = max(ec.date)
-			from #emp_comm ec
-			-- get start dates for each period
-			update #fixed_price_periods
-			set period_start = $(period_start period_num fixed_price_days)
-			-- and end dates
-			update #fixed_price_periods
-			set period_end = dateadd(day, fixed_price_days - 1, period_start)
-			-- handle partial first period
-			update #fixed_price_periods
-			set period_start = @min_date,
-				rate = rate / fixed_price_days * 
-						(datediff(day, @min_date, period_end) + 1)
-			where period_start < @min_date
-			-- likewise for partial last period
-			update #fixed_price_periods
-			set period_end = @max_date,
-				rate = rate / fixed_price_days * 
-						(datediff(day, period_start, @max_date) + 1)
-			where period_end > @max_date
-			-- have to index it for the cursor
-			create unique index fixed_price
-			on #fixed_price_periods (client, proj, period_start)
-			-- make a cursor to go through the table
-			declare fixed_price cursor
-			for
-				select client, proj, rate, fixed_price_days,
-				period_start, period_end
-				from #fixed_price_periods
-			for update of number_hours
-			-- vars to hold the cursor columns
-			declare @client char(3), @proj char(3), @rate money, @days int,
-					@period_start datetime, @period_end datetime
-			-- open the cursor
-			open fixed_price
-			-- get the first row
-			fetch fixed_price
-			into @client, @proj, @rate, @days, @period_start, @period_end
-			-- loop through
-			while (@@sqlstatus = 0)
-			begin
-				-- figure out how many hours for this row
-				declare @hours numeric(5,2)
-				select @hours = (
-					select sum(hours) 
-					from #emp_comm
-					where client = @client
-					and proj = @proj
-					and date between @period_start and @period_end
-				)
-				-- and put it in
-				update #fixed_price_periods
-				set number_hours = @hours
-				where current of fixed_price
-				-- get the next row
-				fetch fixed_price
-				into @client, @proj, @rate, @days, @period_start, @period_end
-			end
-			-- close the cursor
-			close fixed_price
-			-- debugging
-			-- select * from #fixed_price_periods
-			-- now update the original table
-			update #emp_comm
-			set amt_billed =
-					convert(money, fpp.rate / fpp.number_hours * ec.hours)
-			from #emp_comm ec, #fixed_price_periods fpp
-			where ec.client = fpp.client
-			and ec.proj = fpp.proj
-			and ec.date between fpp.period_start and fpp.period_end
-		end
+		-- whew! now that we have all the profit items set, we can calculate
+		-- the total price (which is after all the point of all this)
+		update profit_item
+		set total_price = units * price_per_unit
 
-		-- set salescomms and refcomms to 0 initially
-		update #emp_comm
-		set salescomm = 0, refcomm = 0
-		where amt_billed is not null
-
-		-- we'll use a cursor to figure the sales comms
-		-- declare it
-		declare salescomm_cursor cursor
-		for
-			select client, proj, date, amt_billed
-			from #emp_comm
-		for update of salescomm
-		-- declare vars we need for the cursor
-		-- (we declared @client and @proj up above)
-		declare @date datetime, @amt_billed money, @salescomm smallmoney
-		-- open it
-		open salescomm_cursor
-		-- get the first row
-		fetch salescomm_cursor
-		into @client, @proj, @date, @amt_billed
-		-- start the loop
-		while (@@sqlstatus = 0)
-		begin
-			if @amt_billed > 0
-			begin
-				-- general client sales commissions
-				select @salescomm = (
-					select sum(@amt_billed * sc.commission_pct / 100.0)
-					from sales_commission sc
-					where sc.client = @client
-					and sc.proj is NULL
-					and @date between sc.start_date and sc.end_date
-				)
-				-- update the salescomm
-				if @salescomm > 0
-				begin
-					update #emp_comm
-					set salescomm = @salescomm
-					where current of salescomm_cursor
-				end
-				-- project specific sales commissions
-				select @salescomm = sum(@amt_billed * sc.commission_pct / 100.0)
-				from sales_commission sc
-				where sc.client = @client
-				and sc.proj = @proj
-				and @date between sc.start_date and sc.end_date
-				-- update the salescomm
-				if @salescomm > 0
-				begin
-					update #emp_comm
-					set salescomm = @salescomm
-					where current of salescomm_cursor
-				end
-			end
-			-- get the next row
-			fetch salescomm_cursor
-			into @client, @proj, @date, @amt_billed
-		end
-		-- close it
-		close salescomm_cursor
 	go
 
-	grant execute on billing_amounts to public
+	grant execute on calc_total_price to public
 	go
 
-	-- stored procedure to figure employee commission: this one
-	-- calls billing_amounts (the other proc)
-	drop procedure emp_commission
-	go
 
-	create procedure emp_commission
+	-- second procedure calculates sales commission
+	-- (expects that calc_total_price has already been run)
+
+	$(drop_procedure calc_sales_commission)
+
+	create procedure calc_sales_commission
 	as
-		-- things that don't get paid have no employee comm
-		update #emp_comm
-		set payrate = 0, amt_paid = 0, empcomm = 0
-		from #emp_comm ec, project p, project_type pt
-		where ec.client = p.client
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.requires_payment = 0
-		-- blank employee is special signal that this came from
-		-- some table other than log (and thus gets no employee comm)
-		update #emp_comm
-		set payrate = 0, empcomm = 0
-		from #emp_comm ec
-		where ec.emp = ''
 
-		-- if we have any training classes in here, we'll figure
-		-- employee commission based on *all* work done for the
-		-- corresponding project ... so let's get those entries now
-		-- (we use a special source_tbl value so we can find them later)
-		-- since you don't know the total profit until the training
-		-- project is officially done, we'll skip any rows where the
-		-- project is "open" (i.e., the end_date is still END_OF_TIME)
-		insert #emp_comm
-			(source_tbl, source_id, emp, client, proj, date, hours, billrate)
-		select 'training work', l.id, l.emp, l.client, l.proj, l.date,
-				l.hours, 0.0
-		from log l, project p, project_type pt
-		where l.client = p.client
-		and l.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.use_training_rates = 1
-		and l.date between p.start_date and p.end_date
-		and p.end_date != $END_OF_TIME
-		and exists
+		-- clear out old records
+		delete sales_comm_amount
+
+		-- first, put project specific sales commissions in our holding table
+		insert sales_comm_amount
+			(profit_id, pay_type, pay_to, client, proj, commission_percent)
+		select pi.profit_id, sc.pay_type, sc.pay_to, pi.client, pi.proj,
+				sc.commission_percent
+		from profit_item pi, sales_commission sc
+		where pi.client = sc.client
+		and pi.proj = sc.proj
+		and pi.end_date between sc.start_date and sc.end_date
+
+		-- now, general client sales comms, but not if already superseded
+		insert sales_comm_amount
+			(profit_id, pay_type, pay_to, client, proj, commission_percent)
+		select pi.profit_id, sc.pay_type, sc.pay_to, pi.client, pi.proj,
+				sc.commission_percent
+		from profit_item pi, sales_commission sc
+		where pi.client = sc.client
+		and sc.proj is NULL
+		and pi.end_date between sc.start_date and sc.end_date
+		and not exists
 		(
 			select 1
-			from #emp_comm ec
-			where l.client = ec.client
-			and l.proj = ec.proj
+			from sales_comm_amount sca2
+			where pi.profit_id = sca2.profit_id
 		)
 
-		-- now figure out pay rates
-		-- general employee rates
-		update #emp_comm
-		set payrate = pr.rate, paytype = pr.rate_type
-		from #emp_comm ec, pay_rate pr
-		where ec.payrate is NULL
-		and ec.emp = pr.emp
+		-- get the name of the commission payee if an employee
+		update sales_comm_amount
+		set name = $(employee_name e)
+		from sales_comm_amount sca, employee e
+		where sca.pay_type = 'E'
+		and sca.pay_to = e.emp
+
+		-- get the name of the commission payee if a salesman
+		update sales_comm_amount
+		set name = s.name
+		from sales_comm_amount sca, salesman s
+		where sca.pay_type = 'S'
+		and sca.pay_to = s.salesman
+
+		-- now figure the amounts of the commissions (not too tough)
+		update sales_comm_amount
+		set amount = pi.total_price * sca.commission_percent / 100.0
+		from sales_comm_amount sca, profit_item pi
+		where sca.profit_id = pi.profit_id
+
+		-- have to have a temp table so we can update the profit_item table
+		select profit_id, sum(amount) "total_sales_comm"
+		into #sales_comm_totals
+		from sales_comm_amount
+		group by profit_id
+
+		-- finally update the profit item table
+		update profit_item
+		set sales_commission = sct.total_sales_comm
+		from profit_item pi, #sales_comm_totals sct
+		where pi.profit_id = sct.profit_id
+
+	go
+
+	grant execute on calc_sales_commission to public
+	go
+
+
+	-- third procedure calculates referral commission
+	-- (also expects that calc_total_price has already been run)
+
+	$(drop_procedure calc_referral_commission)
+
+	create procedure calc_referral_commission
+	as
+		
+		-- clear out old values
+		delete referral_comm_amount
+
+		-- first get the "one-to-one" time logs
+		insert referral_comm_amount
+			(profit_id, pay_type, pay_to, emp, hours, commission)
+		select pi.profit_id, rc.pay_type, rc.pay_to, tlp.emp, tlp.hours,
+				rc.commission
+		from profit_item pi, time_log_profit tlp, referral_commission rc
+		where pi.log_source = tlp.log_source
+		and pi.log_id = tlp.log_id
+		and tlp.emp = rc.emp
+		and tlp.date between rc.start_date and rc.end_date
+
+		-- next, everything else (except the materials logs)
+		insert referral_comm_amount
+			(profit_id, pay_type, pay_to, emp, hours, commission)
+		select pi.profit_id, rc.pay_type, rc.pay_to, tlp.emp, tlp.hours,
+				rc.commission
+		from profit_item pi, time_log_profit tlp, referral_commission rc
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client = tlp.client
+		and pi.proj = tlp.proj
+		and tlp.date between pi.start_date and pi.end_date
+		and tlp.emp = rc.emp
+		and tlp.date between rc.start_date and rc.end_date
+
+		-- get the name of the commission payee if an employee
+		update referral_comm_amount
+		set name = $(employee_name e)
+		from referral_comm_amount rca, employee e
+		where rca.pay_type = 'E'
+		and rca.pay_to = e.emp
+
+		-- get the name of the commission payee if a salesman
+		update referral_comm_amount
+		set name = s.name
+		from referral_comm_amount rca, salesman s
+		where rca.pay_type = 'S'
+		and rca.pay_to = s.salesman
+
+		-- now get the actual amount
+		update referral_comm_amount
+		set amount = hours * commission
+
+		-- build our temp table we need for updating profit_item
+		select profit_id, sum(amount) "total_ref_comm"
+		into #ref_comm_totals
+		from referral_comm_amount
+		group by profit_id
+
+		-- and update it
+		update profit_item
+		set ref_commission = rct.total_ref_comm
+		from profit_item pi, #ref_comm_totals rct
+		where pi.profit_id = rct.profit_id
+
+	go
+
+	grant execute on calc_referral_commission to public
+	go
+
+
+	-- this little procedure figures out pay_rates
+	-- we sometimes need to do this independent of the other procedures,
+	-- so this one doesn't expect anything but $build_pay_amount or
+	-- $build_profit_item (which itself calls $build_pay_amount) to have
+	-- been run ... it is called by calc_total_cost (below)
+
+	$(drop_procedure calc_pay_amount)
+
+	create procedure calc_pay_amount
+	as
+
+		-- get general employee rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
 		and pr.client is NULL
 		and pr.proj is NULL
-		and ec.date between pr.start_date and pr.end_date
-		-- client specific employee rates
-		update #emp_comm
-		set payrate = pr.rate, paytype = pr.rate_type
-		from #emp_comm ec, pay_rate pr
-		where ec.emp = pr.emp
-		and ec.client = pr.client
+		and pa.date between pr.start_date and pr.end_date
+
+		-- get general employee/client rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
+		and pa.client = pr.client
 		and pr.proj is NULL
-		and ec.date between pr.start_date and pr.end_date
-		-- client and project specific employee rates
-		update #emp_comm
-		set payrate = pr.rate, paytype = pr.rate_type
-		from #emp_comm ec, pay_rate pr
-		where ec.emp = pr.emp
-		and ec.client = pr.client
-		and ec.proj = pr.proj
-		and ec.date between pr.start_date and pr.end_date
+		and pa.date between pr.start_date and pr.end_date
 
-		-- but subcontractors don't get employee comm
-		update #emp_comm
-		set empcomm = 0
-		where paytype = 'S'
+		-- get specific employee/client/project rates
+		update pay_amount
+		set pay_rate = pr.rate, pay_rate_type = pr.rate_type
+		from pay_amount pa, pay_rate pr
+		where pa.emp = pr.emp
+		and pa.client = pr.client
+		and pa.proj = pr.proj
+		and pa.date between pr.start_date and pr.end_date
 
-		-- figuring billing amounts is sort of tricky, so
-		-- it has its own stored procedure
-		execute billing_amounts
+		-- now figure the actual total pay
+		update pay_amount
+		set total_pay = $(round "pay_rate * hours" .01 U)
+		where requires_payment = 1
 
-		-- if, after that, the bill rates still aren't there, no emp comm
-		update #emp_comm
-		set empcomm = 0
-		where billrate = 0
-		 
-		-- figure amount paid (simple multiplication)
-		update #emp_comm
-		set amt_paid = payrate * hours
-		where payrate > 0
-		and amt_paid is null
+		-- things that don't require payment are of course 0
+		update pay_amount
+		set total_pay = 0
+		where requires_payment = 0
 
-		-- referral commissions aren't so tough
-		-- (but things that don't get paid also don't get ref comm)
-		update #emp_comm
-		set refcomm = rc.commission * ec.hours
-		from #emp_comm ec, referral_commission rc
-		where ec.emp = rc.emp
-		and ec.date between rc.start_date and rc.end_date
-		and ec.amt_paid > 0
+	go
 
-		-- now get totals for any training projects
-		-- first, totals for paid out
-		insert #emp_comm
-			(source_tbl, emp, client, proj, date, hours,
-					amt_paid, refcomm)
-		select 'training intermediate', ec.emp, ec.client, ec.proj,
-				p.end_date, sum(ec.hours),
-				sum(ec.amt_paid), sum(ec.refcomm)
-		from #emp_comm ec, project p, project_type pt
-		where ec.source_tbl = 'training work'
-		and ec.client = p.client
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.use_training_rates = 1
-		group by ec.emp, ec.client, ec.proj, p.end_date
-		-- gotta save total hours in a temp table
-		create table #training_total_paid
-		(
-			client			char(3)			NOT NULL,
-			proj			char(3)			NOT NULL,
-			total_hours		numeric(6,2)	NOT NULL,
-			total_paid		money			NOT NULL,
-		)
-		insert #training_total_paid
-		select ec.client, ec.proj, sum(ec.hours), sum(ec.amt_paid)
-		from #emp_comm ec
-		where ec.source_tbl = 'training intermediate'
-		and ec.emp != ''
-		group by ec.client, ec.proj
-		-- now totals for billed out
-		insert #emp_comm
-			(source_tbl, emp, client, proj, date, hours,
-					amt_billed, salescomm)
-		select 'training intermediate', '', ec.client, ec.proj, p.end_date, 0,
-				sum(ec.amt_billed), sum(ec.salescomm)
-		from #emp_comm ec, project p, project_type pt
-		where ec.source_tbl = 'training_class'
-		and ec.client = p.client
-		and ec.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.use_training_rates = 1
-		group by ec.client, ec.proj, p.end_date
-		/*
-		-- and get the total paid from our temp table
-		-- (this is technically unnecessary--comment out unless debugging)
-		update #emp_comm
-		set hours = ttp.total_hours, amt_paid = ttp.total_paid
-		from #emp_comm ec, #training_total_paid ttp
-		where ec.source_tbl = 'training intermediate'
-		and ec.emp = ''
-		and ec.client = ttp.client
-		and ec.proj = ttp.proj
-		*/
-		-- now put 'em together (ec1 is total billed, ec2 is total paid)
-		-- note that the ec2.amt_paid / ttp.total_paid just gives a convenient
-		-- percentage to apply to total billed amounts
-		-- also note we assign a paytype (otherwise payroll query kicks it out)
-		insert #emp_comm
-			(source_tbl, emp, client, proj, date, hours, paytype,
-					amt_paid, refcomm, amt_billed, salescomm)
-		select 'training total', ec2.emp, ec1.client, ec1.proj, ec1.date,
-				ec2.hours, 'T', ec2.amt_paid, ec2.refcomm,
-				ec1.amt_billed * (convert(real, ec2.amt_paid) / ttp.total_paid),
-				ec1.salescomm * (convert(real, ec2.amt_paid) / ttp.total_paid)
-		from #emp_comm ec1, #emp_comm ec2, #training_total_paid ttp
-		where ec1.source_tbl = 'training intermediate'
-		and ec1.emp = ''
-		and ec2.source_tbl = 'training intermediate'
-		and ec2.emp != ''
-		and ec1.client = ec2.client
-		and ec1.proj = ec2.proj
-		and ec2.client = ttp.client
-		and ec2.proj = ttp.proj
-		-- have to get rid of intermediate steps, because they look like errors
-		-- (comment this part out when debugging)
-		delete #emp_comm
-		where source_tbl = 'training intermediate'
-		-- have to get rid of work rows, because they look like payroll
-		-- (comment this part out when debugging too)
-		delete #emp_comm
-		where source_tbl = 'training work'
+	grant execute on calc_pay_amount to public
+	go
 
-		-- get gross take (simple subtraction)
-		update #emp_comm
-		set gross = amt_billed - salescomm - refcomm
-		where empcomm is NULL
 
-		-- get diff (also simple subtraction)
-		update #emp_comm
-		set diff = amt_billed - salescomm - refcomm - amt_paid
-		--where empcomm is NULL
+	-- next procedure figures out the total cost
+	-- (again, expects that calc_total_price has already been run)
 
-		-- employee commission before magic date 9/7/98 is easy
-		update #emp_comm
-		set empcomm = diff * .04
-		where empcomm is NULL
-		and date < '9/7/98' 
-		 
-		-- after that, it gets bitchier:
+	$(drop_procedure calc_total_cost)
+
+	create procedure calc_total_cost
+	as
+		
+		-- handle the easy ones first
+		-- materials_log has total cost already in it
+		update profit_item
+		set total_cost = ml.amount_paid
+		from profit_item pi, materials_log ml
+		where pi.log_source = ml.log_source
+		and pi.log_id = ml.log_id
+
+		-- now fill in the pay_rates for pay_amount
+		execute calc_pay_amount
+
+		-- update time_log_profit from pay_amount
+		-- note that this join doesn't check log_source, but this should
+		-- be okay since both time_log_profit and pay_amount should be
+		-- filled up from time_log (only) ... if this is ever different,
+		-- this update will no longer work properly
+		update time_log_profit
+		set pay_rate_type = pa.pay_rate_type, total_pay = pa.total_pay
+		from time_log_profit tlp, pay_amount pa
+		where tlp.log_id = pa.log_id
+
+		-- can update "one to one" time logs directly
+		update profit_item
+		set total_cost = tlp.total_pay
+		from profit_item pi, time_log_profit tlp
+		where pi.log_source = tlp.log_source
+		and pi.log_id = tlp.log_id
+
+		-- build a temp table for updating everything else
+		select pi.profit_id, sum(tlp.total_pay) "total_cost"
+		into #total_cost
+		from profit_item pi, time_log_profit tlp
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client = tlp.client
+		and pi.proj = tlp.proj
+		and tlp.date between pi.start_date and pi.end_date
+		group by pi.profit_id
+
+		-- and update the total_cost
+		update profit_item
+		set total_cost = tc.total_cost
+		from profit_item pi, #total_cost tc
+		where pi.profit_id = tc.profit_id
+
+	go
+
+	grant execute on calc_total_cost to public
+	go
+
+
+	-- the next procedure is to handle employee commissions
+	-- (this one requires that calc_total_cost (and not just
+	-- calc_total_price) have been run)
+
+	$(drop_procedure calc_employee_commission)
+
+	create procedure calc_employee_commission
+	as
+
+		-- clear out old values
+		delete employee_comm_amount
+
+		-- get the "one on one" time logs
+		insert employee_comm_amount
+			(profit_id, emp, date, pay_to_employee, total_pay)
+		select pi.profit_id, tlp.emp, tlp.date, tlp.total_pay, pi.total_cost
+		from profit_item pi, time_log_profit tlp
+		where pi.log_source = tlp.log_source
+		and pi.log_id = tlp.log_id
+		and tlp.requires_payment = 1
+		and tlp.pay_rate_type != 'S'
+
+		-- now the other time logs
+		insert employee_comm_amount
+			(profit_id, emp, date, pay_to_employee, total_pay)
+		select pi.profit_id, tlp.emp, tlp.date,
+				sum(tlp.total_pay), pi.total_cost
+		from profit_item pi, time_log_profit tlp
+		where pi.log_source in ('time_log FIXED', 'time_log SUM',
+				'class_log', 'class_log SUM')
+		and pi.client = tlp.client
+		and pi.proj = tlp.proj
+		and tlp.date between pi.start_date and pi.end_date
+		and tlp.requires_payment = 1
+		and tlp.pay_rate_type != 'S'
+		group by pi.profit_id, tlp.emp, tlp.date, pi.total_cost
+
+		-- now figure the percent of total pay that applies to this employee
+		-- (note that for the "one to one" logs, this will always be 100%)
+		update employee_comm_amount
+		set employee_percent = pay_to_employee / total_pay
+
+		-- now figure the adjusted price (i.e., total price - sales comm
+		-- and ref comm) and the difference between adjusted cost and total
+		-- cost; for historical reasons, these are called the gross and diff
+		update employee_comm_amount
+		set gross = employee_percent * (pi.total_price
+				- isnull(pi.sales_commission,0) - isnull(pi.ref_commission,0))
+		from employee_comm_amount eca, profit_item pi
+		where eca.profit_id = pi.profit_id
+		update employee_comm_amount
+		set diff = gross - pay_to_employee
+
+		-- now the commission itself
+		-- old formula (previous to magic date of 9/7/98) is easy
+		update employee_comm_amount
+		set amount = diff * .04
+		where date < '9/7/98'
+		-- (this formula is somewhat bitchy)
 		declare @rate_factor real, @breakeven_factor real, @flare_factor real
 		select @rate_factor = 12.0
 		select @breakeven_factor = 3.0
 		select @flare_factor = 20.0
-		update #emp_comm
-		set empcomm = convert(money, 
+		update employee_comm_amount
+		set amount = convert(money, 
 		 		diff * diff / (
 					(gross / @rate_factor) -
 							(diff - gross / @breakeven_factor) / @flare_factor
 				) / 100.0
 			)
-		where empcomm is NULL
+		where date >= '9/7/98'
+
+		-- once again, make our temp table
+		select profit_id, sum(amount) "total_emp_comm"
+		into #emp_comm_totals
+		from employee_comm_amount
+		group by profit_id
+
+		-- and use it to update
+		update profit_item
+		set emp_commission = ect.total_emp_comm
+		from profit_item pi, #emp_comm_totals ect
+		where pi.profit_id = ect.profit_id
+
 	go
 
-	grant execute on emp_commission to public
+	grant execute on calc_employee_commission to public
+	go
+
+
+	-- this last one calls all the others and does a few little extra things
+
+	$(drop_procedure calc_profit)
+
+	create procedure calc_profit
+	as
+
+		execute calc_total_price
+		execute calc_sales_commission
+		execute calc_referral_commission
+		execute calc_total_cost
+		execute calc_employee_commission
+
+		-- fixup NULL commissions; NULL won't add properly
+		-- STEP 1: sales commission
+		update profit_item
+		set sales_commission = 0
+		where sales_commission is NULL
+		-- STEP 2: referral commission
+		update profit_item
+		set ref_commission = 0
+		where ref_commission is NULL
+		-- STEP 3: employee commission
+		update profit_item
+		set emp_commission = 0
+		where emp_commission is NULL
+
+		-- simple profit calculation is basic subtraction
+		update profit_item
+		set simple_profit = total_price - total_cost - sales_commission
+				- ref_commission - emp_commission
+
+	go
+
+	grant execute on calc_profit to public
 	go
 
 END
