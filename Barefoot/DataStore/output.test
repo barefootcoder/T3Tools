@@ -8,8 +8,8 @@ TEC        Technical Admin Commission 4
 OMT        Office Maint Commission    5         
 (6 rows returned)
 
-Server message number=208 severity=16 state=1 line=1 text=bogus not found. Specify owner.objectname or use sp_help to check whether the object exists (sp_help may produce lots of output).
-Statement=	select *
+Server message number=208 severity=16 state=1 line=1 server=lexx text=bogus not found. Specify owner.objectname or use sp_help to check whether the object exists (sp_help may produce lots of output).
+ Statement=	select *
 	from bogus
 
 EMP CLI PRJ PH  pay_rate pay_rate_type PAY BIL
