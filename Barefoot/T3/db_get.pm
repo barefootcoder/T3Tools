@@ -61,10 +61,9 @@ sub get_emp_id
 
 	my $res = &t3->do("
 			select e.emp_id
-			from {~t3}.workgroup_user wu, {~t3}.person pe, {~timer}.employee e
+			from {~t3}.workgroup_user wu, {~timer}.employee e
 			where wu.nickname = '$user'
-			and wu.person_id = pe.person_id
-			and pe.person_id = e.person_id
+			and wu.person_id = e.person_id
 	");
 	die("default client query failed") unless $res and $res->next_row();
 	return $res->col(0);
