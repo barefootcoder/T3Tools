@@ -1,23 +1,28 @@
 -- SORT GROUP: Customer Reports
 -- TITLE: Detailed Resource Report
+-- ALSO RUN WITH: history=yes
+-- SORT GROUP: Customer Reports
+-- TITLE: Historical Resource Report
 
 $(build_profit_item "
-	exists													??invoice
-	(														??invoice
-		select 1											??invoice
-		from invoice i										??invoice
-		where log.invoice_id = i.invoice_id					??invoice
-		and i.invoice_number = '[invoice]'					??invoice
-	)														??invoice
+	exists												{?invoice}
+	(													{?invoice}
+		select 1										{?invoice}
+		from invoice i									{?invoice}
+		where log.invoice_id = i.invoice_id				{?invoice}
+		and i.invoice_number = '{invoice}'				{?invoice}
+	)													{?invoice}
 
-	log.client = '[client]'									?!invoice
-	and log.date <= '[end_date]'							?!invoice
-	and not exists											?!invoice
-	(														?!invoice
-		select 1											?!invoice
-		from invoice i										?!invoice
-		where log.invoice_id = i.invoice_id					?!invoice
-	)														?!invoice
+	log.client = '{client}'								{!invoice}
+	and log.date >= '{start_date}'									{?history}
+	and log.date <= '{end_date}'						{!invoice}
+	and log.proj = '{proj}'								{!invoice}	{?proj}
+	and not exists										{!invoice}	{!history}
+	(													{!invoice}	{!history}
+		select 1										{!invoice}	{!history}
+		from invoice i									{!invoice}	{!history}
+		where log.invoice_id = i.invoice_id				{!invoice}	{!history}
+	)													{!invoice}	{!history}
 ")
 
 calc_total_price
@@ -32,7 +37,7 @@ select distinct @client_header
 from profit_item pi, client c
 where pi.client = c.client
 print @client_header
-print "<CENTER><H5>Period: [start_date] to [end_date]</H5></CENTER>"
+print "<CENTER><H5>Period: {start_date} to {end_date}</H5></CENTER>"
 go
 
 print "<HR><H4>Details by Date</H4>"
@@ -92,23 +97,38 @@ compute sum(sum(pi.total_price))
 	by p.name
 go
 
-print "<HR><H4>Totals by Project and End Client</H4>"
-select p.name "project", cp.name "end client",
-		convert(numeric(6,2), sum(pi.units)) "hours",
-		sum(pi.total_price) "total"
-from profit_item pi, time_log tl, project p, client_project cp, employee e
-where pi.log_source = tl.log_source
-and pi.log_id = tl.log_id
-and pi.client = p.client
-and pi.proj = p.proj
-and pi.end_date between p.start_date and p.end_date
-and tl.client = cp.client
-and tl.cliproj = cp.project_id
-and tl.emp = e.emp
-group by p.name, cp.name
-order by p.name, cp.name
-compute sum(sum(pi.total_price))
-	by p.name
+if exists
+(
+	select 1
+	from profit_item pi, time_log tl, project p, client_project cp, employee e
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and pi.client = p.client
+	and pi.proj = p.proj
+	and pi.end_date between p.start_date and p.end_date
+	and tl.client = cp.client
+	and tl.cliproj = cp.project_id
+	and tl.emp = e.emp
+)
+begin
+	print "<HR><H4>Totals by Project and End Client</H4>"
+	select p.name "project", cp.name "end client",
+			convert(numeric(6,2), sum(pi.units)) "hours",
+			sum(pi.total_price) "total"
+	from profit_item pi, time_log tl, project p, client_project cp, employee e
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and pi.client = p.client
+	and pi.proj = p.proj
+	and pi.end_date between p.start_date and p.end_date
+	and tl.client = cp.client
+	and tl.cliproj = cp.project_id
+	and tl.emp = e.emp
+	group by p.name, cp.name
+	order by p.name, cp.name
+	compute sum(sum(pi.total_price))
+		by p.name
+end
 go
 
 print "<HR><H4>Totals by Resource</H4>"
