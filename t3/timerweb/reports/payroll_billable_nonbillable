@@ -1,4 +1,4 @@
--- SORT GROUP: Management Reports
+-- SORT GROUP: Financial Reports
 -- TITLE: Percentage of Payrolls Billable and Non-Billable
 
 -- in order to break our two-week payroll periods into one week periods,
@@ -73,13 +73,23 @@ where pp.period = bil.period
 go
 
 -- get the financial overhead
--- (for purposes of estimation, we're using half of everything logged to FIN)
-select $(period_num pa.date 7) "period", sum(pa.total_pay) / 2 "total"
-into #fin_ovhd
-from pay_amount pa
-where pa.client = '001'
-and pa.proj = 'FIN'
-group by $(period_num pa.date 7)
+	-- (1999 and before, estimate by using half of everything logged to FIN)
+	select $(period_num pa.date 7) "period", sum(pa.total_pay) / 2 "total"
+	into #fin_ovhd
+	from pay_amount pa
+	where pa.client = '001'
+	and pa.proj = 'FIN'
+	and pa.date < '1/3/00'
+	group by $(period_num pa.date 7)
+	
+	-- (2000 and after, use new projects PAY and INV)
+	insert #fin_ovhd
+	select $(period_num pa.date 7) "period", sum(pa.total_pay) / 2 "total"
+	from pay_amount pa
+	where pa.client = '001'
+	and pa.proj in ('PAY','INV')
+	and pa.date >= '1/3/00'
+	group by $(period_num pa.date 7)
 go
 
 update #payroll_percent
