@@ -2,9 +2,6 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.1  1999/05/02 06:23:39  buddy
-# Initial revision
 #
 # $Id$
 # $Revision$
@@ -25,14 +22,16 @@ package timerdata;
 
 use strict;
 
+use Barefoot::string;
+
 
 #
-# Constants:
+# Pseudo-Constants:
 #
 
 my $SERVER		= 'SYBASE_1';
 my $USER		= 'guest';
-my $TIMERDB		= 'TIMER';
+my $TIMERDB		= $::ENV{TIMERTEST} ? $::ENV{TIMERTEST} : 'timer';
 
 
 1;
@@ -43,6 +42,23 @@ my $TIMERDB		= 'TIMER';
 #
 
 
+# change connection parameters
+sub set_connection
+{
+	my ($db_server, $db_name, $user) = @_;
+
+	$SERVER = $db_server;
+	$TIMERDB = $db_name;
+	set_user($user) if $user;
+}
+
+# change user
+sub set_user
+{
+	my ($newuser) = @_;
+
+	$USER = $newuser;
+}
 
 # generic query returner
 sub query_results
@@ -71,10 +87,26 @@ sub query_results
 	return $rows;
 }
 
+# generic query runner ... returns isql output, generally in the form
+# "(X rows affected)" as long as you give it inserts/updates/deletes
+# for selects, see above function
+sub run_query
+{
+	my ($query) = @_;
+
+	$query =~ s/^\s*go\s*$/go/mg;
+	# print "sending to run_query: >>\n$query\n<<\n";
+
+	my $result = `echo "$query" | run_query -S$SERVER -U$USER -D$TIMERDB`;
+	chomp $result;
+	return $result;
+}
+
 # support routine (not to be called from outside)
 sub _getsql
 {
 	my ($query) = @_;
+
 	my $answer = `get_sql "$query" -S$SERVER -U$USER -D$TIMERDB`;
 	chomp $answer;
 	return $answer;
@@ -96,7 +128,7 @@ sub emp_fullname
 {
 	my ($emp_number) = @_;
 
-	return _getsql("select rtrim(name) + ' ' + rtrim(lname) from employee "
+	return _getsql("select rtrim(fname) + ' ' + rtrim(lname) from employee "
 			. "where emp = '$emp_number'");
 }
 
@@ -104,7 +136,7 @@ sub default_client
 {
 	my ($login_name) = @_;
 	
-	return _getsql("select defclient from employee "
+	return _getsql("select def_client from employee "
 			. "where login = '$login_name'");
 }
 
@@ -124,7 +156,10 @@ sub client_rounding
 {
 	my ($client_num) = @_;
 
-	return _getsql("select rounding from client where client = '$client_num'");
+	my $output = _getsql("select rounding, to_nearest from client " .
+			"where client = '$client_num'");
+	my ($rounding, $to_nearest) = split(" ", $output);
+	return ($rounding, $to_nearest);
 }
 
 
@@ -198,7 +233,7 @@ sub insert_log
 	$comments = defined($comments) ? "'$comments'" : "null";
 
 	my $query = "
-			insert log
+			insert time_log
 				(	emp, client, proj, phase, cliproj, date, hours, comments,
 					create_user, create_date
 				)
