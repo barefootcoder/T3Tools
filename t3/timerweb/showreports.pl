@@ -2,6 +2,11 @@
 
 # $Header$
 # $Log$
+# Revision 1.2  1999/02/18 05:59:44  buddy
+# generalized vars into a hash
+# consolidated text inputs into one form
+# fixed web base path
+#
 # Revision 1.1  1998/12/31 20:02:13  buddy
 # Initial revision
 #
@@ -58,7 +63,7 @@ for $file ( < $basepath/* > )
 		if ( /--\s*TITLE:\s*(.*)\s*/ )
 		{
 										debug("report is $1");
-			print $cgi->a({-href=>"/cgi-bin/sqlcgi.pl?$basefile"}, $1),
+			print $cgi->a({-href=>"sqlcgi.pl?$basefile"}, $1),
 					"<BR>\n";
 			last;
 		}
