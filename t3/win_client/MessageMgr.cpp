@@ -14,7 +14,6 @@ using namespace arinbe;
 #include "MessageMgr.h"
 #include "TransThread.h"
 #include "IniOptions.h"
-#include "TestFrm.h"	//included only for debugging -- otherwise can hide
 
 using namespace user_options;
 
@@ -118,13 +117,6 @@ void MessageMgr::doTransfer ()
 
 void __fastcall MessageMgr::onThreadDone (TObject *Sender)
 {
-	// DEBUG
-	if ( IniOpt->getValue("test_mode") == "1" )
-	{
-		// show the form
-		TestForm->Show();
-	}
-
 	//note:  called by trans thread but runs in the main execution thread, not
 	//in TransferThread's, so we can safely update callers collections
 
@@ -297,14 +289,6 @@ void MessageMgr::confirmMessages ()
 
 		map<string, T3Message>::iterator loc = UnconfCollection.find(id);
 
-		// DEBUG
-		if ( IniOpt->getValue("test_mode") == "1" )
-		{
-			TestForm->ShowWhatever->Lines->Add(String("Received status ") +
-								String(status.c_str()) + String(" on message ") +
-								String(id.c_str()) );
-		}
-
 		if (status == "NORMAL_RCVD")
 		{
 			//replace in UnconfCollection
@@ -313,13 +297,6 @@ void MessageMgr::confirmMessages ()
 			{
 				loc->second.setAttribute("status", status);
 
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string str = "Changing status to " + status + 
-								" from NORMAL for message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
 			}
 
 			//delete in StatusBuffer
@@ -332,14 +309,6 @@ void MessageMgr::confirmMessages ()
 			if (loc != UnconfCollection.end())
 			{
 				loc->second.setAttribute("status", status);
-
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string str = "Changing status to " + status + 
-								" from NORMAL_DLVD for message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
 			}
 
 			//delete in StatusBuffer
@@ -352,13 +321,6 @@ void MessageMgr::confirmMessages ()
 			if (loc != UnconfCollection.end())
 			{
 				UnconfCollection.erase(loc);
-
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string str = "Deleting unconfirmed message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
 			}
 
 			//delete in StatusBuffer
@@ -416,30 +378,23 @@ void MessageMgr::resendMessages ()
 		istringstream(it->second.getAttribute("time")) >> t0;
 
 		//check if addressee has on-line status (so it will not resend undelivd)
+		bool isonline = false;
 		map<string, T3Message>::iterator usrit;
 		usrit = UserCollection.find(it->second.getAttribute("to"));
-
-		bool isonline = false;
-		string status = it->second.getAttribute("status");
-		if (usrit != UserCollection.end() && status != "IMOFF")
+		if (usrit != UserCollection.end() )
 		{
-			isonline = true;
+			// check user status
+			if ( usrit->second.getAttribute("status") != "IMOFF" )
+				isonline = true;
 		}
 
+		string status = it->second.getAttribute("status");
 		if (status == "NORMAL")				
 		{
 			//means NORMAL_RCVD was not received
 			int defvalue = IniOpt->getValueInt("resend_if_no_rcvd_interval");
 			if ( defvalue > 0 && (t1 - t0) > defvalue )
 			{
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string id = it->second.getAttribute("id");
-					string str = "Resend (no NORMAL_RCVD) for message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
-
 				//update time and resend
 				it->second.setAttribute("time", t1str);
 				SendBuffer.push_back(it->second);
@@ -453,14 +408,6 @@ void MessageMgr::resendMessages ()
 			{
 				//update time and resend
 				it->second.setAttribute("time", t1str);
-
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string id = it->second.getAttribute("id");
-					string str = "Resend (no NORMAL_DLVD) for message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
 
 				//need a copy to recreate NORMAL
 				T3Message temp_msg(it->second);	
@@ -477,14 +424,6 @@ void MessageMgr::resendMessages ()
 				//update time and resend
 				it->second.setAttribute("time", t1str);
 
-				// DEBUG
-				if ( IniOpt->getValue("test_mode") == "1" )
-				{
-					string id = it->second.getAttribute("id");
-					string str = "Resend (no NORMAL_READ) for message " + id;
-					TestForm->ShowWhatever->Lines->Add(str.c_str());
-				}
-
 				//need a copy to recreate NORMAL
 				T3Message temp_msg(it->second);	
 				temp_msg.setAttribute("status", "NORMAL");
@@ -497,7 +436,6 @@ void MessageMgr::resendMessages ()
 
 }
 //---------------------------------------------------------------------------
-
 void MessageMgr::saveUnconfirmed ()
 {
 	//add each message in unconfirmed collection to file
@@ -509,14 +447,6 @@ void MessageMgr::saveUnconfirmed ()
 	for (it = UnconfCollection.begin(); it != UnconfCollection.end(); it++)
 	{
 		unconfs << it->second.toXML() << '\n';
-
-		// DEBUG
-		if ( IniOpt->getValue("test_mode") == "1" )
-		{
-			string id = it->second.getAttribute("id");
-			string str = "Saving unconfirmed message " + id;
-			TestForm->ShowWhatever->Lines->Add(str.c_str());
-		}
 	}
 
 	unconfs.close();
