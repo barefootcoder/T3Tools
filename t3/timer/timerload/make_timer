@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.5  2000/10/31 22:17:02  buddy
+# fucked up and forgot to fix unique index for pay_rate; fixed
+#
 # Revision 1.4  2000/10/31 20:28:22  buddy
 # added phase to pay_rate
 #
@@ -284,6 +287,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		show_last			bit				NOT NULL,
 		login				username		NULL,
 		def_client			internal_id		NOT NULL,
+		has_insurance		bit				NOT NULL,
 	")
 
 	create unique index employee
@@ -833,6 +837,55 @@ run_query -S$server -U$user -D$destdb <<-END
 	on index_seg
 	go
 
+
+	-- salary_bank
+
+	print "making salary_bank"
+	go
+
+	$(overwrite_table salary_bank "
+		emp                            internal_id NOT NULL,
+		bank_amount                    money NOT NULL,
+		start_date                     datetime NOT NULL,
+		end_date                       datetime NOT NULL,
+		check_date                     datetime NOT NULL,
+		create_user                    varchar(20) NOT NULL,
+		create_date                    datetime NOT NULL,
+		chguser                        varchar(20) NULL,
+		chgdate                        datetime NULL
+	")
+
+	grant insert,update on salary_bank to $admin_users
+	grant select on salary_bank to public
+	go
+
+	create unique index id
+	on salary_bank (emp, start_date)
+	on index_seg
+	go
+
+
+	-- salary_draw
+
+	print "making salary_draw"
+	go
+
+    $(overwrite_table salary_draw "
+        emp                 char(3)         NOT NULL,
+        weekly_amount       money           NOT NULL,
+        variation           percentage      NOT NULL,
+        max_weeks           int             NOT NULL,
+        start_date          datetime        NOT NULL,
+        end_date            datetime        NOT NULL,
+    ")
+
+	grant insert,update on salary_draw to $admin_users
+	grant select on salary_draw to public
+	go
+
+    create unique index salary_draw
+    on salary_draw (emp, start_date)
+    go
 
 END
 
