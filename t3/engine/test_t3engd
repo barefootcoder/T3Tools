@@ -1,0 +1,140 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::exception;
+
+use constant REQUEST_FILE => 't3.request';
+use constant OUTPUT_FILE => 't3.output.';
+
+
+# main ()
+
+print "=" x 40, "\n";
+try
+{
+	my $success = timeout
+	{
+		test_server_start();
+		test_pipe_exists();
+		test_bogus_request();
+		test_unknown_module();
+		test_bogus_output();
+		test_test_module();
+	} 60;					# anything over a minute means something went wrong
+	die("got stuck during testing") unless $success;
+}
+catch
+{
+	test_server_shutdown();
+	rethrow;				# don't lose original error
+};
+test_server_shutdown();
+
+# they all worked!
+print "ALL TESTS PASSED\n";
+exit 0;
+
+
+# subs
+
+sub send_request
+{
+	open(PIPE, ">" . REQUEST_FILE)
+			or die("can't open request pipe for writing");
+	print PIPE @_, "\n";
+	close(PIPE);
+}
+
+sub retrieve_output
+{
+	my ($id) = @_;
+
+	my $pipe_file = OUTPUT_FILE . $id;
+	my $pipe_is_there = timeout
+	{
+		until (-p $pipe_file)
+		{
+			die("output file $pipe_file isn't a pipe") if -e _;
+			sleep 1;
+		}
+	} 10;
+	die("server never created output pipe $pipe_file") unless $pipe_is_there;
+	my ($success, @output);
+	for (1..10)					# give it a few tries ...
+	{
+		$success = timeout
+		{
+			open(PIPE, $pipe_file)
+					or die("can't open output pipe for reading");
+			@output = <PIPE>;
+		} 2;
+		last if $success and @output;
+	}
+	die("can't seem to get any output from $pipe_file")
+			unless $success and @output;
+	close(PIPE);
+	print STDERR "got ", scalar(@output), " lines of output\n";
+	return @output;
+}
+
+sub get_last_log
+{
+	# sometimes we try to read the log before the server's finished
+	# writing ... so we give ourselves a slight delay to help out
+	sleep 1;
+	my $msg = `tail -1 t3engd.log`;
+	chomp $msg;
+	return $msg;
+}
+
+sub test_server_start
+{
+	system("t3engd >t3engd.log 2>&1 &");
+	die("can't start server for testing")
+			unless `ps aux | grep t3engd | grep -v grep`;
+}
+
+sub test_pipe_exists
+{
+	sleep 1;
+	die("request pipe doesn't exist") unless -p REQUEST_FILE;
+}
+
+sub test_bogus_request
+{
+	send_request("bogus");
+	# print STDERR "last log is: ", get_last_log(), "<<\n";
+	die("didn't gracefully handle bogus request")
+			unless get_last_log() =~ /: malformed request/;
+}
+
+sub test_unknown_module
+{
+	send_request("module=bogus");
+	die("didn't gracefully handle bogus module")
+			unless get_last_log() =~ /: unknown module/;
+}
+
+sub test_bogus_output
+{
+	send_request("module=test output=0");
+	die("didn't gracefully handle bogus output pipe")
+			unless get_last_log() =~ /: can't build output pipe/;
+}
+
+sub test_test_module
+{
+	send_request("module=test output=$$");
+	my @test_output = retrieve_output("$$");
+	print STDERR ">>>", @test_output, "<<<\n" and
+	die("test module returned incorrect output")
+			unless @test_output == 1 and $test_output[0] eq "TEST OUTPUT";
+}
+
+sub test_server_shutdown
+{
+	send_request("SHUTDOWN");
+	die("server refuses to shutdown")
+			if `ps aux | grep -E '\<t3engd\>' | grep -v grep`;
+}
