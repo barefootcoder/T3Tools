@@ -1,304 +1,639 @@
 -- SORT GROUP: Error Checkers
 -- TITLE: Database Consistency Errors
 
-print "projects with end dates before start dates"
+set nocount on
 go
-select *
-from project
-where end_date < start_date
-go
-
-print "projects that don't match a client"
-go
-select p.*
-from project p
-where p.client not in
-(
-	select c.client
-	from client c
-)
+print ""
+print "*** Please note: 'if exists' clauses have been installed ***"
+print "*** (Don't be alarmed if the report is smaller than expected) ***"
+print ""
 go
 
-print "projects with invalid types"
-go
-select p.*
-from project p
-where p.proj_type not in
-(
-	select pt.proj_type
-	from project_type pt
-)
-go
-
-print "projects with end dates at 12/31/99"
-select *
-from project
-where end_date = '12/31/99'
+if exists ( select *
+			from project
+			where end_date < start_date )
+begin
+	print "Projects with end dates before start dates:"
+	print ""
+	select *
+	from project
+	where end_date < start_date
+end
 go
 
-print "bill rates with end dates before start dates"
-go
-select *
-from bill_rate
-where end_date < start_date
-go
-
-print "bill rates that don't match any existing project"
-go
-select br.*
-from bill_rate br
-where not exists
-(
-	select 1
+if exists ( 	
+				select p.*
+				from project p
+				where p.client not in
+				(
+					select c.client
+					from client c
+				)
+		  )
+begin 
+	print "Projects that don't match a client:"
+	print ""
+	select p.*
 	from project p
-	where p.client = br.client
-	and p.proj = br.proj
-)
+	where p.client not in
+	(
+		select c.client
+		from client c
+	)
+end
 go
 
-print "bill rates for resource billing projects"
-go
-select br.*
-from bill_rate br, project p, project_type pt
-where br.client = p.client
-and br.proj = p.proj
-and
-(
-	p.start_date between br.start_date and br.end_date
-	or p.end_date between br.start_date and br.end_date
-)
-and p.proj_type = pt.proj_type
-and pt.resource_billing = 1
-go
-
-print "bill rates with at least one date outside corresponding project dates"
-go
-select br.*
-from bill_rate br
-where not exists
-(
-	select 1
+if exists (
+				select p.*
+				from project p
+				where p.proj_type not in
+				(
+					select pt.proj_type
+					from project_type pt
+				)
+          )
+begin
+	print "Projects with invalid types:"
+	print ""
+	select p.*
 	from project p
-	where p.client = br.client
-	and p.proj = br.proj
-	and br.start_date between p.start_date and p.end_date
-)
-or not exists
-(
-	select 1
-	from project p
-	where p.client = br.client
-	and p.proj = br.proj
-	and br.end_date between p.start_date and p.end_date
-)
+	where p.proj_type not in
+	(
+		select pt.proj_type
+		from project_type pt
+	)
+end
 go
 
-print "bill rates with end dates at 12/31/99"
-select *
-from bill_rate
-where end_date = '12/31/99'
+if exists (
+				select *
+				from project
+				where end_date = '12/31/99'
+          )
+begin 
+	print "Projects with end dates at 12/31/99:"
+	print ""
+	select *
+	from project
+	where end_date = '12/31/99'
+end
 go
 
-print "emp/resrc assignments with end dates before start dates"
-go
-select *
-from resource_employee
-where end_date < start_date
-go
-
-print "emp/resrc assignment with dates outside resource dates"
-select rr.*
-from resource_rate rr, resource_employee re
-where rr.client = re.client
-and rr.resrc = re.resrc
-and
-(
-	re.start_date < rr.start_date
-	or re.end_date > rr.end_date
-)
+if exists ( 
+				select *
+				from bill_rate
+				where end_date < start_date
+          )
+begin
+	print "Bill rates with end dates before start dates:"
+	print ""
+	select *
+	from bill_rate
+	where end_date < start_date
+end
 go
 
-print "resource rates with end dates before start dates"
-go
-select *
-from resource_rate
-where end_date < start_date
+if exists (
+				select br.*
+				from bill_rate br
+				where not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and p.proj = br.proj
+				)
+          )
+begin
+	print "Bill rates that don't match any existing project:"
+	print ""
+	select br.*
+	from bill_rate br
+	where not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and p.proj = br.proj
+	)
+end
 go
 
-print "resource rates for clients with no resource billing projects"
-go
-select rr.*
-from resource_rate rr
-where not exists
-(
-	select 1
-	from project p, project_type pt
-	where rr.client = p.client
+if exists ( 
+				select br.*
+				from bill_rate br, project p, project_type pt
+				where br.client = p.client
+				and br.proj = p.proj
+				and
+				(
+					p.start_date between br.start_date and br.end_date
+					or p.end_date between br.start_date and br.end_date
+				)
+				and p.proj_type = pt.proj_type
+				and pt.resource_billing = 1
+          )
+begin 
+	print "Bill rates for resource billing projects:"
+	print ""
+	select br.*
+	from bill_rate br, project p, project_type pt
+	where br.client = p.client
+	and br.proj = p.proj
+	and
+	(
+		p.start_date between br.start_date and br.end_date
+		or p.end_date between br.start_date and br.end_date
+	)
 	and p.proj_type = pt.proj_type
 	and pt.resource_billing = 1
-)
+end
 go
 
-print "resource rates with end dates at 12/31/99"
-select *
-from resource_rate
-where end_date = '12/31/99'
+if exists (
+				select br.*
+				from bill_rate br
+				where not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and p.proj = br.proj
+					and br.start_date between p.start_date and p.end_date
+				)
+				or not exists
+				(
+					select 1
+					from project p
+					where p.client = br.client
+					and p.proj = br.proj
+					and br.end_date between p.start_date and p.end_date
+				)
+          )
+begin
+	print "Bill rates with at least one date outside corresponding project dates:"
+	print ""
+	select br.*
+	from bill_rate br
+	where not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and p.proj = br.proj
+		and br.start_date between p.start_date and p.end_date
+	)
+	or not exists
+	(
+		select 1
+		from project p
+		where p.client = br.client
+		and p.proj = br.proj
+		and br.end_date between p.start_date and p.end_date
+	)
+end
 go
 
-print "emp/resrc assignments with end dates at 12/31/99"
-select *
-from resource_employee
-where end_date = '12/31/99'
+if exists (
+				select *
+				from bill_rate
+				where end_date = '12/31/99'
+          )
+begin
+	print "Bill rates with end dates at 12/31/99:"
+	print ""
+	select *
+	from bill_rate
+	where end_date = '12/31/99'
+end
 go
 
-print "sales commissions that don't match any project"
-select *
-from sales_commission sc
-where sc.proj is not NULL
-and not exists
-(
-	select 1
-	from project p
-	where sc.client = p.client
-	and sc.proj = p.proj
-)
+if exists ( 
+				select *
+				from resource_employee
+				where end_date < start_date
+          )
+begin
+	print "Emp/resrc assignments with end dates before start dates:"
+	print ""
+	select *
+	from resource_employee
+	where end_date < start_date
+end
 go
 
-print "employees that cannot log time to Barefoot non-payable"
-go
-select e.*
-from employee e
-where not exists
-(
-	select 1
-	from client_employee ce
-	where ce.emp = e.emp
-	and ce.client = '011'
-)
-go
-
-print "client/employee assignments with end dates before start dates"
-go
-select *
-from client_employee
-where end_date < start_date
-go
-
-print "client/employee assignments outside project dates"
-go
-select ce.*
-from client_employee ce
-where not exists
-(
-	select 1
-	from project p
-	where ce.client = p.client
-	and isnull(ce.proj, p.proj) = p.proj
-	and ce.start_date between p.start_date and p.end_date
-	and ce.end_date between p.start_date and p.end_date
-)
+if exists ( 
+				select rr.*
+				from resource_rate rr, resource_employee re
+				where rr.client = re.client
+				and rr.resrc = re.resrc
+				and
+				(
+					re.start_date < rr.start_date
+					or re.end_date > rr.end_date
+				)
+          )
+begin
+	print "Emp/resrc assignment with dates outside resource dates:"
+	print ""
+	select rr.*
+	from resource_rate rr, resource_employee re
+	where rr.client = re.client
+	and rr.resrc = re.resrc
+	and
+	(
+		re.start_date < rr.start_date
+		or re.end_date > rr.end_date
+	)
+end
 go
 
-print "log entries that don't match an employee"
+if exists (
+				select *
+				from resource_rate
+				where end_date < start_date
+          )
+begin
+	print "Resource rates with end dates before start dates:"
+	print ""
+	select *
+	from resource_rate
+	where end_date < start_date
+end
 go
-select tl.*
-from time_log tl
-where tl.emp not in
-(
-	select e.emp
+
+if exists (
+				select rr.*
+				from resource_rate rr
+				where not exists
+				(
+					select 1
+					from project p, project_type pt
+					where rr.client = p.client
+					and p.proj_type = pt.proj_type
+					and pt.resource_billing = 1
+				)
+          )
+begin 
+	print "Resource rates for clients with no resource billing projects:"
+	print ""
+	select rr.*
+	from resource_rate rr
+	where not exists
+	(
+		select 1
+		from project p, project_type pt
+		where rr.client = p.client
+		and p.proj_type = pt.proj_type
+		and pt.resource_billing = 1
+	)
+end
+go
+
+if exists ( 
+				select *
+				from resource_rate
+				where end_date = '12/31/99'
+          )
+begin
+	print "Resource rates with end dates at 12/31/99:"
+	print ""
+	select *
+	from resource_rate
+	where end_date = '12/31/99'
+end
+go
+
+if exists ( 
+				select *
+				from resource_employee
+				where end_date = '12/31/99'
+          )
+begin
+	print "Emp/resrc assignments with end dates at 12/31/99:"
+	print ""
+	select *
+	from resource_employee
+	where end_date = '12/31/99'
+end
+go
+
+if exists ( 
+				select *
+				from pay_rate pr
+				where client is not null
+				and not exists
+				(   select 1
+					from project p
+					where pr.end_date <= p.end_date
+					and pr.client  = p.client
+					and isnull ( pr.proj, p.proj )= p.proj
+				)
+          )
+begin
+	print "Pay rate(s) with end dates > project expiration date"
+	print "(only applies where pay_rate.client IS NOT NULL):"
+	print ""
+	select *
+	from pay_rate pr
+	where client is not null
+	and not exists
+	(   select 1
+		from project p
+		where pr.end_date <= p.end_date
+		and pr.client  = p.client
+		and isnull ( pr.proj, p.proj )= p.proj
+	)
+end
+go
+
+if exists ( 
+				select *
+				from sales_commission sc
+				where sc.proj is not NULL
+				and not exists
+				(
+					select 1
+					from project p
+					where sc.client = p.client
+					and sc.proj = p.proj
+				)
+          )
+begin 
+	print "Sales commissions that don't match any project:"
+	print ""
+	select *
+	from sales_commission sc
+	where sc.proj is not NULL
+	and not exists
+	(
+		select 1
+		from project p
+		where sc.client = p.client
+		and sc.proj = p.proj
+	)
+end
+go
+
+if exists (
+				select e.*
+				from employee e
+				where not exists
+				(
+					select 1
+					from client_employee ce
+					where ce.emp = e.emp
+					and ce.client = '011'
+				)
+          )
+begin
+	print "Employees that cannot log time to Barefoot non-payable:"
+	print ""
+	select e.*
 	from employee e
-)
-order by emp, client, proj, phase
+	where not exists
+	(
+		select 1
+		from client_employee ce
+		where ce.emp = e.emp
+		and ce.client = '011'
+	)
+end
 go
 
-print "log entries that don't match any existing project (after 1996)"
+if exists ( 
+				select *
+				from client_employee
+				where end_date < start_date
+          )
+begin 
+	print "Client/employee assignments with end dates before start dates:"
+	print ""
+	select *
+	from client_employee
+	where end_date < start_date
+end
 go
-select tl.*
-from time_log tl
-where tl.date >= "1/1/1997"
-and not exists
-(
-	select 1
-	from project p
+
+if exists (
+				select ce.*
+				from client_employee ce
+				where not exists
+				(
+					select 1
+					from project p
+					where ce.client = p.client
+					and isnull(ce.proj, p.proj) = p.proj
+					and ce.start_date between p.start_date and p.end_date
+					and ce.end_date between p.start_date and p.end_date
+				)
+          )
+begin 
+	print "Client/employee assignments outside project dates:"
+	print ""
+	select ce.*
+	from client_employee ce
+	where not exists
+	(
+		select 1
+		from project p
+		where ce.client = p.client
+		and isnull(ce.proj, p.proj) = p.proj
+		and ce.start_date between p.start_date and p.end_date
+		and ce.end_date between p.start_date and p.end_date
+	)
+end
+go
+
+if exists (
+				select tl.*
+				from time_log tl
+				where tl.emp not in
+				(
+					select e.emp
+					from employee e
+				)
+          )
+begin 
+	print "Log entries that don't match an employee:"
+	print ""
+	select tl.*
+	from time_log tl
+	where tl.emp not in
+	(
+		select e.emp
+		from employee e
+	)
+	order by emp, client, proj, phase
+end
+go
+
+if exists (
+				select tl.*
+				from time_log tl
+				where tl.date >= "1/1/1997"
+				and not exists
+				(
+					select 1
+					from project p
+					where tl.client = p.client
+					and tl.proj = p.proj
+				)
+          )
+begin 
+	print "Log entries that don't match any existing project (after 1996):"
+	print ""
+	select tl.*
+	from time_log tl
+	where tl.date >= "1/1/1997"
+	and not exists
+	(
+		select 1
+		from project p
+		where tl.client = p.client
+		and tl.proj = p.proj
+	)
+	order by emp, client, proj, phase
+end
+go
+
+if exists (
+				select tl.*
+				from time_log tl
+				where tl.date >= '1/1/1999'
+				and not exists
+				(
+					select 1
+					from client_employee ce
+					where tl.emp = ce.emp
+					and tl.client = ce.client
+					and tl.proj = isnull(ce.proj, tl.proj)
+					and tl.date between ce.start_date and ce.end_date
+				)
+          )
+begin 
+	print "Log entries with illegal employee/client combinations (from 1999 on):"
+	print ""
+	select tl.*
+	from time_log tl
+	where tl.date >= '1/1/1999'
+	and not exists
+	(
+		select 1
+		from client_employee ce
+		where tl.emp = ce.emp
+		and tl.client = ce.client
+		and tl.proj = isnull(ce.proj, tl.proj)
+		and tl.date between ce.start_date and ce.end_date
+	)
+end
+go
+
+if exists (
+				select tl.*
+				from time_log tl, project p
+				where tl.client = p.client
+				and tl.proj = p.proj
+				and not exists
+				(
+					select 1
+					from project p1
+					where tl.client = p1.client
+					and tl.proj = p1.proj
+					and tl.date between p1.start_date and p1.end_date
+				)
+          )
+begin 
+	print "Log entries with dates outside project dates:"
+	print ""
+	select tl.*
+	from time_log tl, project p
 	where tl.client = p.client
 	and tl.proj = p.proj
-)
-order by emp, client, proj, phase
+	and not exists
+	(
+		select 1
+		from project p1
+		where tl.client = p1.client
+		and tl.proj = p1.proj
+		and tl.date between p1.start_date and p1.end_date
+	)
+end
 go
 
-print "log entries with illegal employee/client combinations (from 1999 on)"
-go
-select tl.*
-from time_log tl
-where tl.date >= '1/1/1999'
-and not exists
-(
-	select 1
-	from client_employee ce
-	where tl.emp = ce.emp
-	and tl.client = ce.client
-	and tl.proj = isnull(ce.proj, tl.proj)
-	and tl.date between ce.start_date and ce.end_date
-)
-go
-
-print "log entries with dates outside project dates"
-go
-select tl.*
-from time_log tl, project p
-where tl.client = p.client
-and tl.proj = p.proj
-and not exists
-(
-	select 1
-	from project p1
-	where tl.client = p1.client
-	and tl.proj = p1.proj
-	and tl.date between p1.start_date and p1.end_date
-)
-go
-
-set nocount on
 $(build_profit_item "
 	log.date >= '1/1/1999'
 ")
 exec calc_total_price
 exec calc_total_cost
-set nocount off
+go
+set nocount on
 go
 
-print "log entries with no determinable billing rate (from 1998 on)"
-go
-select * from time_log_profit
-where bill_rate is null
-and class_billing = 0
+if exists (
+				select * from time_log_profit
+				where bill_rate is null
+				and class_billing = 0
+          )
+begin
+	print "Log entries with no determinable billing rate (from 1998 on):"
+	print ""
+	select * from time_log_profit
+	where bill_rate is null
+	and class_billing = 0
+end
 go
 
-print "log entries with no determinable pay rate (from 1998 on)"
+if exists (
+				select * from pay_amount
+				where requires_payment = 1
+				and pay_rate is null
+          )
+begin 
+	print "Log entries with no determinable pay rate (from 1998 on):"
+	print ""
+	select * from pay_amount
+	where requires_payment = 1
+	and pay_rate is null
+end
 go
-select * from pay_amount
-where requires_payment = 1
-and pay_rate is null
-go
-print "Log entries with no cliproj, where required by project(from 1/1/2000 on)."
-go
-select substring ( e.fname,1,10) fname,
-	e.emp, 
-	log_id, 
-	tl.client, 
-	tl.proj
-from time_log tl, 
-	project p, 
-	project_type pt, 
-	employee e
-where 1=1
-and cliproj is null
-and tl.client = p.client
-and tl.proj = p.proj
-and p.proj_type = pt.proj_type
-and tl.date between p.start_date and p.end_date
-and tl.date > "1/1/00"
-and pt.requires_cliproj = 1
-and e.emp = tl.emp
-order by substring ( e.fname,1,10)
+
+if exists (
+				select  *
+				from time_log tl, 
+					project p, 
+					project_type pt, 
+					employee e
+				where 1=1
+				and cliproj is null
+				and tl.client = p.client
+				and tl.proj = p.proj
+				and p.proj_type = pt.proj_type
+				and tl.date between p.start_date and p.end_date
+				and tl.date > "1/1/00"
+				and pt.requires_cliproj = 1
+				and e.emp = tl.emp
+          )
+begin 
+	print "Log entries with no cliproj, where required by project(from 1/1/2000 on):"
+	print ""
+	select substring ( e.fname,1,10) fname,
+		e.emp, 
+		log_id, 
+		tl.client, 
+		tl.proj
+	from time_log tl, 
+		project p, 
+		project_type pt, 
+		employee e
+	where 1=1
+	and cliproj is null
+	and tl.client = p.client
+	and tl.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and tl.date between p.start_date and p.end_date
+	and tl.date > "1/1/00"
+	and pt.requires_cliproj = 1
+	and e.emp = tl.emp
+	order by substring ( e.fname,1,10)
+end
 go
