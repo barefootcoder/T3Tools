@@ -40,6 +40,10 @@ use Storable;
 
 use Barefoot::base;
 
+
+use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
+
+
 our $data_store_dir = DEBUG ? "." : "/etc/data_store";
 
 our $base_types =
@@ -550,13 +554,26 @@ sub load_table
 sub append_table
 {
 	my $this = shift;
-	my ($table, $data) = @_;
+	my ($table, $data, $empty_set_okay) = @_;
+	if ($empty_set_okay and $empty_set_okay != EMPTY_SET_OKAY)
+	{
+		$this->{last_err} = "illegal option sent to append_table";
+		return undef;
+	}
 
-	# make sure we have at least one row
+	# make sure we have at least one row, unless empty sets are okay
 	unless (@$data)
 	{
-		$this->{last_err} = "no rows passed to append_table";
-		return undef;
+		if ($empty_set_okay)
+		{
+			# looks like they don't care that there's no data; just return
+			return true;
+		}
+		else
+		{
+			$this->{last_err} = "no rows passed to append_table";
+			return undef;
+		}
 	}
 
 	# build an insert statement
@@ -602,11 +619,11 @@ sub append_table
 sub replace_table
 {
 	my $this = shift;
-	my ($table, $data) = @_;
+	my ($table, $data, $empty_set_okay) = @_;
 
 	return undef unless $this->do("delete from $table");
 
-	return $this->append_table($table, $data);
+	return $this->append_table($table, $data, $empty_set_okay);
 }
 
 
