@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  2000/08/28 21:12:40  buddy
+# first truly working version
+# implements get_yn() and input()
+#
 # Revision 1.1  1999/11/22 16:24:34  buddy
 # Initial revision
 #
@@ -69,5 +73,5 @@ sub input
 
 	my $answer = <STDIN>;
 	chomp $answer;
-	return $answer ? $answer : $default;
+	return ( $answer ne "" ) ? $answer : $default;
 }
