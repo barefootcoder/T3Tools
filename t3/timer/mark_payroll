@@ -12,9 +12,56 @@ use Barefoot::timerdata;
 ################
 
 my $rows = timerdata::query_results("
-		select hours, total_pay,
-				convert(char(10), date, 112)
-		from pay_amount
+        set nocount on
+
+        select 
+			log_source,
+			log_id,
+			emp,
+			client,
+			proj,
+			date,
+			hours,
+			requires_payment,
+			pay_rate,
+			pay_rate_type,
+			total_pay
+        into #pay_amount
+        from pay_amount pa
+        where not exists ( select 1
+                         from salary_amount sa
+                         where sa.emp = pa.emp )
+        union
+        select 
+			log_source,
+			log_id,
+			emp,
+			client,
+			proj,
+			date,
+			hours,
+			requires_payment,
+			pay_rate,
+			pay_rate_type,
+			0
+        from pay_amount pa
+        where exists ( select 1
+                         from salary_amount sa
+                         where sa.emp = pa.emp )
+
+        select hours,
+               total_pay,
+               convert(char(10), date, 112) 'date',
+			   'Hourly' paytype
+        from #pay_amount 
+        union all
+        select  0, 
+                sa.actual_pay,
+               convert(char(10), sa.start_date, 112),
+			   'Salary' paytype
+        from salary_amount sa
+        set nocount off
+
 	");
 die("couldn't access timer database") unless defined($rows);
 
@@ -31,9 +78,33 @@ foreach my $row (@$rows)
 	$total_pay += $pay;
 	$min_date = $row->[2] if $row->[2] < $min_date;
 	$max_date = $row->[2] if $row->[2] > $max_date;
+	$num_rows-- if ( $row->[3] eq "Salary" ) ;
 }
 print "\nPayroll: $num_rows rows totalling $total_hours hours and "
 		. "\$$total_pay total pay\n";
+exit 1 unless get_yn("Is this right?");
+
+$rows = timerdata::query_results("
+		set nocount on
+
+		select 
+			emp,
+			convert (char(10), start_date,101),
+			convert (char(10), end_date,101),
+			bank_after
+		from salary_amount 
+		set nocount off
+
+	");
+die("couldn't access timer database") unless defined($rows);
+
+print "\n\nPayroll: Here are the new bank balances for salaried employees.\n";
+printf "\n%-5.5s %-15.15s %-15.15s %15.15s\n" , "Emp", "Start Date", "End Date", "New Balance";
+foreach my $row (@$rows)
+{
+	printf "%-5.5s %-15.15s %-15.15s %15.2f\n" , $row->[0],$row->[1],$row->[2],$row->[3];
+}
+print "\n";
 exit 1 unless get_yn("Is this right?");
 
 $min_date =~ /(\d\d\d\d)(\d\d)(\d\d)/;
@@ -62,6 +133,11 @@ my $insert_query = "
 	where tl.log_source = pa.log_source
 	and tl.log_id = pa.log_id
 	and pay.check_date = '$check_date'
+
+	insert salary_bank ( emp, bank_amount, start_date, end_date, check_date, create_user, create_date )
+	select emp, bank_after, start_date, end_date, '$check_date', '$::ENV{USER}', getdate() from salary_amount 
+
+	delete from pay_amount
 	go
 ";
 
@@ -79,7 +155,7 @@ die("mark failed <<$results>>") unless
 		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
 
 print "\nInitial attempt successful for payroll $from_date to $to_date,\n";
-print "    check date $check_date, affecting $num_rows rows\n";
+print "    check date $check_date, affecting $num_rows rows & new bank balances\n";
 exit 1 unless get_yn("Proceed?");
 
 my $results = timerdata::run_query("
