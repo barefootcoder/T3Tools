@@ -7,11 +7,13 @@
 
 use strict;
 
+#use Barefoot::debug;
+
 use CGI;
 use Barefoot::timerdata;
 
 use constant BREAK => "<BR>\n";
-use constant LOGID => 15125;
+
 use constant DEBUG => 0;
 
 my $urlpath = DEBUG ? "http://www.barefoot.net/cgi-bin/$ENV{REMOTE_USER}test/timer" 
@@ -26,29 +28,21 @@ $::ENV{HOME} = "/home/www";
 $::ENV{SYBASE} = "/opt/sybase";
 
 
-# Read Cookies
-my @cookies = $cgi->cookie();
-foreach my $name (@cookies)
-{
-   my $value = $cgi->cookie($name);
-   $ENV{$name} = $value;
-}
-
 # Set up variables
-my $user = $cgi->param('admin') ? $ENV{user}:$ENV{REMOTE_USER}; #?user
+my $user = $cgi->param('admin') ? $cgi->cookie('user'):$ENV{REMOTE_USER}; #?user
 if (not $user)
 {
 	$user = $ENV{REMOTE_USER};						#?REMOTE_USER
 }
 my $emp_id = timerdata::emp_number($user);
-my $start_date = $ENV{start_date};					#?start_date
-my $end_date = $ENV{end_date};						#?end_date
-my $client = $ENV{client};							#?client
-my $proj = $ENV{proj};								#?proj
+my $start_date = $cgi->cookie('start_date'); 		#?start_date
+my $end_date = $cgi->cookie('end_date');  			#?end_date
+my $client = $cgi->cookie('client');  				#?client
+my $proj = $cgi->cookie('proj');  					#?proj
 
 
 # Main Section
-timerdata::set_connection("SYBASE_1","timertest");
+timerdata::set_connection("SYBASE_1","timer");
 
 checkchange();
 print_header();
@@ -144,8 +138,8 @@ sub print_form
 	  
 	  print "<TR><TD>",
 	  	$cgi->a({-href=>"changetext.pl?logid=$log_id&admin=$admin"},
-					"$log_id"),"</A>";
-	  print "<TD>$date<TD>$client<TD>$proj<TD>$phase<TD>$comment</TR>";
+					"$log_id");
+	  print "<TD>$date<TD>$client<TD>$proj<TD>$phase<TD>$comment</TR>\n";
 	  $i++;
 	}
 	print "</TABLE>";
