@@ -1,5 +1,8 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Sales and Effort (by Client)
+-- ALSO RUN WITH: detail=yes
+-- SORT GROUP: Management Reports
+-- TITLE: Sales and Effort (Super Detailed)
 
 print "Period from [start_date] to [end_date]"
 print ""
@@ -86,42 +89,42 @@ order by c.client
 compute sum(sum(pi.simple_profit))
 go
 
-print ""
-print "<H4>Project Summaries: By Client</H4>"
-print ""
--- gross sales
-select c.client "C", 
-	substring ( c.name, 1,12) "Client",
-	b.proj PRJ,
-	convert ( numeric(8,2), sum(b.hours)) "Payed Hrs",
-	convert ( numeric(8,2), sum(b.units)) "Billed Hrs" ,
-	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 
-from client c , #base b, employee e
-where b.client = c.client
-and b.emp = e.emp
-group by c.client, c.name, b.proj
-order by client, b.proj
-compute sum( convert ( numeric(12,2), sum(b.total_price)))
-	by c.client
-go
-print ""
-print "<H4>Detail: By Client, Project, Employee</H4>"
-print ""
--- gross sales
-select c.client "C", 
-	substring ( c.name, 1,12) "Client",
-	b.proj PRJ,
-    $(employee_name e) "Employee", 
-	convert ( numeric(7,2), sum(b.units)) "Billed Hrs" ,
-	convert ( numeric(7,2), sum(b.hours)) "Payed Hrs",
-	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 
-from #base b, client c , employee e
-where b.client = c.client
-and b.emp = e.emp
-group by c.client, c.name, b.proj, $(employee_name e) 
-order by client, b.proj
-compute sum( convert ( numeric(12,2), sum(b.total_price)))
-	by c.client, b.proj
-compute sum( convert ( numeric(12,2), sum(b.total_price)))
-	by c.client
-go
+print ""															{?detail}
+print "<H4>Project Summaries: By Client</H4>"						{?detail}
+print ""															{?detail}
+-- gross sales														{?detail}
+select c.client "C", 												{?detail}
+	substring ( c.name, 1,12) "Client",								{?detail}
+	b.proj PRJ,														{?detail}
+	convert ( numeric(8,2), sum(b.hours)) "Payed Hrs",				{?detail}
+	convert ( numeric(8,2), sum(b.units)) "Billed Hrs" ,			{?detail}
+	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 		{?detail}
+from client c , #base b, employee e									{?detail}
+where b.client = c.client											{?detail}
+and b.emp = e.emp													{?detail}
+group by c.client, c.name, b.proj									{?detail}
+order by client, b.proj												{?detail}
+compute sum( convert ( numeric(12,2), sum(b.total_price)))			{?detail}
+	by c.client														{?detail}
+go																	{?detail}
+print ""															{?detail}
+print "<H4>Detail: By Client, Project, Employee</H4>"				{?detail}
+print ""															{?detail}
+-- gross sales														{?detail}
+select c.client "C", 												{?detail}
+	substring ( c.name, 1,12) "Client",								{?detail}
+	b.proj PRJ,														{?detail}
+    $(employee_name e) "Employee", 									{?detail}
+	convert ( numeric(7,2), sum(b.units)) "Billed Hrs" ,			{?detail}
+	convert ( numeric(7,2), sum(b.hours)) "Payed Hrs",				{?detail}
+	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 		{?detail}
+from #base b, client c , employee e									{?detail}
+where b.client = c.client											{?detail}
+and b.emp = e.emp													{?detail}
+group by c.client, c.name, b.proj, $(employee_name e) 				{?detail}
+order by client, b.proj												{?detail}
+compute sum( convert ( numeric(12,2), sum(b.total_price)))			{?detail}
+	by c.client, b.proj												{?detail}
+compute sum( convert ( numeric(12,2), sum(b.total_price)))			{?detail}
+	by c.client														{?detail}
+go																	{?detail}
