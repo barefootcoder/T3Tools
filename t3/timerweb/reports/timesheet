@@ -3,24 +3,26 @@
 
 &proc build_profit_item
 
-	log.client_id = '{client}'
+	log.client_id = {client}
 {if proj}
-	and log.proj_id = '{proj}'
+	and log.proj_id = {proj}
 {endif}
-	and log.log_date >= '{start_date}'
-	and log.log_date <= '{end_date}'
+	and log.log_date >= {start_date}
+	and log.log_date <= {end_date}
 
 ;
 
 	select pe.first_name, pe.last_name
 	from {~t3}.workgroup_user wu, {~t3}.person pe
-	where wu.nickname = '{user}'
+	where wu.nickname = {user}
 	and wu.person_id = pe.person_id
 ->format
 	B=><H3>Employee: %1 %2</H3>
 ;
 
-&print <H3>For Time Period Ending:  {end_date}</H3>
+&print
+<H3>For Time Period Ending:  {end_date}</H3>
+;
 
 	select tlp.log_date as "Date:", sum(tlp.hours) "Hours:"
 	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
@@ -29,8 +31,11 @@
 	and pi.log_id = tlp.log_id
 	and tlp.emp_id = e.emp_id
 	and e.person_id = wu.person_id
-	and wu.nickname = '{user}'
+	and wu.nickname = {user}
 	group by tlp.log_date
 	order by tlp.log_date
 	# compute sum(sum(tlp.hours)) by $(period_num tlp.log_date 7)
+->format
+	H=>%default
+	B->@<<<<<<<<<<<<<<<<<<<  @##.##
 ;
