@@ -2,6 +2,10 @@
 
 # $Header$
 # $Log$
+# Revision 1.7  1999/06/03 16:12:36  buddy
+# added inv_paydate variable
+# made reports grouped into two columns
+#
 # Revision 1.6  1999/05/27 20:41:20  buddy
 # added proj to variables
 # set sort order for variables
@@ -73,13 +77,13 @@ $vars = {
 						sort	=>	6,
 						value	=>	"",
 						size	=>	7,
-						admin	=>	1,
+						admin	=>	0,
 					},
 	check_date	=>	{
 						sort	=>	7,
 						value	=>	"",
 						size	=>	10,
-						admin	=>	1,
+						admin	=>	0,
 					},
 	inv_paydate	=>	{
 						sort	=>	8,
@@ -88,7 +92,7 @@ $vars = {
 						admin	=>	1,
 					},
 };
-@admin_users = ('tweber', 'christy', 'buddy');
+@admin_users = ('christy', 'buddy');
 
 $title = 'TIMER Reports';
 $basepath = "/home/httpd/sybase/timer_reports";
@@ -189,7 +193,9 @@ sub param_to_cookie
 sub text_form
 {
 	print $cgi->startform(), "<P>\n";
-	foreach $var (sort {$vars->{$a} <=> $vars->{$b}} keys %$vars)
+	foreach $var (
+			sort {$vars->{$a}->{sort} <=> $vars->{$b}->{sort}} keys %$vars
+		)
 	{
 		next if $vars->{$var}->{admin} and not is_admin_user();
 		$name = $var;
@@ -214,10 +220,7 @@ sub html_spaces
 {
 	my ($how_many) = @_;
 
-	for (1..$how_many)
-	{
-		print "&nbsp;";
-	}
+	print "&nbsp;" x $how_many;
 }
 
 sub is_admin_user
