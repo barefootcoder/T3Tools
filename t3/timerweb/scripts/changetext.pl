@@ -63,13 +63,15 @@ sub checkchange
 		my $text = substr($cgi->param('COMMENT'),0,250);
 		my $link = "$listpath/loglist.pl?admin=$admin";
 		my $query = "update time_log 
-				  set comments='$text' 
+				  set comments='$text',
+				  	  chguser = '$user',
+					  chgdate = convert(char(10),getdate(),1)
 				  where log_id=$logid
 				  go";
 		my $results = timerdata::run_query("$query");
         print $cgi->redirect(-url=>"$link");
  	
-		#print "$text<HR>$query<HR>$results";
+		print "$text<HR>$query<HR>$results";
 		#exec ../loglist.pl;
 	}
 
@@ -108,7 +110,7 @@ sub print_form
 			");
     print $cgi->startform(), "\n";
 	#print "a=$a<BR>";
-	print "<CENTER><B>Previous Comment:</B></CENTER><BR>";
+	print "<CENTER><B>Previous1 Comment:</B></CENTER><BR>";
 	if (defined($results))
 	{
 		print "<CENTER>$results->[0]->[0]</CENTER>";
