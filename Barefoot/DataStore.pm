@@ -32,7 +32,7 @@ package DataStore;
 
 use strict;
 
-#use Barefoot::debug(1);
+#use Barefoot::debug(2);
 
 use DBI;
 use Carp;
@@ -207,45 +207,6 @@ sub _transform_query
 	if ($query =~ /{/)	# if you want % to work in vi, you need a } here
 	{
 		# $this->_dump_attribs("before SQL preproc");
-
-		# positive conditionals
-		while ($query =~ / ^ .*? ( {\? (\w+) } ) .*? $ /mx)
-		{
-			my $line = quotemeta($&);
-			my $conditional = quotemeta($1);
-			my $varname = $2;
-
-			# if the variable exists, just remove the conditional
-			# else, get rid of the whole line it's in
-			if (exists $this->{vars}->{$varname})
-			{
-				$query =~ s/$conditional//g;
-			}
-			else
-			{
-				# the /g is not likely to be useful here, but what the hey
-				$query =~ s/$line//g;
-			}
-		}
-
-		# negative conditionals
-		# basically the same, only reversed
-		while ($query =~ / ^ .*? ( {\! (\w+) } ) .*? $ /mx)
-		{
-			my $line = $&;
-			my $conditional = $1;
-			my $varname = $2;
-
-			if (exists $this->{vars}->{$varname})
-			{
-				# ditto on usefulness of /g
-				$query =~ s/$line//g;
-			}
-			else
-			{
-				$query =~ s/$conditional//g;
-			}
-		}
 
 		# schema translations
 		while ($query =~ / {% (\w+) } \. /x)
@@ -502,6 +463,46 @@ sub execute
 	}
 
 	return $report ? $report : true;
+}
+
+
+sub begin_tran
+{
+	my $this = shift;
+
+	unless ($this->{dbh}->begin_work())
+	{
+		$this->{last_err} = $this->{dbh}->errstr;
+		croak("cannot start transaction");
+	}
+
+	return true;
+}
+
+
+sub commit
+{
+	my $this = shift;
+
+	unless ($this->{dbh}->commit())
+	{
+		$this->{last_err} = $this->{dbh}->errstr;
+		croak("cannot commit transaction");
+	}
+}
+
+
+sub rollback
+{
+	my $this = shift;
+
+	unless ($this->{dbh}->rollback())
+	{
+		$this->{last_err} = $this->{dbh}->errstr;
+		croak("cannot rollback transaction");
+	}
+
+	return true;
 }
 
 
