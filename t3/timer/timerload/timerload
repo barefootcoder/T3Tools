@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.6  1999/02/18 04:02:01  buddy
+# fixed too aggressive adjustment of Tim's secretarial hours
+# added project type fixups for ILJ
+#
 # Revision 1.5  1999/01/21 00:50:36  buddy
 # made sure valid payroll dates didn't get overwritten (few as they are)
 #
@@ -270,6 +274,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		lname				varchar(15)		NOT NULL,
 		showlast			bit				NOT NULL,
 		login				varchar(30)		NULL,
+		defclient			char(3)			NOT NULL,
 	")
 
 	use $srcdb
@@ -287,7 +292,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	insert employee
-	select e.id, name, lastname, isnull(showlast, 0), username
+	select e.id, name, lastname, isnull(showlast, 0), username, def_client
 	from $srcdb..employee e, $srcdb..emp_maxdates emd
 	where e.id = emd.id
 	and e.end_date = emd.maxdate
