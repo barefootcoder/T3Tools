@@ -11,12 +11,12 @@ select @as_of = getdate()								?!end_date
 select @as_of = '[end_date]'							??end_date
 
 select e.emp "E", $(employee_name e) "employee", c.client "C",
-		c.name "client", p.name "project",
+		c.name "client", p.proj "P", p.name "project",
 		convert(numeric(5,2), br.rate) "billing",
 		convert(numeric(5,2), pr.rate) "pay",
 		isnull(brat.ratio, 1) "ratio",
 		convert(numeric(5,2), br.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
-from employee e, client c, project p, client_employee ce,
+from employee e, client c, project p, project_type pt, client_employee ce,
 		bill_rate br, pay_rate pr, billing_ratio brat
 where ce.emp = e.emp
 and ce.client = c.client
@@ -43,7 +43,9 @@ and
 and @as_of between pr.start_date and pr.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
-and p.proj_type != 'R'
+and @as_of between p.start_date and p.end_date
+and p.proj_type = pt.proj_type
+and pt.resource_billing = 0
 and c.client = br.client
 and br.proj = p.proj
 and @as_of between br.start_date and br.end_date
@@ -53,12 +55,12 @@ and (brat.proj =* p.proj or brat.proj is null)
 and @as_of between brat.start_date and brat.end_date
 union
 select e.emp "E", $(employee_name e) "employee", c.client "C",
-		c.name "client", p.name "project",
+		c.name "client", p.proj "P", p.name "project",
 		convert(numeric(5,2), rr.rate) "billing",
 		convert(numeric(5,2), pr.rate) "pay",
 		isnull(brat.ratio, 1) "ratio",
 		convert(numeric(5,2), rr.rate - pr.rate * isnull(brat.ratio, 1)) "diff"
-from employee e, client c, project p, client_employee ce,
+from employee e, client c, project p, project_type pt, client_employee ce,
 		resource_rate rr, resource_employee re, pay_rate pr, billing_ratio brat
 where ce.emp = e.emp
 and ce.client = c.client
@@ -85,7 +87,9 @@ and
 and @as_of between pr.start_date and pr.end_date
 and p.client = ce.client
 and p.proj = isnull(ce.proj, p.proj)
-and p.proj_type = 'R'
+and @as_of between p.start_date and p.end_date
+and p.proj_type = pt.proj_type
+and pt.resource_billing = 1
 and c.client = rr.client
 and @as_of between rr.start_date and rr.end_date
 and rr.client = re.client
@@ -97,4 +101,17 @@ and brat.client =* p.client
 and (brat.proj =* p.proj or brat.proj is null)
 and @as_of between brat.start_date and brat.end_date
 order by e.emp, c.client
+
+print "projects open with no employee assignments"
+select c.client "C", c.name "client", p.proj "P", p.name "project"
+from project p, client c
+where c.client = p.client
+and @as_of between p.start_date and p.end_date
+and not exists
+(
+	select 1
+	from client_employee ce
+	where ce.client = p.client
+	and isnull(ce.proj, p.proj) = p.proj
+)
 go
