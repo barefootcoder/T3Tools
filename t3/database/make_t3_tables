@@ -100,7 +100,7 @@ sub create_table
 	my ($table_name, $columns, $attribs) = @_;
 
 	print "making table t3.$table_name\n";
-	$t3->overwrite_table("{%t3}.$table_name", $columns)
+	$t3->overwrite_table("{~t3}.$table_name", $columns)
 			or die("couldn't create table $table_name: " . $t3->last_error());
 
 	# loop through attributes
@@ -111,7 +111,7 @@ sub create_table
 		{
 			my $query = "
 				create $attrib->{type} $attrib->{name}
-				on {%t3}.$table_name ($attrib->{cols})
+				on {~t3}.$table_name ($attrib->{cols})
 				{&place_on index_seg}
 			";
 			$t3->do($query)
@@ -123,7 +123,7 @@ sub create_table
 		if ($attrib->{type} =~ /grant/)
 		{
 			my $query = "
-				$attrib->{type} on {%t3}.$table_name
+				$attrib->{type} on {~t3}.$table_name
 				to $attrib->{users}
 			";
 			$t3->do($query)
