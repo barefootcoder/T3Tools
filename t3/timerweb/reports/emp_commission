@@ -1,9 +1,9 @@
 -- SORT GROUP: Commission Reports
 -- TITLE: Employee Commission
 
-print "Period from [start_date] to [end_date]"
-print ""
-print ""
+print 'Period from {start_date} to {end_date}'
+print ''
+print ''
 go
 
 -- why this rigamarole with the temp table is necessary, I have no idea
@@ -13,6 +13,9 @@ go
 -- out .... I tried fiddling with the showplan and forcing indices, but I
 -- still couldn't make it perform satisfactorily, so I took the brute force
 -- approach ... thus the lovely temp table below
+
+set nocount on
+go
 
 select distinct tl.log_source, tl.log_id
 into #emp_comm_logs
@@ -41,8 +44,11 @@ and lc.commission_id = com.commission_id
 and com.comm_type = 'E'
 go
 
+set nocount off
+go
+
 $(build_profit_item "
-	log.date <= '[end_date]'
+	log.date <= '{end_date}'
 	and exists
 	(
 		select 1
@@ -86,7 +92,7 @@ calc_employee_commission
 go
 
 -- for debugging
---/*
+/*
 select eca.pay_to, pi.client, pi.proj,
 		convert(char(10), end_date, 101) "date",
 		convert(numeric(6,2), price_per_unit) "billrate",
@@ -98,17 +104,17 @@ select eca.pay_to, pi.client, pi.proj,
 from profit_item pi, employee_comm_amount eca
 where pi.profit_id = eca.profit_id
 order by pay_to, client, proj, date
---*/
+*/
 go
 
 -- now for the actual report
 select eca.pay_to "E", convert(char(15), $(employee_name e)) "employee",
-		pi.client "C", convert(char(25), c.name) "client",
+		pi.client "C", convert(char(20), c.name) "client",
 		convert(numeric(6,2), sum(tlp.hours)) "ttl hrs",
-		convert(numeric(8,2),
-				sum(pi.total_price * eca.employee_percent)) "total price",
-		convert(numeric(8,2), sum(eca.gross)) "total gross",
-		convert(numeric(8,2), sum(eca.pay_to_employee)) "total cost",
+		convert(char(10), convert(money,
+				sum(pi.total_price * eca.employee_percent)), 1) "total price",
+		convert(char(10), sum(eca.gross), 1) "total gross",
+		convert(char(10), sum(eca.pay_to_employee), 1) "total cost",
 		sum(eca.amount) "total emp comm"
 from profit_item pi, employee_comm_amount eca, time_log_profit tlp,
 		employee e, client c
