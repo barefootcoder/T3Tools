@@ -1,0 +1,191 @@
+#! /usr/bin/perl
+
+use strict;
+
+use CGI;
+use Barefoot::input qw(input);
+use Barefoot::format;
+
+use T3;
+
+# user "statuses" (offline, online, etc)
+my @SYMBOL = (" ", "*", "/", "=", "?");
+use enum qw(OFFLINE ONLINE BUSY MESSAGE);
+
+T3::initialize($::ENV{HOME});
+
+print STDERR "$0: no server url defined in ini file\n" and exit(1)
+		unless defined($T3::server_url);
+print STDERR "$0: no user name defined in ini file\n" and exit(1)
+		unless defined($T3::username);
+print STDERR "$0: no server refresh interval defined in ini file\n" and exit(1)
+		unless defined($T3::client_timeout);
+
+
+# build most common messages
+my (%online, %user_status, @waiting_messages);
+my $alive_message = T3::build_message($T3::username, "", T3::LOGON_MESSAGE);
+my $logout_message = T3::build_message($T3::username, "", T3::LOGOFF_MESSAGE);
+
+my $current_message = $alive_message;		# start out with alive message
+while (1)									# command "quit" will drop out
+{
+	foreach (T3::send_message($current_message))
+	{
+		my $attr = T3::parse_message($_);
+		my ($from, $to, $status, $time, $message)
+				= @{$attr}{'from', 'to', 'status', 'time', '_DATA_'};
+
+		print STDERR "illegal MESSAGE: $_\n" and next unless defined $status;
+		if ($status eq T3::LOGOFF_MESSAGE)
+		{
+			$online{$from} = OFFLINE unless $online{$from} == MESSAGE;
+			$user_status{$from} = decode_message($message);
+		}
+		elsif ($status eq T3::LOGON_MESSAGE)
+		{
+			$online{$from} = ONLINE unless $online{$from} == MESSAGE;
+			$user_status{$from} = decode_message($message);
+		}
+		elsif ($status eq T3::BUSY_MESSAGE)
+		{
+			$online{$from} = BUSY unless $online{$from} == MESSAGE;
+			$user_status{$from} = decode_message($message);
+		}
+		elsif ($status eq T3::TALKER_MESSAGE)
+		{
+			print STDERR "misdelivered message; should have gone to $to\n"
+					and next unless $to eq $T3::username;
+			$online{$from} = MESSAGE;
+			push @waiting_messages, "$from/$time/$message";
+		}
+		elsif ($status eq T3::ERROR_MESSAGE)
+		{
+			print STDERR "got ERROR: $message\n";
+		}
+	}
+
+	# print online/offline list
+	print "\n\nCurrently online:\n";
+	foreach my $user (sort {lc($a) cmp lc($b)} keys %online)
+	{
+		print "(", $SYMBOL[$online{$user}], ") $user";
+		print "    [$user_status{$user}]" if $user_status{$user};
+		print "\n";
+	}
+
+	# get out unless we accidentally got a message while trying to log out
+	exit(0) if $current_message eq $logout_message and not @waiting_messages;
+
+	# now get the command input ... we wrap this in an eval so we can timeout
+	# when we need to ... the sig handler for the alarm just dies, thus
+	# exiting the eval ...
+	eval
+	{
+		local $SIG{ALRM} = sub { die "alarm"; };
+		alarm $T3::client_timeout;
+
+		# our command "loop"
+		COMMAND: {
+			print "\n";
+			print "Waiting messages!\a\n" if @waiting_messages;
+			# go back to regular "ping" message next time through
+			$current_message = $alive_message;
+			my $command = input("Command:");
+
+			if ($command eq "get")
+			{
+				if (@waiting_messages)
+				{
+					# we'll just read one ... if there's more than one
+					# waiting message, you'll need to do multiple "get"s
+					my ($from, $time, $message)
+							= split('/', shift @waiting_messages);
+					my @message_lines = decode_message($message);
+
+					# build a full-screen format
+					my $cols = 80;			# _should_ try to get term width
+					my $format = '^' . '<' x ($cols - 4) . '~~';
+					print "Message from $from at ", scalar(localtime($time)),
+							":\n";
+					foreach (@message_lines)
+					{
+						writeln($format, $_);
+					}
+
+					$online{$from} = -1;
+				}
+				else
+				{
+					# can't get if there's nothing to get
+					print "No waiting messages\n";
+				}
+			}
+			elsif ($command =~ /^send (.*)\s*$/)
+			{
+				my $to = $1;
+
+				# no messaging to people who don't exist
+				if (not exists $online{$to})
+				{
+					print "Unrecognized user $to\n";
+				}
+				else
+				{
+					# if we don't kill the impending alarm, you might timeout
+					# in the middle of typing your message ... trust me,
+					# it's very annoying ...
+					alarm 0;
+
+					# get a bunch of lines till they type ^D
+					my @lines = <STDIN>;
+					$current_message = T3::build_message($T3::username, $to,
+							T3::TALKER_MESSAGE, @lines);
+					# hop out so the outer loop will send the message
+					# (and reset the alarm for timeout)
+					die "breaking out";
+				}
+			}
+			elsif ($command eq "refresh")
+			{
+				# just break out; the outer loop will recheck
+				die "breaking out";
+			}
+			elsif ($command eq "help")
+			{
+				print "Valid commands are:\n";
+				print "get		send [user]		refresh			help\n";
+				print "quit\n";
+			}
+			elsif ($command eq "quit")
+			{
+				# reset message to logging out, then hop out of the eval
+				$current_message = $logout_message;
+				die "breaking out";
+			}
+			else
+			{
+				# watchoo talkin bout, willis?
+				print "Unrecognized command!\n";
+			}
+
+			# this is roughly equivalent to a goto, but it looks nicer <s>
+			redo COMMAND;
+		}
+
+		print "\n";
+	};
+}
+
+sub decode_message
+{
+	my ($message) = @_;
+
+	# decode CGI encoding
+	$message =~ s/%(..)/ chr(hex($1)) /eg;
+	# other talker client uses +'s for spaces
+	$message =~ s/\+/ /g;
+	# split message into distinct lines
+
+	return wantarray ? split(/\r?\n/, $message) : $message;
+}
