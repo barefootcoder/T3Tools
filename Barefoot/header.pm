@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl -w
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
