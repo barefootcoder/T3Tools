@@ -37,6 +37,7 @@ package Barefoot::input;
 
 use strict;
 
+use Data::Dumper;
 use Array::PrintCols;
 
 use Barefoot::base;
@@ -123,8 +124,16 @@ sub menu_select
 
 	my $choice = 1;
 	my $max_choice_len = 0;
+	my %opt_letters;
 	foreach (@choices)
 	{
+		# save initial letter so menu items can be referenced that way
+		# if two choices have the same initial letter, the first one wins
+		# as of now, there is no way to specify the second one by letter
+		my $initial_letter = lc substr($_, 0, 1);
+		$opt_letters{$initial_letter} = $choice
+				unless exists $opt_letters{$initial_letter};
+
 		$_ = sprintf "$spec: $_", $choice;
 		$max_choice_len = range::max($max_choice_len, length($_));
 	}
@@ -143,12 +152,22 @@ sub menu_select
 		$choice = <STDIN>;
 		print "\n";
 
-		# q or Q or quit or anything beginning with a Q returns undef
-		return undef if $choice =~ /^q/i;
-
 		chomp $choice;
-		redo MENU if not $choice or $choice !~ /^\d+$/
-				or $choice < 1 or $choice > @choices;
+		if (not defined $choice)
+		{
+			# don't think this actually possible, but JIC
+			redo MENU;
+		}
+		elsif ($choice =~ /^\d+$/)
+		{
+			redo MENU if $choice < 1 or $choice > @choices;
+		}
+		else
+		{
+			$choice = $opt_letters{lc $choice};
+			redo MENU unless $choice;
+		}
+
 		return $choice - 1;
 	}
 }
