@@ -28,54 +28,43 @@ set pay_rate = 0
 where requires_payment = 0
 go
 
-select distinct pa.log_source, pa.log_id, pa.emp, pa.pay_rate, ip.category
-into #cp_logs
+select pa.emp, ip.category, convert(numeric(7,2), sum(pa.hours)) "cat_hrs"
+into #cp_cathours
 from pay_amount pa, int_project ip
 where pa.proj = ip.proj
+group by pa.emp, ip.category
 go
 
-select cpl.emp, cpl.pay_rate, cpl.category,
-		convert(numeric(7,2), sum(pa.hours)) "cat_hrs"
-into #cp_cathours
-from #cp_logs cpl, pay_amount pa
-where pa.log_source = cpl.log_source
-and pa.log_id = cpl.log_id
-group by cpl.emp, cpl.pay_rate, cpl.category
-go
-
-select cpl.emp, cpl.pay_rate, convert(numeric(7,2), sum(pa.hours)) "ttl_hrs"
+select pa.emp, convert(numeric(7,2), sum(pa.hours)) "ttl_hrs"
 into #cp_emphours
-from #cp_logs cpl, pay_amount pa
-where pa.log_source = cpl.log_source
-and pa.log_id = cpl.log_id
-group by cpl.emp, cpl.pay_rate
+from pay_amount pa, int_project ip
+where pa.proj = ip.proj
+group by pa.emp
 go
 
 select convert(numeric(7,2), sum(pa.hours)) "total_hrs"
 into #cp_total_hours
-from #cp_logs cpl, pay_amount pa
-where pa.log_source = cpl.log_source
-and pa.log_id = cpl.log_id
+from pay_amount pa, int_project ip
+where pa.proj = ip.proj
 go
 
-select cpct.emp, cpct.pay_rate, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
+select cpct.emp, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
 		convert(numeric(5,2), 0) "pct"
 into #cat_pcts
 from #cp_cathours cpct, #cp_emphours cpet
 where cpct.emp = cpet.emp
-and cpct.pay_rate = cpet.pay_rate
 go
 
 update #cat_pcts
 set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
 go
 
-select $(employee_name e) "name", cp.pay_rate, cat.name "category",
+select $(employee_name e) "name", cat.name "category",
 		cp.cat_hrs, cp.ttl_hrs, str(cp.pct, 6, 2) + '%' "pct"
 from #cat_pcts cp, employee e, category cat
 where cp.emp = e.emp
 and cp.category = cat.category
-order by cp.emp, cp.pay_rate, cat.name
+order by cp.emp, category
 go
 
 select cat.name, sum(cp.cat_hrs) "ttl hrs",
