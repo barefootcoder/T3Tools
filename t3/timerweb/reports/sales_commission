@@ -1,65 +1,77 @@
--- SORT GROUP: Commission Reports
--- TITLE: Sales Commission
+# SORT GROUP: Commission Reports
+# TITLE: Sales Commission
 
-print "Period from [start_date] to [end_date]"
-print ""
-print ""
-go
+	&print 
+Period from {start_date} to {end_date}
 
-$(build_profit_item "
+
+;
+
+&proc build_profit_item
+
 	exists
 	(
 		select 1
-		from sales_commission sc
-		where log.client = sc.client
+		from {@sales_commission} sc
+		where log.client_id = sc.client_id
 	)
 	and exists
 	(
 		select 1
-		from invoice i
+		from {@invoice} i
 		where log.invoice_id = i.invoice_id
-		and i.invoice_paydate < '[end_date]'
+		and i.invoice_paydate <= {end_date}
 	)
 	and not exists
 	(
 		select 1
-		from log_commission lc, commission com
+		from {@log_commission} lc, {@commission} com
 		where log.log_source = lc.log_source
 		and log.log_id = lc.log_id
 		and lc.commission_id = com.commission_id
 		and com.comm_type = 'S'
+		# and com.payment_id is not NULL
 	)
-")
 
-calc_total_price
-go
-calc_sales_commission
-go
+;
 
--- for debugging
-/*
-select pi.client, pi.proj, convert(char(10), start_date, 101) "start date",
-		convert(char(10), end_date, 101) "end date", units,
-		convert(numeric(6,2), price_per_unit) "cost/unit",
-		convert(numeric(7,2), total_price) "total price",
-		convert(numeric(6,2), sca.amount) "total sales comm",
-		pi.log_source, pi.log_id
-from profit_item pi, sales_comm_amount sca
-where pi.profit_id = sca.profit_id
-order by client, proj, start_date
-*/
-go
+&proc calc_sales_commission
+;
 
--- now for the actual report
-select sca.name "salesman", sca.client "C", c.name "client", sca.proj,
-		convert(numeric(8,2), sum(pi.total_price)) "total amount",
-		sum(sca.amount) "total sales comm"
-from sales_comm_amount sca, profit_item pi, client c
-where sca.profit_id = pi.profit_id
-and sca.client = c.client
-group by sca.name, sca.client, c.name, sca.proj
-order by sca.name, sca.client, sca.proj
-compute sum(sum(sca.amount))
-	by sca.name
-compute sum(sum(sca.amount))
-go
+	# for debugging
+&ignore
+	select pi.client_id, pi.proj_id, start_date, end_date, units,
+			price_per_unit "cost/unit", total_price "total price",
+			sca.amount "total sales comm", pi.log_source, pi.log_id
+	from {@profit_item} pi, {@sales_comm_amount} sca
+	where pi.profit_id = sca.profit_id
+	order by client_id, proj_id, start_date
+;
+
+	# now for the actual report
+	select sca.name "salesman", sca.client_id "C", c.name "client",
+			sca.proj_id, sum(pi.total_price) "sales amt",
+			sum(sca.amount) "sales comm"
+	from {@sales_comm_amount} sca, {@profit_item} pi, {@client} c
+	where sca.profit_id = pi.profit_id
+	and sca.client_id = c.client_id
+	group by sca.name, sca.client_id, c.name, sca.proj_id
+	order by sca.name, sca.client_id, sca.proj_id
+->format
+	H=>                                                                         TOTAL:
+	H=>%default
+	B->@<x30  @<< @<x30  @<<  @#####.##  @#####.##
+;
+
+	# subtotals
+	select sca.name "salesman", sum(pi.total_price) "sales amt",
+			sum(sca.amount) "sales comm"
+	from {@sales_comm_amount} sca, {@profit_item} pi
+	where sca.profit_id = pi.profit_id
+	group by sca.name
+	order by sca.name
+->format
+	H=>                                TOTAL:
+	H=>%default
+	B->@<x30  @#####.##  @#####.##
+;
