@@ -169,7 +169,6 @@ private:	// User declarations
 	void updateClocks ();
 	bool canNixWidth (bool caller_is_talker);
 
-	void displayTestStuff (int what_test, String whatever);	//development only
 	int getScrollPosition(HWND handle);
 	void setScrollPosition(HWND handle, short int pos);
 	void keepWithinScreen();

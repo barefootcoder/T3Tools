@@ -1,6 +1,6 @@
 object MainForm: TMainForm
-  Left = 114
-  Top = 576
+  Left = 22
+  Top = 604
   Width = 464
   Height = 217
   Caption = 'T3Client'
@@ -6431,6 +6431,7 @@ object MainForm: TMainForm
     end
     object mnuDoneTimer: TMenuItem
       Caption = '&Done'
+      Enabled = False
       OnClick = mnuDoneTimerClick
     end
     object mnuCancelTimer: TMenuItem

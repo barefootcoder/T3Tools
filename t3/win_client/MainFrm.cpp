@@ -20,7 +20,6 @@ using namespace arinbe;
 #include "TimerActionFrm.h"
 #include "MessageActionFrm.h"
 #include "OptionsFrm.h"
-#include "TestFrm.h"
 #include "TransThread.h"
 #include "UtilityDialg.h"
 #include "InTransitFrm.h"
@@ -54,24 +53,12 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 
 	initApp();							//read ini settings, etc.
 
-	//set after reading ini settings:
 
-	Caption = Caption + " - " + IniOpt->getValue("user_name").c_str();
 	contacts_width = Contacts->Width;
 	activateTimerFeatures();
 
 	// TODO, GET RID OF THIS HACK
-	// added this because IniOpts uses VCL stuff
-	map<string, string> options;
-	options["user_name"] = IniOpt->getValue("user_name");
-	options["server_url"] = IniOpt->getValue("server_url");
-	options["test_mode"] = IniOpt->getValue("test_mode");
-	options["communication_timeout"] = IniOpt->getValue("communication_timeout");
-
-	char str[50];
-	sprintf(str, "%d", IniOpt->getValueInt("timer_ping_interval") * 60);
-	options["timer_ping_interval"] = str; 
-	m_tmrmgr.setOptions(options);
+	OptionsClick(NULL);
 	if ( m_tmrmgr.pingServer() )
 	{
     	doTimerMaintenance();
@@ -143,8 +130,14 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 {
 	static bool dejavu = false;
 
-	if (dejavu) return;	//this is to prevent code below from being called twice
+	//this is to prevent code below from being called twice
+	if (dejavu) 
+		return;	
+
 	dejavu = true;
+
+	// stop the TimerMgr pings
+	m_tmrmgr.setPingInterval(0);	
 
 	if (MessagePump->transfer_active)	//we're currently communicating, so
 		busy_on_shut_down = true;		//we'll have to wait for it too
@@ -152,10 +145,10 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 	if (online)
 		ImOnClick(ImOn);	//if user still on-line, press on/off-line button
 
-
 	//show closing dialog and check whether there are messages in SendBuffer
 
 	if (MessagePump->transfer_active)
+	{
 		if (UtilityDialog->ShowModal() != mrOk)		//closed by Blinker
 		{
 			ShowMessage("There are still unsent messages. Attempts to resend "
@@ -182,6 +175,7 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 			}
 			*/
 		}
+	}
 
 	cleanupApp();			//save ini settings, etc
 
@@ -962,18 +956,25 @@ void __fastcall TMainForm::mnuCancelTimerClick(TObject *Sender)
 	if ( idx > -1 ) 
 	{
 		string name = TimersList->Items->Strings[idx].c_str();
-		if ( !m_tmrmgr.cancelTimer(name) )
+		string msg = "Are you sure you want to cancel Timer " +
+						name + "?";
+		string cpt = T3Caption() + " - Timer Cancel";
+		if ( Application->MessageBox(msg.c_str(), cpt.c_str(), 
+									 MB_YESNO | MB_ICONQUESTION) == mrYes )
 		{
-			string msg = "The server responded with\n\n" + 
-						  m_tmrmgr.getLastError();
-			string cpt = T3Caption() + " - Timer Error";
-			Application->MessageBox(msg.c_str(), cpt.c_str(), 
-									MB_OK | MB_ICONERROR);
-			ShowMessage(m_tmrmgr.getLastError().c_str());
-		}
+			if ( !m_tmrmgr.cancelTimer(name) )
+			{
+				string msg = "The server responded with\n\n" + 
+							  m_tmrmgr.getLastError();
+				string cpt = T3Caption() + " - Timer Error";
+				Application->MessageBox(msg.c_str(), cpt.c_str(), 
+										MB_OK | MB_ICONERROR);
+				ShowMessage(m_tmrmgr.getLastError().c_str());
+			}
 
-		doTimerMaintenance();
-		updateClocks();
+			doTimerMaintenance();
+			updateClocks();
+		}
 	}
 
 	return;
@@ -986,8 +987,9 @@ void __fastcall TMainForm::mnuDoneTimerClick(TObject *Sender)
 	{
 		string name = TimersList->Items->Strings[idx].c_str();
 		TNewTimer* dlg = new TNewTimer(this, m_tmrmgr, name, "DONE");
+		dlg->TimerName->Enabled = false;
 		dlg->Caption = T3Caption().c_str() + AnsiString(" - Done Timer");
-		dlg->ActiveControl = dlg->TimerName;
+		dlg->ActiveControl = dlg->TimerClient;
 		dlg->ShowModal();
 		delete dlg;
 
@@ -1032,8 +1034,10 @@ void __fastcall TMainForm::mnuLogTimerClick(TObject *Sender)
 {
 	// logs a timer
 	TNewTimer* dlg = new TNewTimer(this, m_tmrmgr, "", "LOG");
+	dlg->TimerName->Text = "LOG_TIMER";
+	dlg->TimerName->Enabled = false;
 	dlg->Caption = T3Caption().c_str() + AnsiString(" - Log Timer");
-	dlg->ActiveControl = dlg->TimerName;
+	dlg->ActiveControl = dlg->TimerClient;
 	dlg->ShowModal();
 	delete dlg;
 
@@ -1096,9 +1100,7 @@ void __fastcall TMainForm::SystemTimerTimer(TObject *Sender)
 {
 	//every minute update the current timer if one exists
 	m_tmrmgr.addMinute();
-    if ( m_tmrmgr.isNewDataAvail() )
-    	doTimerMaintenance();
-
+    doTimerMaintenance();
 	updateClocks();
 
 	return;
@@ -1123,15 +1125,16 @@ void TMainForm::updateClocks ()
 	const string name = m_tmrmgr.getActiveTimer();
 	if ( !name.empty() ) 
 	{
-		Application->Title = 
-				String("Timer ") + m_tmrmgr.getElapsedTime(name).c_str();
-		MainForm->Caption = String("Timer - ") + name.c_str();
+		Application->Title = String(T3Caption().c_str()) +  " " +
+									m_tmrmgr.getElapsedTime(name).c_str();
+		MainForm->Caption = String(T3Caption().c_str()) + " - " + name.c_str();
 	}
 	else
 	{
 		// no active timer
-		Application->Title = "Timer";
-		MainForm->Caption = "Timer";
+		MainForm->Caption = AnsiString(T3Caption().c_str()) + " - " +
+					AnsiString(IniOpt->getValue("user_name").c_str());
+		Application->Title = MainForm->Caption;
 	}
 
 	return;
@@ -1139,35 +1142,35 @@ void TMainForm::updateClocks ()
 //---------------------------------------------------------------------------
 void TMainForm::doTimerMaintenance ()
 {
-	StringList tmrlist = m_tmrmgr.getTimerNames();
-
-	//delete from display any timers that are no longer pertinent 
-	for (int i = 0; i < TimersList->Items->Count; i++)
+	if ( m_tmrmgr.isNewDataAvail() )
 	{
-		if ( tmrlist.IndexOf(TimersList->Items->Strings[i].c_str()) < 0 )
+		StringList tmrlist = m_tmrmgr.getTimerNames();
+
+		//delete from display any timers that are no longer pertinent 
+		for (int i = 0; i < TimersList->Items->Count; i++)
 		{
-			TimersList->Items->Delete(i);
-			--i;
+			if ( tmrlist.IndexOf(TimersList->Items->Strings[i].c_str()) < 0 )
+			{
+				TimersList->Items->Delete(i);
+				--i;
+			}
 		}
-	}
 
-	// add any timers not in our display
-	for (int i = 0; i < tmrlist.Count(); ++i ) 
-	{
-		string name = tmrlist.String(i);
-		int idx = TimersList->Items->IndexOf(name.c_str());
-		if ( idx < 0 )
+		// add any timers not in our display
+		for (int i = 0; i < tmrlist.Count(); ++i ) 
 		{
-			//add to contact display any contacts not yet there
-			TimersList->Items->Add(name.c_str());
+			string name = tmrlist.String(i);
+			int idx = TimersList->Items->IndexOf(name.c_str());
+			if ( idx < 0 )
+			{
+				//add to contact display any contacts not yet there
+				TimersList->Items->Add(name.c_str());
+			}
 		}
+
+		// clear the new data avail
+		m_tmrmgr.clearNewDataAvail();
 	}
-
-	// clear the new data avail
-	m_tmrmgr.clearNewDataAvail();
-
-	// redraw the list
-	TimersList->Refresh();
 
 	return;
 }
@@ -1177,19 +1180,23 @@ void __fastcall TMainForm::TimersListMouseDown(TObject *Sender,
 {
 
 	int idx = Y / 32;
+	idx = idx + TimersList->TopIndex;
 	if (Button == mbRight)		//open TimerActionfForm
 	{
 		TPopupMenu* mnu;
 		if (idx < TimersList->Items->Count)		//clicked on a timer
 		{
+            // select this timer
+			TimersList->ItemIndex = idx;
+
+			// needed so that two items don't look selected
+			TimersList->Refresh();
+
 			// popup Command menu
 			mnu = mnuTimerCmd;
 
-            // select this timer
-            TimersList->ItemIndex = idx;
-			string name = TimersList->Items->Strings[idx].c_str();
-
 			// setup menu reflect "selected" timer
+			string name = TimersList->Items->Strings[idx].c_str();
 			bool act = m_tmrmgr.isTimerActive(name);
 			bool hlf = m_tmrmgr.isTimerHalfTime(name);
 			mnuPauseTimer->Enabled = act;
@@ -1218,12 +1225,15 @@ void __fastcall TMainForm::TimersListMouseDown(TObject *Sender,
 			//it->second.setShowBar(!it->second.getShowBar());
 			//updateClocks();		//refresh already done by OnClick
 		}
-		//but if clicking outside a timer, just deselect
-		else if (idx >= TimersList->Items->Count)
+		else if (idx > TimersList->Items->Count - 1)
 		{
+			//but if clicking outside a timer, just deselect
 			TimersList->ItemIndex = -1;
 		}
+
+		TimersList->Refresh();
 	}
+
 
 	return;
 }
@@ -1276,28 +1286,6 @@ void __fastcall TMainForm::TestButtonClick(TObject *Sender)
 	//ShowMessage("Before Thread");
 	//TransferThread *test = new TransferThread(false);
 	//ShowMessage("After Thread");
-
-}
-//---------------------------------------------------------------------------
-
-void TMainForm::displayTestStuff (int what_test, String whatever)
-{
-	//used for any kind of data display -- so keep this
-
-	if (what_test == 1)		//this test displays whatever talker server returns
-	{
-		TestForm->Show();
-		TestForm->ShowWhatever->Lines->Add(whatever);
-		TestForm->ShowWhatever->Lines->Add("-----------------------");
-	}
-	else if (what_test == 0)	//t3client shutting down - not currently used
-	{
-		TestForm->Caption = "Shutting Down";
-		TestForm->Show();
-		TestForm->ShowWhatever->Font->Color = clRed;
-		TestForm->ShowWhatever->Font->Size = 12;
-		TestForm->ShowWhatever->Lines->Add(whatever);
-	}
 
 }
 //---------------------------------------------------------------------------
@@ -1666,12 +1654,31 @@ void TMainForm::doContactMaintenance ()
 
 void __fastcall TMainForm::OptionsClick(TObject *Sender)
 {
-	TOptionsForm* dlg = new TOptionsForm(this);
-	dlg->ShowModal();
-	delete dlg;
+	static int tabsheet = 0;
 
-	// TODO, create a singleton Ini object, so we don't have to do this BS
-	// create an STL Ini Object, same BS reason
+	if ( Sender )
+	{
+		TOptionsForm* dlg = new TOptionsForm(this);
+    	dlg->TabOptions->ActivePageIndex = tabsheet;
+		dlg->ShowModal();
+
+        // set the new page
+        tabsheet = dlg->TabOptions->ActivePageIndex;
+
+		delete dlg;
+	}
+
+	// added this because IniOpts uses VCL stuff
+	map<string, string> options;
+	options["user_name"] = IniOpt->getValue("user_name");
+	options["server_url"] = IniOpt->getValue("server_url");
+	options["test_mode"] = IniOpt->getValue("test_mode");
+	options["communication_timeout"] = IniOpt->getValue("communication_timeout");
+
+	char str[50];
+	sprintf(str, "%d", IniOpt->getValueInt("timer_ping_interval") * 60);
+	options["timer_ping_interval"] = str; 
+	theTimerMgr().setOptions(options);
 	theTimerMgr().setPingInterval(IniOpt->getValueInt("timer_ping_interval",
 													   10) * 60);
 
