@@ -1,40 +1,37 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Billable vs. Non-Billable Hours
 
-use TIMER
-go
-
 print "Billable vs. Non-Billable Hours"
 print "Period from [start_date] to [end_date]"
 print ""
 print ""
 go
 
-select $(period_name "$(period_num l.date 7)" 7) "week",
-		convert(numeric(6,2), sum(l.hours)) "non_billable"
+select $(period_name "$(period_num tl.date 7)" 7) "week",
+		convert(numeric(6,2), sum(tl.hours)) "non_billable"
 into #non_billable
-from log l
-where l.date between '[start_date]' and '[end_date]'
-and l.client = '001'
-group by $(period_name "$(period_num l.date 7)" 7)
+from time_log tl
+where tl.date between '[start_date]' and '[end_date]'
+and tl.client = '001'
+group by $(period_name "$(period_num tl.date 7)" 7)
 go
 
-select $(period_name "$(period_num l.date 7)" 7) "week",
-		convert(numeric(6,2), sum(l.hours)) "non_payable"
+select $(period_name "$(period_num tl.date 7)" 7) "week",
+		convert(numeric(6,2), sum(tl.hours)) "non_payable"
 into #non_payable
-from log l
-where l.date between '[start_date]' and '[end_date]'
-and l.client = '011'
-group by $(period_name "$(period_num l.date 7)" 7)
+from time_log tl
+where tl.date between '[start_date]' and '[end_date]'
+and tl.client = '011'
+group by $(period_name "$(period_num tl.date 7)" 7)
 go
 
-select $(period_name "$(period_num l.date 7)" 7) "week",
-		convert(numeric(6,2), sum(l.hours)) "billable"
+select $(period_name "$(period_num tl.date 7)" 7) "week",
+		convert(numeric(6,2), sum(tl.hours)) "billable"
 into #billable
-from log l
-where l.date between '[start_date]' and '[end_date]'
-and l.client not in ('001','011')
-group by $(period_name "$(period_num l.date 7)" 7)
+from time_log tl
+where tl.date between '[start_date]' and '[end_date]'
+and tl.client not in ('001','011')
+group by $(period_name "$(period_num tl.date 7)" 7)
 go
 
 select nb.week, nb.non_billable, np.non_payable, b.billable

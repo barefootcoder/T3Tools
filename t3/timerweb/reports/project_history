@@ -1,9 +1,6 @@
 -- SORT GROUP: Historical Reports
 -- TITLE: Complete Project History (by Client)
 
-use TIMER
-go
-
 print ""
 select "History for " + c.name
 from client c
@@ -11,10 +8,10 @@ where c.client = "[client]"
 print ""
 go
 
-$(build_emp_comm "
-	client = '[client]'
+$(build_profit_item "
+	log.client = '[client]'
 ")
-exec emp_commission
+exec calc_profit
 go
 
 -- for debugging
@@ -25,7 +22,6 @@ select source_tbl, emp, client, proj, convert(char(10), date, 101) "date",
 	convert(numeric(6,2), refcomm) "refcomm",
 	convert(numeric(7,2), amt_billed) "amt billed",
 	hours, convert(numeric(6,2), amt_paid) "amt_paid",
-	convert(numeric(6,2), diff) "diff",
 	convert(numeric(6,2), empcomm) "empcomm"
 from #emp_comm
 order by emp, client, proj, date
@@ -34,22 +30,23 @@ go
 
 select p.name "Project",
 		-- convert(char(10), p.start_date, 101) "starting",
-		convert(numeric(6,2), sum(ec.bill_hours)) "total hours",
-		convert(numeric(10,2), sum(ec.amt_billed)) "total billed",
-		convert(numeric(10,2), sum(ec.amt_paid)) "paid to staff",
-		convert(numeric(10,2), sum(ec.salescomm) + sum(ec.refcomm)
-				+ sum(ec.empcomm)) "commissions",
-		convert(numeric(10,2), sum(ec.amt_paid) + sum(ec.salescomm)
-				+ sum(ec.refcomm) + sum(ec.empcomm)) "total paid",
-		convert(numeric(10,2), sum(ec.diff) - sum(ec.empcomm)) "profit",
-		convert(numeric(5,2), 100.0 * (sum(ec.diff) - sum(ec.empcomm))
-				/ (sum(ec.amt_billed) + 1)) "margin"
-from #emp_comm ec, project p
-where ec.diff is not NULL
-and ec.client = p.client
-and ec.proj = p.proj
+		convert(numeric(6,2), sum(pi.units)) "total hours",
+		convert(numeric(10,2), sum(pi.total_price)) "total billed",
+		convert(numeric(10,2), sum(pi.total_cost)) "paid to staff",
+		convert(numeric(10,2), sum(pi.sales_commission)
+				+ sum(pi.ref_commission)
+				+ sum(pi.emp_commission)) "commissions",
+		convert(numeric(10,2), sum(pi.total_cost) + sum(pi.sales_commission)
+				+ sum(pi.ref_commission)
+				+ sum(pi.emp_commission)) "total paid",
+		convert(numeric(10,2), sum(pi.simple_profit)) "profit",
+		convert(numeric(5,2), 100.0 * (sum(pi.simple_profit))
+				/ (sum(pi.total_price) + 1)) "margin"
+from profit_item pi, project p
+where pi.client = p.client
+and pi.proj = p.proj
 group by p.name, p.start_date
 order by p.start_date, p.name
--- compute sum(sum(ec.bill_hours)), sum(sum(ec.amt_billed))
+-- compute sum(sum(pi.units)), sum(sum(pi.total_price))
 --	by p.start_date, p.name
 go
