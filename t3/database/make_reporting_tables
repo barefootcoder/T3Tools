@@ -1,0 +1,218 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+# $Id$
+# $Revision$
+
+# create reporting tables for T3
+
+use strict;
+
+use Getopt::Std;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "sa";
+my $dstore = "t3test";
+
+my $opt = {};
+getopts("s:U:h", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-s data_store] [-U username]\n";
+	print STDERR "   defaults are -s $dstore -U $user\n";
+	exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$dstore = $opt->{s} if defined $opt->{s};
+
+# open up the data store
+my $t3;
+try
+{
+	$t3 = DataStore->open($dstore, $user);
+}
+catch
+{
+	print STDERR "\nThe T3 data store could not be opened for the following "
+			. "reason:\n";
+	print STDERR "  ==>  $_\n";
+	print STDERR "Please run the make_t3_data_store script.  You may\n";
+	print STDERR "have to run this script as root.\n\n";
+};
+
+# start making tables
+
+
+# pay_amount
+
+create_table("pay_amount",
+	[
+		[ "log_source",			"table_name",		"NOT NULL" ],
+		[ "log_id",				"unique_id",		"NOT NULL" ],
+		[ "emp_id", 			"internal_id",		"NOT NULL" ],
+		[ "client_id",			"internal_id",		"NOT NULL" ],
+		[ "proj_id",			"internal_id",		"NOT NULL" ],
+		[ "phase_id",			"internal_id",		"NULL" ],
+		[ "pay_date",			"date",				"NOT NULL" ],
+		[ "hours",				"numeric(5,2)",		"NOT NULL" ],
+		[ "requires_payment",	"boolean",			"NOT NULL" ],
+		[ "requires_billing",	"boolean",			"NOT NULL" ],
+		[ "pay_rate",			"money",			"NULL" ],
+		[ "pay_rate_type",		"type_id",			"NULL" ],
+		[ "total_pay",			"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# profit_item
+
+create_table("profit_item",
+	[
+		[ "profit_id",			"unique_id",		"IDENTITY" ],
+		[ "client_id",			"internal_id",		"NOT NULL" ],
+		[ "proj_id",			"internal_id",		"NULL" ],
+		[ "start_date",			"date",				"NOT NULL" ],
+		[ "end_date",			"date",				"NOT NULL" ],
+		[ "log_source",			"table_name",		"NULL" ],
+		[ "log_id",				"unique_id",		"NULL" ],
+		[ "units",				"numeric(6,2)",		"NOT NULL" ],
+		[ "price_per_unit",		"money",			"NOT NULL" ],
+		[ "total_price",		"money",			"NULL" ],
+		[ "total_cost",			"money",			"NULL" ],
+		[ "sales_commission",	"money",			"NULL" ],
+		[ "ref_commission",		"money",			"NULL" ],
+		[ "emp_commission",		"money",			"NULL" ],
+		[ "simple_profit",		"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# time_log_profit
+
+create_table("time_log_profit",
+	[
+		[ "log_source",			"table_name",		"NOT NULL" ],
+		[ "log_id",				"unique_id",		"NOT NULL" ],
+		[ "emp_id",				"internal_id",		"NOT NULL" ],
+		[ "client_id",			"internal_id",		"NOT NULL" ],
+		[ "proj_id",			"internal_id",		"NOT NULL" ],
+		[ "phase_id",			"internal_id",		"NULL" ],
+		[ "log_date",			"date",				"NOT NULL" ],
+		[ "hours",				"numeric(5,2)",		"NOT NULL" ],
+		[ "start_date",			"date",				"NOT NULL" ],
+		[ "end_date",			"date",				"NOT NULL" ],
+		[ "requires_payment",	"boolean",			"NOT NULL" ],
+		[ "resource_billing",	"boolean",			"NOT NULL" ],
+		[ "class_billing",		"boolean",			"NOT NULL" ],
+		[ "fixed_price_days",	"int",				"NULL" ],
+		[ "bill_rate",			"money",			"NULL" ],
+		[ "billing_ratio",		"numeric(4,3)",		"NOT NULL" ],
+		[ "pay_rate_type",		"type_id",			"NULL" ],
+		[ "total_pay",			"money",			"NULL" ],
+		[ "sum_by_proj",		"boolean",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# insurance_amount
+
+create_table("insurance_amount",
+	[
+		[ "emp_id",					"internal_id",		"NOT NULL" ],
+		[ "payroll_id",				"unique_id",		"NULL" ],
+		[ "total_hours",			"numeric(5,2)",		"NULL" ],
+		[ "applicable_hours",		"numeric(8,2)",		"NULL" ],
+		[ "company_contribution",	"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# salary_amount
+
+create_table("salary_amount",
+	[
+		[ "emp_id",					"internal_id",		"NOT NULL" ],
+		[ "total_pay",				"money",			"NULL" ],
+		[ "actual_pay",				"money",			"NULL" ],
+		[ "bank_before",			"money",			"NULL" ],
+		[ "bank_adjustment",		"money",			"NULL" ],
+		[ "bank_after",				"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
+######################
+# SUBS               #
+######################
+
+sub create_table
+{
+	my ($table_name, $columns, $attribs) = @_;
+
+	print "making table reporting.$table_name\n";
+	$t3->overwrite_table("{%reporting}.$table_name", $columns)
+			or die("couldn't create table $table_name: " . $t3->last_error());
+
+	# loop through attributes
+	foreach my $attrib (@$attribs)
+	{
+		# create indices
+		if ($attrib->{type} =~ /index/)
+		{
+			my $query = "
+				create $attrib->{type} $attrib->{name}
+				on {%reporting}.$table_name ($attrib->{cols})
+				{&place_on index_seg}
+			";
+			$t3->do($query)
+					or die("couldn't create index $attrib->{name}: "
+							. $t3->last_error());
+		}
+
+		# grant permissions
+		if ($attrib->{type} =~ /grant/)
+		{
+			my $query = "
+				$attrib->{type} on {%reporting}.$table_name
+				to $attrib->{users}
+			";
+			$t3->do($query)
+					or die("couldn't $attrib->{type} on $table_name: "
+							. $t3->last_error());
+		}
+	}
+}
