@@ -225,7 +225,7 @@ sub _transform_query
 		# function calls
 		while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
 		{
-			my $function = $&;
+			my $function = quotemeta($&);
 			my $func_name = $1;
 			my @args = ();
 			@args = split(/,\s*/, $2) if $2;
