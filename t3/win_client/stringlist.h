@@ -40,7 +40,7 @@ namespace arinbe
 
 		// returns all strings as one large string separated by linefeeds
 		string Text () const;
-		void Text (const string& str, const string& delim = "\r\n");
+		void Text (const string& str); //, const string& delim = "\r\n");
 
 		// returns all strings as one large string separated by commas
 		string  CommaText () const;

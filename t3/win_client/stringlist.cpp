@@ -1,6 +1,7 @@
 //---------------------------------------------------------------------------
 #include <algorithm>
 #include <fstream>
+#include <strstream>
 using namespace std;
 
 #include "stringlist.h"
@@ -76,13 +77,33 @@ void StringList::Clear ()
 //------------------------------------------------------------------------------
 string StringList::Text () const
 {
-	return Join("\r\n");
+	ostrstream strfile;
+
+	vector<string>::const_iterator it = m_list.begin();
+	for ( ; it != m_list.end(); ++it )
+	{
+		strfile << *it << endl;
+	}
+	strfile << ends;
+
+	char *str = strfile.str();
+	string rc = str;
+	delete[] str;
+
+	return rc;
 }
 //------------------------------------------------------------------------------
-void StringList::Text (const string& _line, const string& _delim)
+void StringList::Text (const string& _line)
 {
 	Clear();
-	SplitAndAdd(_delim, _line);
+
+	istrstream strfile(_line.c_str());
+	string line;
+	while ( !strfile.eof() )
+	{
+		std::getline(strfile, line);
+		Add(line);
+	}
 
 	return;
 }
