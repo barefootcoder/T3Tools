@@ -2,6 +2,9 @@
 
 # $Header$
 # $Log$
+# Revision 1.5  1999/06/03 16:13:09  buddy
+# added "not" conditional tags (?!)
+#
 # Revision 1.4  1999/05/27 20:44:55  buddy
 # added check for conditional tokens
 # added some comments
@@ -82,7 +85,7 @@ sub create_script
 
 . /usr/local/bin/kshlib
 
-run_query -Uguest -SSYBASE_1 <<-SCRIPT_END
+run_query -Uguest -SSYBASE_1 <<-SCRIPT_END | remove_sp_returns
 
 END
 
