@@ -1,0 +1,196 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+# $Id$
+# $Revision$
+
+# create data store and database for T3 scripts
+#
+# both database and data store will only be created if they don't exist, or
+# if you insist (neither is dependent on the other's existence)
+# note that the sa data store must exist for this to work
+
+# to create the data store, you probably need Unix root permissions
+# to create the database, you probably need the Sybase sa password
+#		(in your ~/.dbpasswd file)
+
+use strict;
+
+#use Barefoot::debug;						# comment out for production
+
+use Getopt::Std;
+use FileHandle;
+
+use Barefoot::base;
+use Barefoot::exception;
+use Barefoot::DataStore;
+use Barefoot::input qw<get_yn>;
+
+
+my $server = "SYBASE_1";
+my $user = "sa";
+my $destdb = "t3test";
+my $dstore = "t3test";
+
+# the following line needs to match the equivalent line in make_timer
+my $admin_users = "christy,wayne";
+my $non_admin_users = "guest,marcus";
+my $schema_users = "t3,timer,talker,tracker,reporting";
+my $dbo_users = "buddy,gregg";
+
+my $opt = {};
+getopts("S:U:D:s:h", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]";
+	print STDERR "   defaults are -S$server -U$user -D$destdb";
+	exit;
+}
+$server = $opt->{S} if defined $opt->{S};
+$user = $opt->{U} if defined $opt->{U};
+$destdb = $opt->{D} if defined $opt->{D};
+$dstore = $opt->{d} if defined $opt->{d};
+
+
+STDOUT->autoflush();
+my $sa = DataStore->open("${server}_sa", $user);
+
+
+# check for pre-existence of the database
+my $dbexists_query = "select name from sysdatabases where name = '$destdb'";
+my $db_exists = $sa->do($dbexists_query);
+if ($db_exists->next_row())
+{
+	print STDERR "$0: database $destdb already exists\n";
+	goto DATA_STORE unless get_yn("Do you want to drop and recreate it?");
+	goto DATA_STORE unless get_yn("WARNING!  Database $destdb may contain "
+			. "data, and dropping it is permanent.\n"
+			. "Are you sure you want to continue?");
+	# boy is this dangerous!  thus the double confirmation required above
+	$sa->do("drop database $destdb")
+			or die("can't drop database: " . $sa->last_error());
+	print "database dropped\n";
+}
+
+print "creating database now\n";
+open(RQ, "|run_query -S$server -U$user -Dmaster")
+		or die("can't pipe to run_query");
+print RQ <<END;
+
+	-- create the database
+
+	print "creating the database"
+	;
+
+	create database $destdb
+		on data_2 = 75
+		log on data_1 = 25
+	;
+	sp_dboption $destdb, 'trunc log on chkpt', true
+	;
+
+	use $destdb
+	;
+	sp_addsegment index_seg, $destdb, data_2
+	;
+	checkpoint
+	;
+
+	print "adding users"
+	;
+	@{[add_users($admin_users)]}
+	@{[add_users($non_admin_users)]}
+	@{[add_users($schema_users)]}
+	@{[add_dbousers($dbo_users)]}
+
+END
+close(RQ);
+# don't bother to check $?; isql always returns some funky value
+
+# double check existence via data store
+$db_exists = $sa->do($dbexists_query);
+die("cannot verify database creation:", $sa->last_error())
+		unless $db_exists->next_row();
+
+
+DATA_STORE:
+
+# now check for pre-existence of the data store
+my $caught = false;
+try
+{
+	my $t3 = DataStore->open($dstore, $user);
+}
+catch
+{
+	$caught = true;
+};
+
+unless ($caught)
+{
+	print STDERR "$0: data store $dstore already exists\n";
+	exit 1 unless get_yn("Do you want to recreate it?");
+}
+
+my $t3 = DataStore->create($dstore,
+		connect_string		=>	"dbi:Sybase:server=$server;database=$destdb",
+		server				=>	$server,
+		user				=>	$user,
+		translation_type	=>	'Sybase',
+);
+
+$t3->configure_type(unique_id => 'numeric(6,0)');
+$t3->configure_type(type_id => 'char(1)');
+$t3->configure_type(internal_id => 'char(3)');
+$t3->configure_type(external_id => 'char(10)');
+$t3->configure_type(description => 'varchar(30)');
+$t3->configure_type(username => 'varchar(20)');
+$t3->configure_type(table_name => 'varchar(30)');
+$t3->configure_type(comments_text => 'varchar(255)');
+$t3->configure_type(percentage => 'numeric(5,2)');
+
+$t3->configure_schema_translation('"$_[0]."');
+
+print "data store $dstore created\n";
+
+
+######################
+# SUBS               #
+######################
+
+# split comma-separated list of users and return adduser commands
+sub add_users
+{
+	my $code = "";
+	foreach (split(",", $_[0]))
+	{
+		$code .= "
+			if exists ( select 1 from sysusers where name = '$_' )
+				execute sp_dropuser $_
+			;
+			sp_adduser $_
+			;
+		";
+	}
+	# print STDERR $code;
+	return $code;
+}
+
+# ditto, but for creating dbo aliases
+sub add_dbousers
+{
+	my $code = "";
+	foreach (split(",", $_[0]))
+	{
+		$code .= "
+			if exists ( select 1 from sysusers where name = '$_' )
+				execute sp_dropuser $_
+			;
+			sp_addalias $_, dbo
+			;
+		";
+	}
+	# print STDERR $code;
+	return $code;
+}

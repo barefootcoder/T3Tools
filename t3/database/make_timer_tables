@@ -1,0 +1,1026 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+# $Id$
+# $Revision$
+
+# create tables for TIMER
+#
+# these tables were originally created long ago (see the timerload script)
+# this script includes updates for new tables and fields to help prepare
+# TIMER for general release
+
+use strict;
+
+use Getopt::Std;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "sa";
+my $dstore = "t3test";
+my $admin_users = "christy,wayne";
+
+my $opt = {};
+getopts("s:U:h", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-s data_store] [-U username]\n";
+	print STDERR "   defaults are -s $dstore -U $user\n";
+	exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$dstore = $opt->{s} if defined $opt->{s};
+
+# open up the data store
+my $t3;
+try
+{
+	$t3 = DataStore->open($dstore, $user);
+}
+catch
+{
+	print STDERR "\nThe T3 data store could not be opened for the following "
+			. "reason:\n";
+	print STDERR "  ==>  $_\n";
+	print STDERR "Please run the make_t3_data_store script.  You may\n";
+	print STDERR "have to run this script as root.\n\n";
+};
+
+# start making tables
+
+
+# category
+
+create_table("category",
+	[
+		[ "category",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"category",
+			cols	=>	"category",
+		},
+	]
+);
+
+
+# internal_project
+
+create_table("internal_project",
+	[
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+		[ "category",		"internal_id",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"intproj",
+			cols	=>	"proj_id",
+		},
+	]
+);
+
+
+# phase
+
+create_table("phase",
+	[
+		[ "phase_id",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"phase_id",
+			cols	=>	"phase_id",
+		},
+	]
+);
+
+
+
+# client					(have to have before can do project)
+
+create_table("client",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+		[ "rounding",		"char(1)",			"NOT NULL" ],
+		[ "to_nearest",		"numeric(3,2)",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"client_id",
+			cols	=>	"client_id",
+		},
+	]
+);
+
+
+
+# client_tracking
+
+create_table("client_tracking",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "tracking_code",	"external_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"cliproj",
+			cols	=>	"client_id, tracking_code",
+		},
+	]
+);
+
+
+
+# project
+
+create_table("project",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+		[ "project_type",	"type_id",			"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"project",
+			cols	=>	"client_id, proj_id, start_date",
+		},
+	]
+);
+
+
+
+# employee
+
+create_table("employee",
+	[
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "person_id",		"unique_id",		"NOT NULL" ],
+		[ "show_last",		"boolean",			"NOT NULL" ],
+		[ "def_client",		"internal_id",		"NOT NULL" ],
+		[ "has_insurance",	"boolean",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"employee",
+			cols	=>	"emp_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"emp_person",
+			cols	=>	"person_id",
+		},
+	]
+);
+
+
+
+# client_employee
+
+create_table("client_employee",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NULL" ],
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"cliemp",
+			cols	=>	"client_id, proj_id, emp_id, start_date",
+		},
+	]
+);
+
+
+
+# project_type
+
+create_table("project_type",
+	[
+		[ "project_type",		"internal_id",	"NOT NULL" ],
+		[ "requires_phase",		"boolean",		"NOT NULL" ],
+		[ "requires_tracking",	"boolean",		"NOT NULL" ],
+		[ "requires_comments",	"boolean",		"NOT NULL" ],
+		[ "requires_billing",	"boolean",		"NOT NULL" ],
+		[ "requires_payment",	"boolean",		"NOT NULL" ],
+		[ "resource_billing",	"boolean",		"NOT NULL" ],
+		[ "class_billing",		"boolean",		"NOT NULL" ],
+		[ "no_profit_till_end",	"boolean",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"projtype",
+			cols	=>	"project_type",
+		},
+	]
+);
+
+
+# commission_type
+
+create_table("commission_type",
+	[
+		[ "comm_type",		"type_id",			"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"commtype",
+			cols	=>	"comm_type",
+		},
+	]
+);
+
+
+
+# admin_commission_type
+
+create_table("admin_commission_type",
+	[
+		[ "admin_comm",		"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+		[ "sort_order",		"tinyint",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"admincommtype",
+			cols	=>	"admin_comm",
+		},
+	]
+);
+
+
+
+# pay_rate
+
+create_table("pay_rate",
+	[
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "client_id",		"internal_id",		"NULL" ],
+		[ "proj_id",		"internal_id",		"NULL" ],
+		[ "phase_id",		"internal_id",		"NULL" ],
+		[ "rate_type",		"type_id",			"NOT NULL" ],
+		[ "rate",			"money",			"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"payrate",
+			cols	=>	"emp_id, client_id, proj_id, phase_id, start_date",
+		},
+	]
+);
+
+
+
+# bill_rate
+
+create_table("bill_rate",
+	[
+		[ "client_id",			"internal_id",	"NOT NULL" ],
+		[ "proj_id",			"internal_id",	"NOT NULL" ],
+		[ "rate",				"money",		"NOT NULL" ],
+		[ "fixed_price_days",	"int",			"NULL" ],
+		[ "start_date",			"date",			"NOT NULL" ],
+		[ "end_date",			"date",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"billrate",
+			cols	=>	"client_id, proj_id, start_date",
+		},
+	]
+);
+
+
+
+# billing_ratio
+
+create_table("billing_ratio",
+	[
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NULL" ],
+		[ "phase_id",		"internal_id",		"NULL" ],
+		[ "ratio",			"numeric(4,3)",		"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"billratio",
+			cols	=>	"emp_id, client_id, proj_id, phase_id, start_date",
+		},
+	]
+);
+
+
+
+# resource_rate
+
+create_table("resource_rate",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "resource_id",	"internal_id",		"NOT NULL" ],
+		[ "resource_name",	"description",		"NOT NULL" ],
+		[ "rate",			"money",			"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"resource",
+			cols	=>	"client_id, resource_id",
+		},
+	]
+);
+
+
+
+# resource_employee
+
+create_table("resource_employee",
+	[
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "resource_id",	"internal_id",		"NOT NULL" ],
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "phase_id",		"internal_id",		"NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"resemp",
+			cols	=>	"client_id, resource_id, emp_id, phase_id",
+		},
+	]
+);
+
+
+
+# salesman
+
+create_table("salesman",
+	[
+		[ "salesman_id",	"internal_id",		"NOT NULL" ],
+		[ "name",			"description",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"salesman_id",
+			cols	=>	"salesman_id",
+		},
+	]
+);
+
+
+
+# admin_commission
+
+create_table("admin_commission",
+	[
+		[ "admin_comm",			"internal_id",	"NOT NULL" ],
+		[ "pay_type",			"char(1)",		"NOT NULL" ],
+		[ "pay_to",				"internal_id",	"NOT NULL" ],
+		[ "commission_percent",	"percentage",	"NOT NULL" ],
+		[ "start_date",			"date",			"NOT NULL" ],
+		[ "end_date",			"date",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"admcomm",
+			cols	=>	"admin_comm, pay_type, pay_to, start_date",
+		},
+	]
+);
+
+
+
+# sales_commission
+
+create_table("sales_commission",
+	[
+		[ "pay_type",			"char(1)",		"NOT NULL" ],
+		[ "pay_to",				"internal_id",	"NOT NULL" ],
+		[ "client_id",			"internal_id",	"NOT NULL" ],
+		[ "proj_id",			"internal_id",	"NULL" ],
+		[ "commission_percent",	"percentage",	"NOT NULL" ],
+		[ "start_date",			"date",			"NOT NULL" ],
+		[ "end_date",			"date",			"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"scomm",
+			cols	=>	"pay_type, pay_to, client_id, proj_id, start_date",
+		},
+	]
+);
+
+
+
+# referral_commission
+
+create_table("referral_commission",
+	[
+		[ "pay_type",		"char(1)",			"NOT NULL" ],
+		[ "pay_to",			"internal_id",		"NOT NULL" ],
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "commission",		"smallmoney",		"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"refcomm",
+			cols	=>	"pay_type, pay_to, emp_id, start_date",
+		},
+	]
+);
+
+
+# invoice
+
+create_table("invoice",
+	[
+		[ "invoice_id",			"unique_id",	"IDENTITY" ],
+		[ "client_id",			"internal_id",	"NOT NULL" ],
+		[ "invoice_number",		"external_id",	"NOT NULL" ],
+		[ "invoice_amount",		"money",		"NOT NULL" ],
+		[ "invoice_billdate",	"date",			"NOT NULL" ],
+		[ "invoice_paydate",	"date",			"NULL" ],
+		[ "create_user",		"username",		"NOT NULL" ],
+		[ "create_date",		"date",			"NOT NULL" ],
+		[ "chguser",			"username",		"NULL" ],
+		[ "chgdate",			"date",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"invoice_id",
+			cols	=>	"invoice_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"invoice_num",
+			cols	=>	"invoice_number",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"invoice_client",
+			cols	=>	"client_id, invoice_number",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+# payroll
+
+create_table("payroll",
+	[
+		[ "payroll_id",			"unique_id",	"IDENTITY" ],
+		[ "period_start",		"date",			"NOT NULL" ],
+		[ "period_end",			"date",			"NOT NULL" ],
+		[ "payroll_amount",		"money",		"NULL" ],
+		[ "overhead_amount",	"money",		"NULL" ],
+		[ "check_date",			"date",			"NULL" ],
+		[ "create_user",		"username",		"NOT NULL" ],
+		[ "create_date",		"date",			"NOT NULL" ],
+		[ "chguser",			"username",		"NULL" ],
+		[ "chgdate",			"date",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"payroll_id",
+			cols	=>	"payroll_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"payroll_start",
+			cols	=>	"period_start, check_date",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+
+# commission_payment
+
+create_table("commission_payment",
+	[
+		[ "payment_id",		"unique_id",		"IDENTITY" ],
+		[ "pay_type",		"char(1)",			"NOT NULL" ],
+		[ "pay_to",			"internal_id",		"NULL" ],
+		[ "payment_amount",	"money",			"NULL" ],
+		[ "check_number",	"external_id",		"NULL" ],
+		[ "check_date",		"date",				"NOT NULL" ],
+		[ "comments",		"comments_text",	"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"commpay_id",
+			cols	=>	"payment_id",
+		},
+		{
+			type	=>	"index",
+			name	=>	"commpay_paidon",
+			cols	=>	"pay_type, pay_to, check_date",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+
+# time_log
+
+create_table("time_log",
+	[
+		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_id",			"unique_id",		"IDENTITY" ],
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+		[ "phase_id",		"internal_id",		"NULL" ],
+		[ "tracking_code",	"external_id",		"NULL" ],
+		[ "log_date",		"date",				"NOT NULL" ],
+		[ "hours",			"numeric(5,2)",		"NOT NULL" ],
+		[ "comments",		"comments_text",	"NULL" ],
+		[ "invoice_id",		"unique_id",		"NULL" ],
+		[ "payroll_id",		"unique_id",		"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"timelog_id",
+			cols	=>	"log_id",
+		},
+		{
+			type	=>	"index",
+			name	=>	"timelog_empcli",
+			cols	=>	"emp_id, client_id, proj_id",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"public",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+
+# materials_log
+
+create_table("materials_log",
+	[
+		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_id",			"unique_id",		"IDENTITY" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NULL" ],
+		[ "log_date",		"date",				"NOT NULL" ],
+		[ "amount_billed",	"money",			"NOT NULL" ],
+		[ "amount_paid",	"money",			"NOT NULL" ],
+		[ "comments",		"comments_text",	"NULL" ],
+		[ "invoice_id",		"unique_id",		"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"matlog_id",
+			cols	=>	"log_id",
+		},
+		{
+			type	=>	"index",
+			name	=>	"matlog_cliproj",
+			cols	=>	"client_id, proj_id, log_date",
+		},
+	]
+);
+
+
+
+# class_log
+
+create_table("class_log",
+	[
+		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_id",			"unique_id",		"IDENTITY" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+		[ "num_students",	"tinyint",			"NOT NULL" ],
+		[ "num_breaks",		"tinyint",			"NULL" ],
+		[ "log_date",		"date",				"NOT NULL" ],
+		[ "start_time",		"date",				"NOT NULL" ],
+		[ "end_time",		"date",				"NOT NULL" ],
+		[ "comments",		"comments_text",	"NULL" ],
+		[ "invoice_id",		"unique_id",		"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"clalog_id",
+			cols	=>	"log_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"clalog_cliproj",
+			cols	=>	"client_id, proj_id, log_date",
+		},
+	]
+);
+
+
+
+# commission_modifier
+
+create_table("commission_modifier",
+	[
+		[ "pay_to",			"internal_id",		"NOT NULL" ],
+		[ "comm_type",		"type_id",			"NOT NULL" ],
+		[ "pay_type",		"char(1)",			"NOT NULL" ],
+		[ "modifier",		"percentage",		"NOT NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date", 		"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"index",
+			name	=>	"commod",
+			cols	=>	"pay_to",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+# commission
+
+create_table("commission",
+	[
+		[ "commission_id",	"unique_id",		"IDENTITY" ],
+		[ "comm_type",		"type_id",			"NOT NULL" ],
+		[ "pay_type",		"char(1)",			"NOT NULL" ],
+		[ "pay_to",			"internal_id",		"NULL" ],
+		[ "period_start",	"date",				"NOT NULL" ],
+		[ "period_end",		"date",				"NOT NULL" ],
+		[ "amount",			"money",			"NULL" ],
+		[ "payment_id",		"unique_id",		"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"comm_id",
+			cols	=>	"commission_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"comm_payto",
+			cols	=>	"comm_type, pay_type, pay_to, period_start",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+
+# log_commission
+
+create_table("log_commission",
+	[
+		[ "log_source",		"table_name",		"NOT NULL" ],
+		[ "log_id",			"unique_id",		"NOT NULL" ],
+		[ "commission_id",	"unique_id",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"logcomm_source",
+			cols	=>	"log_source, log_id, commission_id",
+		},
+		{
+			type	=>	"index",
+			name	=>	"logcomm_id",
+			cols	=>	"commission_id",
+		},
+	]
+);
+
+
+
+# salary_bank
+
+create_table("salary_bank",
+	[
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "bank_amount",	"money",			"NOT NULL" ],
+		[ "payroll_id",		"unique_id",		"NOT NULL" ],
+		[ "create_user",	"varchar(20)",		"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"varchar(20)",		"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"bank_emp",
+			cols	=>	"emp_id, payroll_id",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant select",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# salary_draw
+
+create_table("salary_draw",
+	[
+		[ "emp_id",				"char(3)",			"NOT NULL" ],
+		[ "amount_per_period",	"money",		"NOT NULL" ],
+		[ "max_debit",			"percentage",		"NOT NULL" ],
+		[ "max_overage",		"percentage",		"NOT NULL" ],
+		[ "periods_cap",		"int",				"NOT NULL" ],
+		[ "start_date",			"date",				"NOT NULL" ],
+		[ "end_date",			"date",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"salary_draw",
+			cols	=>	"emp_id, start_date",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$admin_users",
+		},
+		{
+			type	=>	"grant select",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# insurance_rate
+
+create_table("insurance_rate",
+	[
+		[ "emp_id",				"internal_id",	"NOT NULL" ],
+		[ "fixed_amount",		"money",		"NULL" ],
+		[ "nonbill_hrs_limit",	"int",			"NULL" ],
+		[ "multiplier",			"numeric(5,2)",	"NULL" ],
+		[ "start_date",			"date",			"NOT NULL" ],
+		[ "end_date",			"date",			"NOT NULL" ],
+		[ "create_user",		"varchar(20)",	"NOT NULL" ],
+		[ "create_date",		"date",			"NOT NULL" ],
+		[ "chguser",			"varchar(20)",	"NULL" ],
+		[ "chgdate",			"date",			"NULL" ],
+	],
+	[
+		{
+ 			type	=>	"unique index",
+			name	=>	"insrate",
+			cols	=>	"emp_id, start_date",
+		},
+		{
+			type	=>	"grant select",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# insurance_contribution
+
+create_table("insurance_contribution",
+	[
+		[ "emp_id",			"internal_id",		"NOT NULL" ],
+		[ "payroll_id",		"unique_id",		"NULL" ],
+		[ "amount",			"money",			"NOT NULL" ],
+		[ "create_user",	"varchar(20)",		"NOT NULL" ],
+		[ "create_date",	"date",				"NOT NULL" ],
+		[ "chguser",		"varchar(20)",		"NULL" ],
+		[ "chgdate",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"inscont",
+			cols	=>	"emp_id, payroll_id",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$admin_users",
+		},
+	]
+);
+
+
+# timer
+
+create_table("timer",
+	[
+		[ "wuser_id",		"unique_id",		"NOT NULL" ],
+		[ "timer_name",		"varchar(30)",		"NOT NULL" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj",			"internal_id",		"NULL" ],
+		[ "phase",			"internal_id",		"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"timer_pk",
+			cols	=>	"wuser_id, timer_name",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"public",
+		},
+		{
+			type	=>	"grant delete",
+			users	=>	"public",
+		},
+	]
+);
+
+
+# timer_chunk
+
+create_table("timer_chunk",
+	[
+		[ "wuser_id",		"unique_id",		"NOT NULL" ],
+		[ "timer_name",		"varchar(30)",		"NOT NULL" ],
+		[ "divisor",		"int",				"NOT NULL" ],
+		[ "start_time",		"datetime",			"NULL" ],
+		[ "end_time",		"datetime",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"index",
+			name	=>	"timer_chunk",
+			cols	=>	"wuser_id, timer_name",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"public",
+		},
+		{
+			type	=>	"grant delete",
+			users	=>	"public",
+		},
+	]
+);
+
+
+
+######################
+# SUBS               #
+######################
+
+sub create_table
+{
+	my ($table_name, $columns, $attribs) = @_;
+
+	print "making table timer.$table_name\n";
+	$t3->overwrite_table("{%timer}.$table_name", $columns)
+			or die("couldn't create table $table_name: " . $t3->last_error());
+
+	# loop through attributes
+	foreach my $attrib (@$attribs)
+	{
+		# create indices
+		if ($attrib->{type} =~ /index/)
+		{
+			my $query = "
+				create $attrib->{type} $attrib->{name}
+				on {%timer}.$table_name ($attrib->{cols})
+				{&place_on index_seg}
+			";
+			$t3->do($query)
+					or die("couldn't create index $attrib->{name}: "
+							. $t3->last_error());
+		}
+
+		# grant permissions
+		if ($attrib->{type} =~ /grant/)
+		{
+			my $query = "
+				$attrib->{type} on {%timer}.$table_name
+				to $attrib->{users}
+			";
+			$t3->do($query)
+					or die("couldn't $attrib->{type} on $table_name: "
+							. $t3->last_error());
+		}
+	}
+}
+
+__END__
+
+echo "making procedures"
+make_stored_procedures -S$server -U$user -D$destdb

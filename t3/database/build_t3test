@@ -1,0 +1,401 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
+
+
+# create tables for TIMER
+#
+# this builds up the tables in the T3 database from existing data in the
+# timer database, as well as some hard-coded data
+
+use strict;
+
+use Getopt::Std;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "sa";
+my $destds = "t3test";
+my $srcdb = "old_timer";
+my $timer_owner = "timer";
+
+my $talker_users =
+{
+	Christy		=>	"Christy Brunker",
+	Claudio		=>	"Claudio Borgiotti",
+	Danny		=>	"Danny Burden",
+	David		=>	"Dave Lee",
+	GPS			=>	"Greg Sluck",
+	Gregg		=>	"Gregg Thomason",
+	Jay			=>	"Jay Vilhena",
+	Marcus		=>	"Marcus Everidge",
+	beeker		=>	"Jim Horner",
+	buddy		=>	"Buddy Burden",
+	marcw		=>	"Marc Ward",
+	mike		=>	"Mike Whitted",
+	spyder		=>	"Chris Weber",
+	strick		=>	"Chris Strickland",
+	tweber		=>	"Tim Weber",
+	wayner		=>	"Wayne Loy",
+	Tom			=>	"Tom Ryan",
+	raminr		=>	"Ramin Rad",
+	sarah		=>	"Sarah Hager",
+	gcallah		=>	"Gene Callahan",
+};
+
+
+my $opt = {};
+getopts("U:s:d:h", $opt);
+if (defined $opt->{h})
+{
+    print STDERR "usage: $0 [-Uuser] [-sdatastore] [-dsource_database]";
+    print STDERR "   defaults are -U$user -s$destds -d$srcdb";
+    exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$destds = $opt->{s} if defined $opt->{s};
+$srcdb = $opt->{d} if defined $opt->{d};
+
+
+# open up the data store
+my $t3;
+try
+{
+    $t3 = DataStore->open($destds, $user);
+}
+catch
+{
+    print STDERR "\nThe T3 test data store could not be opened for the following "
+            . "reason:\n";
+    print STDERR "  ==>  $_\n";
+    print STDERR "Please run the make_data_store script for $destds.  You may\n";
+    print STDERR "have to run this script as root.\n\n";
+};
+
+
+# create the tables
+system("make_t3_tables -s$destds");
+system("make_timer_tables -s$destds");
+
+
+# now fill them up
+
+build_table("person", <<END);
+
+		insert {%t3}.person
+			(first_name, last_name, company_name)
+		select fname, lname, 'Barefoot Software'
+		from $srcdb..employee
+		where emp != '999'
+		;
+		update {%t3}.person
+		set company_name = 'Tessera'
+		where first_name = 'Q'
+		;
+		update {%t3}.person
+		set company_name = 'Plus Computing'
+		where last_name = 'Sheridan'
+		;
+		update {%t3}.person
+		set company_name = 'SET, Inc.'
+		where last_name = 'Santomartino'
+		;
+		update {%t3}.person
+		set company_name = 'St. George Technologies'
+		where last_name = 'Callahan'
+		;
+		update {%t3}.person
+		set company_name = 'C/S Systems'
+		where last_name = 'Borgiotti'
+		;
+		update {%t3}.person
+		set company_name = 'End Results'
+		where last_name = 'Garland'
+		;
+		update {%t3}.person
+		set company_name = 'Cooperative Networking'
+		where last_name = 'Poulin'
+		;
+		update {%t3}.person
+		set company_name = 'Arinbe'
+		where last_name = 'Horner'
+		;
+		update {%t3}.person
+		set company_name = 'Sirius Systems'
+		where first_name = 'Erik'
+		;
+		update {%t3}.person
+		set company_name = 'Phaedo'
+		where last_name in ('Kilmartin','Bubel')
+		;
+		update {%t3}.person
+		set company_name = 'Oaesys'
+		where last_name = 'Vilhena'
+		;
+		update {%t3}.person
+		set company_name = 'Data Technology Consulting'
+		where last_name = 'Choat'
+		;
+		update {%t3}.person
+		set company_name = 'Rad Software'
+		where last_name = 'Rad'
+		;
+		insert {%t3}.person
+			(first_name, last_name, company_name)
+		values ("Danny", "Burden", "International Paper")
+		;
+		insert {%t3}.person
+			(first_name, last_name, company_name)
+		values ("Greg", "Sluck", "Packexpo.com")
+		;
+
+END
+
+build_workgroup_user();
+
+build_table_unchanged("category");
+
+build_table("internal_project", <<END);
+
+		insert {%timer}.internal_project
+		select * from $srcdb..int_project
+		;
+
+END
+
+build_table_unchanged("phase");
+
+build_table_unchanged("client");
+
+build_table("client_tracking", <<END);
+
+		insert {%timer}.client_tracking
+		select * from $srcdb..client_project
+		;
+
+END
+
+build_table_unchanged("project");
+
+build_table("employee", <<END);
+
+		insert {%timer}.employee
+		select e.emp, pe.person_id, e.show_last, e.def_client, e.has_insurance
+		from $srcdb..employee e, {%t3}.person pe
+		where e.fname = pe.first_name
+		and e.lname = pe.last_name
+		;
+
+END
+
+build_table_unchanged("client_employee");
+
+build_table_unchanged("project_type");
+
+build_table_unchanged("commission_type");
+
+build_table_unchanged("admin_commission_type");
+
+build_table_unchanged("pay_rate");
+
+build_table_unchanged("bill_rate");
+
+build_table_unchanged("billing_ratio");
+
+build_table_unchanged("resource_rate");
+
+build_table_unchanged("resource_employee");
+
+build_table_unchanged("salesman");
+
+build_table_unchanged("admin_commission");
+
+build_table_unchanged("sales_commission");
+
+build_table_unchanged("referral_commission");
+
+set_identityins("invoice", "on");
+build_table("invoice", <<END);
+
+	insert {%timer}.invoice
+		(invoice_id, client_id, invoice_number, invoice_amount,
+				invoice_billdate, invoice_paydate,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..invoice
+	;
+
+END
+set_identityins("invoice", "off");
+
+set_identityins("payroll", "on");
+build_table("payroll", <<END);
+
+	insert {%timer}.payroll
+		(payroll_id, period_start, period_end, payroll_amount,
+				overhead_amount, check_date,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..payroll
+	;
+
+END
+set_identityins("payroll", "off");
+
+set_identityins("commission_payment", "on");
+build_table("commission_payment", <<END);
+
+	insert {%timer}.commission_payment
+		(payment_id, pay_type, pay_to, payment_amount,
+				check_number, check_date, comments,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..commission_payment
+	;
+
+END
+set_identityins("commission_payment", "off");
+
+db_do_or_die("alter table {%timer}.time_log "
+		. "replace log_source default 'time_log'");
+db_do_or_die("alter table {%timer}.time_log "
+		. "add check (log_source = 'time_log')");
+set_identityins("time_log", "on");
+build_table("time_log", <<END);
+
+	insert {%timer}.time_log
+		(log_source, log_id, emp_id, client_id, proj_id, phase_id,
+				tracking_code, log_date, hours, comments,
+				invoice_id, payroll_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..time_log l
+	;
+
+END
+set_identityins("time_log", "off");
+
+db_do_or_die("alter table {%timer}.materials_log "
+		. "replace log_source default 'materials_log'");
+db_do_or_die("alter table {%timer}.materials_log "
+		. "add check (log_source = 'materials_log')");
+set_identityins("materials_log", "on");
+build_table("materials_log", <<END);
+
+	insert {%timer}.materials_log
+		(log_source, log_id, client_id, proj_id, log_date,
+				amount_billed, amount_paid, comments, invoice_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..materials_log op
+	;
+
+END
+set_identityins("materials_log", "off");
+
+db_do_or_die("alter table {%timer}.class_log "
+		. "replace log_source default 'class_log'");
+db_do_or_die("alter table {%timer}.class_log "
+		. "add check (log_source = 'class_log')");
+set_identityins("class_log", "on");
+build_table("class_log", <<END);
+
+	insert {%timer}.class_log
+		(log_source, log_id, client_id, proj_id, num_students, num_breaks,
+				log_date, start_time, end_time, comments, invoice_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..class_log
+	;
+
+END
+set_identityins("class_log", "off");
+
+build_table_unchanged("commission_modifier");
+
+set_identityins("commission", "on");
+build_table("commission", <<END);
+
+	insert {%timer}.commission
+		(commission_id, comm_type, pay_type, pay_to, period_start, period_end,
+				amount, payment_id, create_user, create_date, chguser, chgdate)
+	select * from $srcdb..commission
+	;
+
+END
+set_identityins("commission", "off");
+
+build_table_unchanged("log_commission");
+
+build_table_unchanged("salary_bank");
+
+build_table_unchanged("salary_draw");
+
+build_table_unchanged("insurance_rate");
+
+build_table_unchanged("insurance_contribution");
+
+
+
+######################
+# SUBS               #
+######################
+
+
+sub db_do_or_die
+{
+	my ($query, $die_msg) = @_;
+
+	$t3->do($query)
+			or die("$die_msg:", $t3->last_error());
+}
+
+sub build_table
+{
+	my ($table, $query) = @_;
+
+	print "building $table\n";
+	my $result = $t3->execute($query, report => "(%R rows affected)\n");
+	die("couldn't build table $table: ", $t3->last_error()) unless $result;
+	print $result;
+}
+
+sub build_table_unchanged
+{
+	my ($table) = @_;
+
+	my $query = "
+			insert {%timer}.$table
+			select * from $srcdb..$table
+			;
+	";
+	build_table($table, $query);
+}
+
+sub set_identityins
+{
+	my ($table, $state) = @_;
+
+	db_do_or_die("set identity_insert {%timer}.$table $state",
+			"set identity insert failed for $table");
+}
+
+sub build_workgroup_user
+{
+	my $query = "";
+	foreach my $tuser (keys %$talker_users)
+	{
+		my ($fname, $lname) = split(' ', $talker_users->{$tuser});
+		$query .= "
+				insert {%t3}.workgroup_user
+					(person_id, nickname, start_date, end_date)
+				select pe.person_id, '$tuser',
+						{BEGINNING_OF_TIME}, {END_OF_TIME}
+				from {%t3}.person pe
+				where pe.first_name = '$fname'
+				and pe.last_name = '$lname'
+				;
+		";
+	}
+	build_table("workgroup_user", $query);
+}

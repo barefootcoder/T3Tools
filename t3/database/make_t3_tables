@@ -1,0 +1,134 @@
+#! /usr/bin/perl -w
+
+# For RCS:
+# $Date$
+# $Id$
+# $Revision$
+
+# create base tables for T3
+
+use strict;
+
+use Getopt::Std;
+
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "sa";
+my $dstore = "t3test";
+
+my $opt = {};
+getopts("s:U:h", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-s data_store] [-U username]\n";
+	print STDERR "   defaults are -s $dstore -U $user\n";
+	exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$dstore = $opt->{s} if defined $opt->{s};
+
+# open up the data store
+my $t3;
+try
+{
+	$t3 = DataStore->open($dstore, $user);
+}
+catch
+{
+	print STDERR "\nThe T3 data store could not be opened for the following "
+			. "reason:\n";
+	print STDERR "  ==>  $_\n";
+	print STDERR "Please run the make_t3_data_store script.  You may\n";
+	print STDERR "have to run this script as root.\n\n";
+};
+
+# start making tables
+
+
+# person
+
+create_table("person",
+	[
+		[ "person_id",		"unique_id",		"IDENTITY" ],
+		[ "first_name",		"varchar(20)",		"NOT NULL" ],
+		[ "last_name",		"varchar(20)",		"NOT NULL" ],
+		[ "company_name",	"varchar(30)",		"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"person_id",
+			cols	=>	"person_id",
+		},
+	]
+);
+
+
+# workgroup_user
+
+create_table("workgroup_user",
+	[
+		[ "wuser_id",		"unique_id",		"IDENTITY" ],
+		[ "person_id",		"unique_id",		"NOT NULL" ],
+		[ "nickname",		"varchar(20)",		"NULL" ],
+		[ "start_date",		"date",				"NOT NULL" ],
+		[ "end_date",		"date",				"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"wuser_id",
+			cols	=>	"wuser_id",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"nickname",
+			cols	=>	"nickname",
+		},
+	]
+);
+
+
+######################
+# SUBS               #
+######################
+
+sub create_table
+{
+	my ($table_name, $columns, $attribs) = @_;
+
+	print "making table t3.$table_name\n";
+	$t3->overwrite_table("{%t3}.$table_name", $columns)
+			or die("couldn't create table $table_name: " . $t3->last_error());
+
+	# loop through attributes
+	foreach my $attrib (@$attribs)
+	{
+		# create indices
+		if ($attrib->{type} =~ /index/)
+		{
+			my $query = "
+				create $attrib->{type} $attrib->{name}
+				on {%t3}.$table_name ($attrib->{cols})
+				{&place_on index_seg}
+			";
+			$t3->do($query)
+					or die("couldn't create index $attrib->{name}: "
+							. $t3->last_error());
+		}
+
+		# grant permissions
+		if ($attrib->{type} =~ /grant/)
+		{
+			my $query = "
+				$attrib->{type} on {%t3}.$table_name
+				to $attrib->{users}
+			";
+			$t3->do($query)
+					or die("couldn't $attrib->{type} on $table_name: "
+							. $t3->last_error());
+		}
+	}
+}
