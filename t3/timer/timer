@@ -2,71 +2,13 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.14  2000/02/13 21:54:58  buddy
-# fixed bug in SQL code for checking time logged to db in -t function
-#
-# Revision 1.13  2000/02/05 06:49:06  buddy
-# implemented "use constant" constants
-# removed abortive effort to create -l option
-# made the choice of a "default" timer a little more intelligent
-# updated rounding rules to match new timer db
-# now uses time_log instead of log (new table in timer db)
-# moved round() function into Barefoot::range module
-# fixed obscure bug with -r trying to log default timer
-# now splits timer file lines on explicit tab rather than any whitespace
-# implemented "?" help function for employees when logging time
-# logging time now understands new client_employee table format
-# now uses client_project instead of cliproj (new table in timer db)
-# made client project message consistent with others
-# generally cleaned up code and comments
-#
-# Revision 1.12  2000/01/03 04:44:00  buddy
-# changed so that any ending time between midnight and 6am counts on the prev day
-# fixed -r function
-#
-# Revision 1.11  1999/12/03 22:41:05  buddy
-# added grand totals to -t option
-#
-# Revision 1.10  1999/10/07 18:59:34  buddy
-# fixed bug with redo CLIENT when prompting for client number
-#
-# Revision 1.9  1999/09/05 05:12:38  buddy
-# added check against client_employee table to verify client for log entry
-#
-# Revision 1.8  1999/07/13 19:44:05  mike
-# Fixed "no timer active" bug
-#
-# Revision 1.7  1999/07/09 19:01:27  mike
-# Fixed active timer bug and added "working..." for when comments are being entered
-#
-# Revision 1.6  1999/05/04 17:26:41  buddy
-# changed call to timerdata::insert_log() to display error returned from Sybase
-#
-# Revision 1.5  1999/05/04 04:25:24  buddy
-# changed timerdata::insert_log() call to check for failure
-#
-# Revision 1.4  1999/05/04 01:27:23  buddy
-# added time logging directly to Sybase
-# changed -d and -r options
-# polished up history saving
-# added input() function
-#
-# Revision 1.3  1999/04/23 03:59:57  buddy
-# added total function
-# fixed bug with "done" not transmitting proper date to FoxPro
-#
-# Revision 1.2  1999/04/19 20:18:53  buddy
-# added tracking of client number
-# changed "newtimer" var to "giventimer"
-#
-# Revision 1.1  1999/02/23 22:50:00  buddy
-# Initial revision
 #
 # $Id$
 # $Revision$
 
 use strict;
+
+use Barefoot::debug;						# comment out for production
 
 use Env qw(TIMERDIR HOME USER);
 use Getopt::Std;
@@ -910,7 +852,7 @@ sub log_to_sybase
 	}
 
 	my ($phase_needed, $cliproj_needed, $comments_needed)
-			= timerdata::proj_requirements($client, $proj);
+			= timerdata::proj_requirements($client, $proj, $date);
 
 	PHASE: {
 		last PHASE unless $phase_needed;
