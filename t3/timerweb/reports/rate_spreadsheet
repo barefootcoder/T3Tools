@@ -82,12 +82,12 @@ and rss.proj = isnull(brat.proj, rss.proj)
 and rss.phase = brat.phase
 and @as_of between brat.start_date and brat.end_date
 
--- get pay rates for all projects and phases
+-- get pay rates for all projects and phases and clients.
 update #rate_spreadsheet
 set pay_rate = pr.rate
 from #rate_spreadsheet rss, pay_rate pr
 where rss.emp = pr.emp
-and rss.client = isnull(pr.client, rss.client)
+and pr.client is NULL
 and pr.proj is NULL
 and pr.phase is NULL
 and @as_of between pr.start_date and pr.end_date
@@ -97,7 +97,27 @@ update #rate_spreadsheet
 set pay_rate = pr.rate
 from #rate_spreadsheet rss, pay_rate pr
 where rss.emp = pr.emp
-and rss.client = isnull(pr.client, rss.client)
+and pr.client is NULL
+and pr.proj is NULL
+and rss.phase = pr.phase
+and @as_of between pr.start_date and pr.end_date
+
+-- get pay rates specific to a client for all projects and phases.
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = pr.client
+and pr.proj is NULL
+and pr.phase is NULL
+and @as_of between pr.start_date and pr.end_date
+
+-- get pay rates specific to a client and phase for all projects.
+update #rate_spreadsheet
+set pay_rate = pr.rate
+from #rate_spreadsheet rss, pay_rate pr
+where rss.emp = pr.emp
+and rss.client = pr.client
 and pr.proj is NULL
 and rss.phase = pr.phase
 and @as_of between pr.start_date and pr.end_date
