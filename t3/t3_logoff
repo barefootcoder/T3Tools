@@ -2,6 +2,10 @@
 
 use strict;
 
+# keep in mind this includes a call to t3_who, so debugging this
+# can lead to weird path problems if you're not careful.
+#use Barefoot::debug;		# comment out for production
+
 use Barefoot::T3;
 use Barefoot::input qw(input);
 
@@ -41,6 +45,6 @@ sub logoff
 		return 1;
 	}
 
-	T3::send_message(T3::build_message($user, "", T3::LOGOFF_MESSAGE));
+	T3::send_message(T3::build_message(T3::LOGOFF_MESSAGE, "$user"));
 	return 0;
 }
