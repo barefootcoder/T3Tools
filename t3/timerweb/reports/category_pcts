@@ -1,5 +1,5 @@
--- SORT GROUP: Management Reports
--- TITLE: Category Percentages for Internal Projects (by user)
+-- SORT GROUP: Board Reports
+-- TITLE: (3) Category Percentages for Internal Projects
 
 print "Period from {start_date} to {end_date}"
 go
