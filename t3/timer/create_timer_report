@@ -2,6 +2,12 @@
 
 use strict;
 
+use CGI;
+use FileHandle;
+use Time::Local;
+
+use Barefoot::date;
+
 *User =
 	\'For user  @<<<<<<<<<<<<<<  :              at current rate of work:';
 *Header1 =
@@ -15,34 +21,150 @@ $ENV{USER} = "misc";
 $ENV{TIMERDIR} = "/export/usr/misc";
 $ENV{PATH} = "$ENV{PATH}:/opt/sybase/bin:/usr/local/sybutils";
 
+# pseudo-constant for the beginning of the week
+my $MONDAY = get_monday_time();
+
 
 my $today = (localtime(time))[6] - 1;	# - 1 assumes running after midnight
 my $days_so_far = $today > 0 ? $today : $today + 7;
 # today == 0 means Sun, thus 7 days; today == -1 means Sat, thus 6 days
 
 
+# collect all timer info into a temp file
+use constant TMPFILE => "/tmp/timer.report";
+unlink(TMPFILE);
+open(TMP, ">" . TMPFILE) and close(TMP) or die("can't init tmp file");
+chmod(0777, TMPFILE);
+
 foreach my $dir ( </export/usr/*> )
 {
 	if (-d $dir and -s "$dir/timer.\$\$\$")
 	{
 		my ($user) = $dir =~ m@/export/usr/(.*)@;
-		print "\n\n";
-		writeln($::User, $user);
-		print "$::Header1\n$::Header2\n";
-		open(TIMER, "perl /usr/local/timer/timer -tu $user|") or
-				(print STDERR "couldn't run timer -tu for user $user\n"
-				and next);
-		while ( <TIMER> )
+		if (system('./timer -\$u' . $user . ' >>' . TMPFILE))
 		{
-			last if /^====/;
-			my $client = substr($_, 4, 30);
-			my $hours = substr($_, 43, 6) + 0;
-			my $daily = $hours / $days_so_far;
-			writeln($::Client_Hours, $client, $hours, $daily * 5, $daily * 7);
+			print STDERR "$0: couldn't generate timer info for $user\n";
 		}
-		close(TIMER);
 	}
 }
+
+
+# parse through timer data and set up data for report
+my %timerdata;
+my $curuser = "";
+my $curtimer = {};
+	$curtimer->{name} = "";
+my $cur_udata = {};
+
+open(TMP, TMPFILE) or die("can't open tmp file");
+while ( <TMP> )
+{
+	chomp;
+	# wayne:busDev_Phaedo:001:183:956603628:956614568
+	my ($user, $timer, $client, $mins, $start_time, $end_time) = split(':');
+
+	if ($timer ne $curtimer->{name})		# starting a new timer's data
+	{
+		# print "**timer: $curtimer->{name} (user $curuser) ",
+				# "from $curtimer->{first_time} ",
+				# "to $curtimer->{last_time}\n";
+		if ($curtimer->{last_time} < $MONDAY)
+		{
+			push @{$cur_udata->{errors}},
+					"Timer $curtimer->{name} is left over from last week";
+		}
+		elsif ($curtimer->{first_time} < $MONDAY)
+		{
+			# implies last_time >= $MONDAY
+			push @{$cur_udata->{warnings}},
+					"Timer $curtimer->{name} crosses a week boundary";
+		}
+
+		$curtimer = {};
+		$curtimer->{name} = $timer;
+		$curtimer->{first_time} = time;
+		$curtimer->{last_time} = 0;
+
+		if ($user ne $curuser)				# also starting a new user's data
+		{
+			$timerdata{$curuser} = $cur_udata if $curuser;
+			$curuser = $user;
+			$cur_udata = {};
+		}
+
+		# check for currently timing ... this only applies to the latest
+		# (first) timer, so we do it here
+		if ($start_time and not $end_time)	# means timer is running right now
+		{
+			push @{$cur_udata->{warnings}},
+					"Timer $timer is still running";
+		}
+	}
+
+	$curtimer->{first_time} = $start_time
+			if $start_time < $curtimer->{first_time};
+	$curtimer->{last_time} = $start_time
+			if $start_time > $curtimer->{last_time};
+	$cur_udata->{clients}->{$client} += $mins;
+}
+close(TMP);
+
+
+# now print out results
+
+# empty parameter to CGI keeps it from asking for name/value pairs
+my $cgi = new CGI("");
+open(PAGE, ">/home/httpd/DocRoot/staffweb/timer_report.html")
+		or die("can't open web page");
+$\ = "\n";
+print PAGE $cgi->center($cgi->em("This page was auto-generated.  "
+		. "Do not edit!"));
+foreach my $user (sort keys %timerdata)
+{
+	my $data = $timerdata{$user};
+	# print "$user";
+	print PAGE $cgi->h1($user);
+
+	foreach my $error (@{$data->{errors}})
+	{
+		# print "    ERROR: $error";
+		print PAGE $cgi->font({color=>'red'}, "ERROR: $error<BR>");
+	}
+
+	foreach my $warning (@{$data->{warnings}})
+	{
+		# print "    WARNING: $warning";
+		print PAGE $cgi->font({color=>'orange'}, "WARNING: $warning<BR>");
+	}
+
+	foreach my $client (keys %{$data->{clients}})
+	{
+		my $mins = $data->{clients}->{$client};
+		my $hours = int($mins / 60);
+		$mins -= $hours * 60;
+		# print "      $client: $hours hours, $mins minutes";
+		print PAGE "for client $client: $hours hours, $mins minutes<BR>";
+	}
+}
+
+
+#		my ($user) = $dir =~ m@/export/usr/(.*)@;
+#		print "\n\n";
+#		writeln($::User, $user);
+#		print "$::Header1\n$::Header2\n";
+#		open(TIMER, "perl /usr/local/timer/timer -tu $user|") or
+#				(print STDERR "couldn't run timer -tu for user $user\n"
+#				and next);
+#		while ( <TIMER> )
+#		{
+#			last if /^====/;
+#			my $client = substr($_, 4, 30);
+#			my $hours = substr($_, 43, 6) + 0;
+#			my $daily = $hours / $days_so_far;
+#			writeln($::Client_Hours, $client, $hours, $daily * 5, $daily * 7);
+#		}
+#		close(TIMER);
+
 
 sub writeln
 {
@@ -51,4 +173,14 @@ sub writeln
 	$^A = "";
 	formline($format, @vars);
 	print $^A;
+}
+
+sub get_monday_time
+{
+	my @monday_timeparts = localtime(date::MondayTime());
+	@monday_timeparts[date::PART_SEC..date::PART_HR] = (0,0,0);
+	my $monday_midnight = timelocal(@monday_timeparts);
+	# since timer considers anything before 6am to be "yesterday",
+	# we'll advance this time by 6 hours
+	return $monday_midnight + 6 * 60 * 60;
 }
