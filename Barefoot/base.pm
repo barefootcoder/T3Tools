@@ -39,13 +39,11 @@ use strict;
 
 use base qw(Exporter);
 use vars qw(@EXPORT);
-@EXPORT = qw(true false DEBUG);
+@EXPORT = qw(true false);
 
 
 sub true();
 sub false();
-
-sub DEBUG();
 
 
 1;
@@ -65,9 +63,19 @@ sub import
 
 	my $caller_package = caller;
 	# print STDERR "my calling package is $caller_package\n";
-	unless (defined eval "${caller_package}::DEBUG();")
+	unless (defined eval "${caller_package}::DEBUG()")
 	{
-		$pkg->export_to_level(1, $pkg, 'DEBUG');
+		my $main_debug_value = eval "main::DEBUG()";
+		if (defined $main_debug_value)
+		{
+			# pass through DEBUG value from main package
+			eval "sub ${caller_package}::DEBUG () "
+					. "{ return $main_debug_value; }";
+		}
+		else
+		{
+			eval "sub ${caller_package}::DEBUG () { return 0; }";
+		}
 	}
 }
 
@@ -77,11 +85,6 @@ sub true ()
 }
 
 sub false ()
-{
-	return 0;
-}
-
-sub DEBUG ()
 {
 	return 0;
 }
