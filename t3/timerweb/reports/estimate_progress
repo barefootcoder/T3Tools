@@ -1,9 +1,6 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Progress So Far on Estimates
 
-use TIMER
-go
-
 set nocount on
 go
 
@@ -15,37 +12,37 @@ where c.client = '[client]'
 print ''
 go
 
-$(build_emp_comm "
-	client = '[client]'
+$(build_profit_item "
+	log.client = '[client]'
 	and exists
 	(
 		select 1
 		from estimate e
-		where l.client = e.client
-		and l.proj = e.proj
+		where log.client = e.client
+		and log.proj = e.proj
 	)
-" "1 = 0" "1 = 0")
-exec billing_amounts
+")
+exec calc_profit
 go
 
 select p.name "project", ph.name "phase",
-		convert(numeric(7,2), sum(ec.hours)) "hours",
-		sum(ec.amt_billed) "total money",
+		convert(numeric(7,2), sum(pi.units)) "hours",
+		sum(pi.total_price) "total money",
 		convert(numeric(7,2),
-				sum(ec.amt_billed) / e.low_range_amount * 100) "% low",
+				sum(pi.total_price) / e.low_range_amount * 100) "% low",
 		convert(numeric(7,2),
-				sum(ec.amt_billed) / e.high_range_amount * 100) "% high",
+				sum(pi.total_price) / e.high_range_amount * 100) "% high",
 		convert(numeric(7,2),
-				sum(ec.amt_billed) / e.maximum_amount * 100) "% max"
-from #emp_comm ec, log l, estimate e, project p, phase ph
-where ec.source_tbl = 'log'
-and ec.source_id = l.id 
-and ec.client *= e.client
-and ec.proj *= e.proj
-and l.phase *= e.phase
-and ec.client = p.client
-and ec.proj = p.proj
-and l.phase = ph.phase
+				sum(pi.total_price) / e.maximum_amount * 100) "% max"
+from profit_item pi, time_log tl, estimate e, project p, phase ph
+where pi.log_source = tl.log_source
+and pi.log_id = tl.log_id
+and pi.client *= e.client
+and pi.proj *= e.proj
+and tl.phase *= e.phase
+and pi.client = p.client
+and pi.proj = p.proj
+and tl.phase = ph.phase
 group by p.name, ph.name,
 		e.low_range_amount, e.high_range_amount, e.maximum_amount
 go
@@ -58,24 +55,24 @@ from estimate e
 group by e.client, e.proj
 
 select p.name "project",
-		convert(numeric(6,2), sum(ec.hours)) "hours",
-		sum(ec.amt_billed) "total money",
+		convert(numeric(6,2), sum(pi.units)) "hours",
+		sum(pi.total_price) "total money",
 		convert(numeric(5,2),
-				sum(ec.amt_billed) / pe.low_range_amount * 100) "% low",
+				sum(pi.total_price) / pe.low_range_amount * 100) "% low",
 		convert(numeric(5,2),
-				sum(ec.amt_billed) / pe.high_range_amount * 100) "% high",
+				sum(pi.total_price) / pe.high_range_amount * 100) "% high",
 		convert(numeric(5,2),
-				sum(ec.amt_billed) / pe.maximum_amount * 100) "% max"
-from #emp_comm ec, #proj_estimates pe, project p
-where ec.client = pe.client
-and ec.proj = pe.proj
-and ec.client = p.client
-and ec.proj = p.proj
+				sum(pi.total_price) / pe.maximum_amount * 100) "% max"
+from profit_item pi, #proj_estimates pe, project p
+where pi.client = pe.client
+and pi.proj = pe.proj
+and pi.client = p.client
+and pi.proj = p.proj
 group by p.name,
 		pe.low_range_amount, pe.high_range_amount, pe.maximum_amount
-compute sum(sum(ec.amt_billed))
+compute sum(sum(pi.total_price))
 
 select 'This report was generated on', getdate()
-select 'The latest work recorded in this report was on', max(ec.date)
-from #emp_comm ec
+select 'The latest work recorded in this report was on', max(pi.end_date)
+from profit_item pi
 go
