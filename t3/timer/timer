@@ -20,9 +20,10 @@ use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw<get_yn input>;
 use Barefoot::T3Timer qw<get_timer_info do_timer_command calc_date calc_time>,
-		qw<default_client valid_clients valid_projects proj_requirements>,
-		qw<phase_list this_week_totals insert_time_log valid_employees>,
-		qw<get_emp_id client_rounding valid_trackings>;
+		qw<get_emp_id default_client valid_employees valid_clients>,
+		qw<valid_projects proj_requirements>,
+		qw<phase_list this_week_totals insert_time_log >,
+		qw<client_rounding valid_trackings>;
 
 
 #################################
@@ -72,7 +73,7 @@ my $command_strings = {
 	l	=>	"LOG",
 	c	=>	"CANCEL",
 	p	=>	"PAUSE",
-	n	=>	"RENAME",
+	r	=>	"RENAME",
 	b	=>	"BREAKDOWN",
 	t	=>	"TOTAL",
 	'@'	=>	"PARSE",
@@ -84,7 +85,7 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcpnbtfhu:C:P:H:@:', $opt);
+	getopts('sedlcprbtfhu:C:P:H:@:', $opt);
 	$timerinfo->{force} = defined $opt->{f};
 	$timerinfo->{halftime} = defined $opt->{h};
 	$timerinfo->{user} = $opt->{u};
@@ -95,11 +96,11 @@ if (-t STDOUT or @ARGV)
 
 	$timerinfo->{newname} = $ARGV[1];
 
-	foreach my $copt ( qw<s e d l c p n b t @> )
+	foreach my $copt ( qw<s e d l c p r b t @> )
 	{
 		if (exists $opt->{$copt})
 		{
-			error(2, "you must specify exactly one command (s,e,d,l,c,p,n,b)")
+			error(2, "you must specify exactly one command (s,e,d,l,c,p,r,b)")
 					if defined $command;
 			$command = $command_strings->{$copt};
 			# print STDERR "defined command as $command\n";
@@ -214,21 +215,15 @@ if ($command eq 'RENAME')					# new name for a timer
 		$timerinfo->{newname} = input("new name for this timer?", $defname);
 	}
 
-	$timerinfo->{timers}->{$timerinfo->{newname}}->{client} = 
-			get_client($command, $timerinfo);
-	$timerinfo->{timers}->{$timerinfo->{newname}}->{project} = 
-			get_project($command, $timerinfo,
-			$timerinfo->{timers}->{$timerinfo->{newname}}->{client});
+	$timerinfo->{client} = get_client($command, $timerinfo);
+	$timerinfo->{project} = get_project($command, $timerinfo,
+			$timerinfo->{client});
 
 	my ($phase_needed, $tracking_needed, $comments_needed) = 
-			proj_requirements(
-				$timerinfo->{timers}->{$timerinfo->{newname}}->{client}, 
-				$timerinfo->{timers}->{$timerinfo->{newname}}->{project}, 
-				calc_date(time)
-			);
+			proj_requirements($timerinfo->{client}, $timerinfo->{project}, 
+			calc_date(time));
 
-	$timerinfo->{timers}->{$timerinfo->{newname}}->{phase} = 
-			get_phase($command, $timerinfo) if $phase_needed;
+	$timerinfo->{phase} = get_phase($command, $timerinfo) if $phase_needed;
 }
 
 if ($command eq 'BREAKDOWN')					# break down a timer
@@ -382,14 +377,14 @@ sub usage
 {
 	error(0,
 		"incorrect usage; usage is:\n",
-		"    timer -{s|p|d|c|e|l|b|t} [-fh] [-u user] [-C clientnum] ",
+		"    timer -{s|p|d|c|r|e|l|b|t} [-fh] [-u user] [-C clientnum] ",
 						"[-P projcode] [timername [newtimername]] ",
 						"[-H phasecode]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
 		"       -c:   cancel a timer\n",
-		"       -n:   new name/client for a timer\n",
+		"       -r:   rename/change info for a timer\n",
 		"       -e:   show elapsed time for all timers\n",
 		"       -l:   log time directly to database\n",
 		"       -b:   break down a timer's portions\n",
@@ -404,7 +399,7 @@ sub usage
 		"    projcode and phasecode must be a valid 3-character code ",
 				"\n	(will be forced to uppercase)\n",
 		"    timername is ignored for -p, -e, -l, and -t\n",
-		"    newtimername is ignored for all but -n\n",
+		"    newtimername is ignored for all but -r\n",
 	);
 }
 
