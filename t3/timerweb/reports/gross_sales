@@ -1,18 +1,15 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Gross Sales by Client
 
-use TIMER
-go
-
 print "Period from [start_date] to [end_date]"
 print ""
 print ""
 go
 
-$(build_emp_comm "
+$(build_profit_item "
 	date between '[start_date]' and '[end_date]'
 ")
-exec emp_commission
+exec calc_profit
 go
 
 -- for debugging
@@ -27,46 +24,72 @@ order by emp, client, proj, date
 */
 go
 
--- total sales
+-- gross sales
 select c.client "C", c.name "client",
-		convert(numeric(9,2), sum(ec.amt_billed)) "total amount"
-from #emp_comm ec, client c
-where ec.client = c.client
+		sum(pi.total_price) "gross sales"
+from profit_item pi, client c
+where pi.client = c.client
 group by c.client, c.name
 order by c.client
-compute sum(convert(numeric(9,2), sum(ec.amt_billed)))
+compute sum(sum(pi.total_price))
 go
 
--- total paid to contractors
-print ""
-print "total for contractors"
-select $(employee_name e) "employee",
-		sum(ec.amt_paid) "amount paid", sum(ec.hours) "hours worked"
-from #emp_comm ec, employee e
-where ec.emp = e.emp
-and ec.paytype = 'S'
-group by $(employee_name e)
-compute sum(sum(ec.amt_paid)), sum(sum(ec.hours))
+-- COGS
+select c.client "C", c.name "client",
+		sum(pi.total_cost) "gross COGS",
+		convert(numeric(4,2), 100.0 * sum(pi.total_cost)
+				/ sum(pi.total_price)) "% of sales"
+from profit_item pi, client c
+where pi.client = c.client
+group by c.client, c.name
+order by c.client
+compute sum(sum(pi.total_cost))
 go
 
--- total paid to employees
-print ""
-print "total for employees"
-select $(employee_name e) "employee",
-		sum(ec.amt_paid) "amount paid", sum(ec.hours) "hours worked"
-from #emp_comm ec, employee e
-where ec.emp = e.emp
-and ec.paytype = 'P'
-group by $(employee_name e)
-compute sum(sum(ec.amt_paid)), sum(sum(ec.hours))
+-- sales commission
+select c.client "C", c.name "client",
+		sum(pi.sales_commission) "sales comm",
+		convert(numeric(4,2), 100.0 * sum(pi.sales_commission)
+				/ sum(pi.total_price)) "% of sales"
+from profit_item pi, client c
+where pi.client = c.client
+group by c.client, c.name
+order by c.client
+compute sum(sum(pi.sales_commission))
 go
 
--- total subtracted for other profits
-select op.client "C", c.name "client",
-		convert(numeric(9,2), sum(op.amount_paid)) "amount paid"
-from other_profits op, client c
-where op.client = c.client
-and op.date_delivered between '[start_date]' and '[end_date]'
-group by op.client, c.name
-compute sum(convert(numeric(9,2), sum(op.amount_paid)))
+-- referral commission
+select c.client "C", c.name "client",
+		sum(pi.ref_commission) "referral comm",
+		convert(numeric(4,2), 100.0 * sum(pi.ref_commission)
+				/ sum(pi.total_price)) "% of sales"
+from profit_item pi, client c
+where pi.client = c.client
+group by c.client, c.name
+order by c.client
+compute sum(sum(pi.ref_commission))
+go
+
+-- employee commission
+select c.client "C", c.name "client",
+		sum(pi.emp_commission) "employee comm",
+		convert(numeric(4,2), 100.0 * sum(pi.emp_commission)
+				/ sum(pi.total_price)) "% of sales"
+from profit_item pi, client c
+where pi.client = c.client
+group by c.client, c.name
+order by c.client
+compute sum(sum(pi.emp_commission))
+go
+
+-- simple profit
+select c.client "C", c.name "client",
+		sum(pi.simple_profit) "simple profit",
+		convert(numeric(4,2), 100.0 * sum(pi.simple_profit)
+				/ sum(pi.total_price)) "margin"
+from profit_item pi, client c
+where pi.client = c.client
+group by c.client, c.name
+order by c.client
+compute sum(sum(pi.simple_profit))
 go
