@@ -16,7 +16,7 @@ use Barefoot::T3::Server;
 
 
 use constant SLEEP_DELAY => 2;
-use constant SYNCHRONOUS_CLIENTS => 1;
+use constant SYNCHRONOUS_CLIENTS => 5;
 
 our $test_mod_dir = t3_config(T3::MODULEDIR_DIRECTIVE);
 
@@ -32,8 +32,8 @@ print "2) If you get 'client(s) didn't clean up pipe(s)' error, you may\n";
 print "   have stray pipes lying around from previous failed test runs.\n";
 print "   Do 'rm t3.output*' and try again.\n";
 print "3) If you get an unexpected error, check the t3engd.log file.  It\n";
-print "   may have more information.  For instance, 'server never created\n";
-print "   output pipe' is often caused by calling a module that you either\n";
+print "   may have more information.  For instance, 'can't seem to get\n";
+print "   any output' is often caused by calling a module that you either\n";
 print "   haven't implemented yet, or haven't registered (or both).  In\n";
 print "   this case, the log file shows 'unknown module', which pinpoints\n";
 print "   the problem nicely.\n";
@@ -44,6 +44,9 @@ die("engine is still running") if `ps aux | grep 'perl -Tw .*t3engd'`;
 make_test_modules_dir();
 start_server();
 
+# have to declare in parent
+our $test_user;
+
 my @children;					# save the child PIDs so we can reap them
 for my $x (1..SYNCHRONOUS_CLIENTS)
 {
@@ -51,18 +54,20 @@ for my $x (1..SYNCHRONOUS_CLIENTS)
 	my $pid;
 	$pid = fork and push @children, $pid and next;
 
-	try
-	{
-		test_timer_module();
-	}
-	catch
-	{
-		shutdown_server();
-		rethrow;				# don't lose original error
-	};
+	# we need to all use different user names, or we'll be starting and
+	# stopping each other's timers; that wouldn't test correctly
+	$test_user = "testy$x";
+	my $test_file = create_test_timer_file();
+
+	test_timer_lists();
+	test_start_and_pause();
 
 	print "client run passed\n";
 	open(FLAG, ">success$x") and close(FLAG);		# kludgy workaround
+
+	# clean up fake timer file
+	unlink($test_file);
+
 	exit 0;						# exit the child;
 }
 my $success = timeout
@@ -74,7 +79,8 @@ my $success = timeout
 	}
 
 } 60;
-die("got stuck while testing simultaneous processes") unless $success;
+shutdown_server() and die("got stuck while testing simultaneous processes")
+		unless $success;
 
 # make sure all children worked
 my $child_failed = false;
@@ -90,7 +96,7 @@ for my $x (1..SYNCHRONOUS_CLIENTS)
 		$child_failed = true;
 	}
 }
-die("one or more children failed") if $child_failed;
+shutdown_server() and die("one or more children failed") if $child_failed;
 
 shutdown_server();
 
@@ -173,15 +179,25 @@ sub start_server
 }
 
 
-sub test_timer_module
+sub create_test_timer_file
 {
 	# create a fake timer file for testing
-	my $tuser = "testy";
+
 	my $start1 = date::dateTimeSeconds("1/1/00", "1:00pm");
 	my $end1 = date::dateTimeSeconds("1/1/00", "2:00pm");
 	my $start2 = date::dateTimeSeconds("5/1/00", "4:12pm");
 	my $end2 = date::dateTimeSeconds("5/1/00", "5:49pm");
-	my $test_file = t3_config(T3::TIMERDIR_DIRECTIVE) . "/$tuser.timer";
+	my $test_file = t3_config(T3::TIMERDIR_DIRECTIVE) . "/$test_user.timer";
+
+	# since we're going to start and stop these a couple of times, we'll add
+	# a couple of seconds to them here and there.  however, we can't really
+	# predict exactly how many seconds, or just when it'll kick the rounding
+	# into the next minute.  thus, the safest thing to do is to subtract
+	# 50 seconds or so from these; that should make them round up to the
+	# number of minutes we expect, but give us room for a few stray seconds.
+	$end1 -= 50;
+	$end2 -= 50;
+
 	open(TMR, ">$test_file") or die("can't create test timer file");
 	print TMR join("\t", "test", "$start1-$end1,", "CLI", "PRJ",
 			"PHZ", 0, ""), "\n";
@@ -189,48 +205,116 @@ sub test_timer_module
 			"", 0, ""), "\n";
 	close(TMR);
 
-	T3::Client::send_request("TIMER_LIST", "tl$$", { user => $tuser } );
-	my @test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	unless (@test_output == 2
-		and $test_output[0] eq "test\t1:00\n"
-		and $test_output[1] eq "test2\t1:37\n")
+	# return file name so it can be deleted after testing
+	return $test_file;
+}
+
+
+sub check_output ($\@@)
+{
+	my ($test, $actual, @expected) = @_;
+
+	my $correct = true;
+	if (@$actual == @expected)
 	{
-		T3::debug(2, "actual output: $test_output[0], $test_output[1]");
-		die("timer module returned incorrect output");
+		for (my $x = 0; $x < @expected; ++$x)
+		{
+			if ($actual->[$x] ne $expected[$x])
+			{
+				$correct = false;
+				last;
+			}
+		}
+	}
+	else
+	{
+		$correct = false;
 	}
 
-	T3::Client::send_request("TIMER_LIST", "tl$$",
-			{ user => $tuser, timer => "test2" } );
-	@test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	die("timer module returned incorrect output")
-			unless @test_output == 1
-			and $test_output[0] eq "test2\t1:37\n";
-
-	T3::Client::send_request("TIMER_LIST", "tl$$",
-			{ user => $tuser, timer => "test2", details => 'yes' } );
-	@test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	unless (@test_output == 1
-			and $test_output[0] eq "test2\t1:37\tCLI\tPRJ\t\t0\t"
-					. "\t5/1/2000\t0\n")
+	unless ($correct)
 	{
-		T3::debug(2, "actual output: $test_output[0]");
-		die("timer module returned incorrect output");
+		T3::debug(2, "$test actual output: @$actual");
+		die("incorrect output for $test");
 	}
+}
 
-	# clean up fake timer file
-	unlink($test_file);
+
+sub test_timer_lists
+{
+	T3::Client::send_request("TIMER_LIST", "tl1-$$", { user => $test_user } );
+	# have to sort this one; writing the file (which testing of starting
+	# and pausing will do) may change the order of the test timers
+	my @test_output = T3::Client::retrieve_output("tl1-$$");
+	@test_output = sort @test_output;
+	T3::debug(2, "timer module got output:\n" . join('', @test_output));
+	check_output("simple list", @test_output,
+			"test\t1:00\t0\n", "test2\t1:37\t0\n");
+
+	T3::Client::send_request("TIMER_LIST", "tl2-$$",
+			{ user => $test_user, timer => "test2" } );
+	@test_output = T3::Client::retrieve_output("tl2-$$");
+	T3::debug(2, "timer module got output:\n" . join('', @test_output));
+	check_output("single timer list", @test_output, "test2\t1:37\t0\n");
+
+	T3::Client::send_request("TIMER_LIST", "tl3-$$",
+			{ user => $test_user, timer => "test2", details => 'yes' } );
+	@test_output = T3::Client::retrieve_output("tl3-$$");
+	check_output("detailed list", @test_output,
+			"test2\t1:37\tCLI\tPRJ\t\t0\t\t5/1/2000\t0\n");
+}
+
+
+sub test_start_and_pause
+{
+	# test starting an existing timer
+	T3::Client::send_request("START_TIMER", "sp1-$$",
+			{ user => $test_user, timer => "test" } );
+	my @success = T3::Client::retrieve_output("sp1-$$");
+	check_output("start existing timer", @success, "TIMER STARTED\n");
+
+	# make sure timer really got started
+	T3::Client::send_request("TIMER_LIST", "sp2-$$",
+			{ user => $test_user, timer => "test" });
+	my @test_output = T3::Client::retrieve_output("sp2-$$");
+	check_output("check started timer", @test_output, "test\t1:00\t1\n");
+
+	# try to start same timer; should get error this time
+	T3::Client::send_request("START_TIMER", "sp3-$$",
+			{ user => $test_user, timer => "test" } );
+	@success = T3::Client::retrieve_output("sp3-$$");
+	check_output("start running timer", @success,
+			"ERROR:Timer already started in that mode\n");
+
+	# now pause it
+	T3::Client::send_request("PAUSE_TIMERS", "sp4-$$", { user => $test_user });
+	@success = T3::Client::retrieve_output("sp4-$$");
+	check_output("pause timers", @success, "TIMERS PAUSED\n");
+
+	# make sure timer really got paused
+	T3::Client::send_request("TIMER_LIST", "sp5-$$",
+			{ user => $test_user, timer => "test" });
+	@test_output = T3::Client::retrieve_output("sp5-$$");
+	check_output("check paused timer", @test_output, "test\t1:00\t0\n");
+
+	# pausing again should cause error
+	T3::Client::send_request("PAUSE_TIMERS", "sp6-$$", { user => $test_user } );
+	@success = T3::Client::retrieve_output("sp6-$$");
+	check_output("start running timer", @success,
+			"ERROR:No timer is running\n");
 }
 
 
 sub shutdown_server
 {
 	T3::Client::request_shutdown();
-	if (`ps aux | grep 'perl -Tw .*t3engd'`)
+	sleep SLEEP_DELAY;
+	my $running_server = `ps aux | grep 'perl -Tw .*t3engd'`;
+	if ($running_server)
 	{
+		T3::debug(3, $running_server);
 		system("kill `ps aux | grep 'perl -Tw .*t3engd' | awk '{print \$2}'`");
 		die("server refuses to shutdown");
 	}
+
+	return true;
 }
