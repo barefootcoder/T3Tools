@@ -34,10 +34,9 @@ my $destdb = "t3test";
 my $dstore = "t3test";
 
 # the following line needs to match the equivalent line in make_timer
-my $admin_users = "christy,wayne";
-my $non_admin_users = "guest,marcus";
+my $admin_users = "christy,wayne,buddy";
+my $non_admin_users = "guest,www,marcus";
 my $schema_users = "t3,timer,talker,tracker,reporting";
-my $dbo_users = "buddy,gregg";
 
 my $opt = {};
 getopts("S:U:D:s:h", $opt);
@@ -103,7 +102,6 @@ print RQ <<END;
 	@{[add_users($admin_users)]}
 	@{[add_users($non_admin_users)]}
 	@{[add_users($schema_users)]}
-	@{[add_dbousers($dbo_users)]}
 
 END
 close(RQ);
@@ -171,24 +169,6 @@ sub add_users
 				execute sp_dropuser $_
 			;
 			sp_adduser $_
-			;
-		";
-	}
-	# print STDERR $code;
-	return $code;
-}
-
-# ditto, but for creating dbo aliases
-sub add_dbousers
-{
-	my $code = "";
-	foreach (split(",", $_[0]))
-	{
-		$code .= "
-			if exists ( select 1 from sysusers where name = '$_' )
-				execute sp_dropuser $_
-			;
-			sp_addalias $_, dbo
 			;
 		";
 	}
