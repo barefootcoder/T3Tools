@@ -1,0 +1,76 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::input qw(input);
+
+
+my $from = input("Show messages from (leave blank for all):");
+$from = '.*?' unless $from;
+my $to = input("Show messages to (leave blank for all):");
+$to = '.*?' unless $to;
+
+my @messages;
+open(LOG, "/var/log/httpd/access_log") or die("can't open server log");
+while ( <LOG> )
+{
+	if ( /talker_server/ and /status="NORMAL"/ )
+	{
+		my $message = {};
+		# print "inside\n";
+		next unless ($message->{from}) = /from="($from)"/;
+		# print "from matched\n";
+		next unless ($message->{to}) = /to="($to)"/;
+		# print "to matched\n";
+		($message->{date}, $message->{time}) = /\[(.*?):(.*?) .*?\]/;
+		($message->{content}) = />(.*?)<\/MESSAGE>/;
+		unshift @messages, $message;
+	}
+}
+close(LOG);
+
+list_messages();
+
+while (1)
+{
+	my $which = input("\nWhich message to show (l to relist, q to quit)?");
+	last if $which eq "q";
+	list_messages() and next if $which eq "l";
+
+	my $msg = $messages[$which - 1];
+	print message_info($msg), "\n";
+	print join("\n", decode_message($msg->{content})), "\n";
+}
+
+
+
+sub message_info
+{
+	my ($msg) = @_;
+	return "From $msg->{from}, to $msg->{to}, "
+			. "received $msg->{date} $msg->{time}";
+}
+
+sub list_messages
+{
+	my $count = 0;
+	open(LESS, "|less") or die("can't open pipe");
+	foreach my $msg (@messages)
+	{
+		print LESS ++$count, ": ", message_info($msg), "\n";
+	}
+	close(LESS);
+}
+
+sub decode_message
+{
+	my ($message) = @_;
+
+	# decode CGI encoding
+	$message =~ s/%(..)/ chr(hex($1)) /eg;
+	# other talker client uses +'s for spaces
+	$message =~ s/\+/ /g;
+	# split message into distinct lines
+
+	return wantarray ? split(/\r?\n/, $message) : $message;
+}
