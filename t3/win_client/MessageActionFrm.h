@@ -60,9 +60,15 @@ __published:	// IDE-managed Components
 	void __fastcall SendMessgClick(TObject *Sender);
 	void __fastcall ApplyFilterClick(TObject *Sender);
 	void __fastcall HistButtonClick(TObject *Sender);
+	void __fastcall TheMessageKeyDown(TObject *Sender, WORD &Key,
+          TShiftState Shift);
+	void __fastcall TheMessageKeyUp(TObject *Sender, WORD &Key,
+          TShiftState Shift);
 private:	// User declarations
 	void manageMessageButtons(int state);
 	bool history_on;
+	bool confirmDialog(String saywhat);
+	int editing_message_size;
 public:		// User declarations
 	__fastcall TMessageActionForm(TComponent* Owner);
 	String user;		//each Message form usually has an associated user name

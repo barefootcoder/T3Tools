@@ -24,7 +24,7 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 	: TForm(Owner)
 {
 	KeyPreview = true;		//for form to respond to keyboard events
-
+														 
 	//read message window size and position from ini file
 	if (IniOpt->getValue("messageform_left") != "")		//if not first time
 	{
@@ -41,21 +41,20 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 		IniOpt->setValueInt("messageform_width", Width + 10, save_to_ini);
 		IniOpt->setValueInt("messageform_height", Height + 10, save_to_ini);
 	}
-
+													  
 	//set message window display font attributes
-	//TheMessage->Font = OptionsForm->MessageFont->Font;
 
 	TheMessage->Font->Name = IniOpt->getValue("messagefont_name").c_str();
 	TheMessage->Font->Size = IniOpt->getValueInt("messagefont_size", 8);
 	TheMessage->Font->Color = IniOpt->getValueInt("messagefont_color", clBlack);
 	if (IniOpt->getValueInt("messagefont_bold", 0))
-		TheMessage->Font->Style << fsBold;
+		TheMessage->Font->Style = TheMessage->Font->Style << fsBold;
 	else
-		TheMessage->Font->Style >> fsBold;
+		TheMessage->Font->Style = TheMessage->Font->Style >> fsBold;
 	if (IniOpt->getValueInt("messagefont_italic", 0))
-		TheMessage->Font->Style << fsItalic;
+		TheMessage->Font->Style = TheMessage->Font->Style << fsItalic;
 	else
-		TheMessage->Font->Style >> fsItalic;
+		TheMessage->Font->Style = TheMessage->Font->Style >> fsItalic;
 
 	//set multi-select mode
 	UserList->ExtendedSelect = (IniOpt->getValue("multiselect_mode") == "1");
@@ -67,6 +66,7 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 
 void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 {
+	editing_message_size = 0;
 
 	//add users to dropdown lists (read users from Contacts panels
 	//instead of UserCollection to preserve same order)
@@ -99,6 +99,21 @@ void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 void __fastcall TMessageActionForm::FormClose(TObject *Sender,
 	  TCloseAction &Action)
 {
+
+	if (editing_message_size > 0 && IniOpt->getValue("confirm_on_clear") == "1")
+	{
+		String confirm_text = history_on ?
+						"Closing window will Delete message you were editing before"
+						" switching to history view.\n" : "Closing window will "
+						"Delete displayed message.\n";
+
+		if (!confirmDialog(confirm_text + "Close anyway?"))
+		{
+			Action = caNone;
+			return;
+		}
+	}
+
 	TheMessage->Clear();
 
 	//save current size and position of Message form (last one to close overwrites)
@@ -142,9 +157,12 @@ void __fastcall TMessageActionForm::SendMessgClick(TObject *Sender)
 			who_to += UserList->Items->Strings[i];
 		}
 
-	MainForm->sendMessage(this, -2, who_to);	//-2 means who_to arg is read
+	if (MainForm->sendMessage(this, -2, who_to))	//-2 means who_to arg is read
+	{
+		//upon sucessful send
+		manageMessageButtons(1);
+	}
 
-	manageMessageButtons(1);
 	ActiveControl = TheMessage;
 
 }
@@ -234,6 +252,7 @@ void TMessageActionForm::manageMessageButtons(int state)
 			break;
 		case 1:							//after Send/Broadcast
 			TheMessage->Clear();
+			editing_message_size = 0;
 			Topic->Clear();
 			ReplyLED->Visible = false;
 			SendMessg->Enabled = false;
@@ -281,6 +300,7 @@ void __fastcall TMessageActionForm::TheMessageChange(TObject *Sender)
 		SendMessg->Enabled = false;
 		BroadcastMessg->Enabled = false;
 		ClearMessage->Enabled = false;
+		editing_message_size = 0;
 	}
 	else
 	{
@@ -296,6 +316,10 @@ void __fastcall TMessageActionForm::TheMessageChange(TObject *Sender)
 
 void __fastcall TMessageActionForm::ClearMessageClick(TObject *Sender)
 {
+	if (editing_message_size > 0 && IniOpt->getValue("confirm_on_clear") == "1"
+						&& !confirmDialog("Delete displayed message?"))
+		return;
+
 	TheMessage->Clear();
 	TheMessageChange(TheMessage);	//because above line won't trigger it
 	ActiveControl = TheMessage;
@@ -561,6 +585,39 @@ String TMessageActionForm::makeTag (String& what_message)
 	}
 
 	return tempstr;
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TMessageActionForm::TheMessageKeyDown(TObject *Sender,
+      WORD &Key, TShiftState Shift)
+{
+	if (Key == 'A' && Shift.Contains(ssCtrl))
+		TheMessage->SelectAll();
+
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TMessageActionForm::TheMessageKeyUp(TObject *Sender,
+	  WORD &Key, TShiftState Shift)
+{
+	//detect if the message is being edited by keeping track of its size
+	if (!history_on && TheMessage->Text.Length() != editing_message_size)
+		editing_message_size = TheMessage->Text.Length();
+
+}
+//---------------------------------------------------------------------------
+
+bool TMessageActionForm::confirmDialog(String saywhat)
+{
+	TMsgDlgButtons buttons;
+	buttons << mbYes << mbNo;
+
+	int check = MessageDlg(saywhat, mtConfirmation, buttons, 0);
+
+	if (check == mrYes)
+		return true;
+	else
+		return false;
 }
 //---------------------------------------------------------------------------
 

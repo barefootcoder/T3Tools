@@ -79,15 +79,17 @@ void MessageMgr::doTransfer ()
 	TempSendBuffer.insert(TempSendBuffer.end(), SendBuffer.begin(),
 												SendBuffer.end());
 
-	vector<Message>::const_iterator it;
 	//b4 clearing send buffer, copy each NORMAL message to Unconfirmed collection
+	addToUnconfirmed();
+	/*
+	vector<Message>::const_iterator it;
 	for (it = SendBuffer.begin(); it != SendBuffer.end(); it++)
 	{
 		if (it->status == "NORMAL")
-			//UnconfCollection[it->message_id.c_str()] = *it;
 			UnconfCollection.insert(make_pair(it->message_id.c_str(), *it));
 			//note: it's not added if it is already there
 	}
+	*/
 	SendBuffer.clear();
 	saveUnconfirmed();	//to keep latest updates of UnconfCollection persistent
 
@@ -198,6 +200,22 @@ void MessageMgr::loadUnconfirmed ()
 	}
 
 	unconf.close();
+}
+//---------------------------------------------------------------------------
+
+void MessageMgr::addToUnconfirmed ()
+{
+	//copies all NORMAL from SendBuffer to UnconfCollection
+
+	vector<Message>::const_iterator it;
+
+	for (it = SendBuffer.begin(); it != SendBuffer.end(); it++)
+	{
+		if (it->status == "NORMAL")
+			UnconfCollection.insert(make_pair(it->message_id.c_str(), *it));
+			//note: it's not added if it is already there
+	}
+
 }
 //---------------------------------------------------------------------------
 

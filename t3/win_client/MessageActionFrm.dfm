@@ -222,6 +222,8 @@ object MessageActionForm: TMessageActionForm
       TabOrder = 0
       WantTabs = True
       OnChange = TheMessageChange
+      OnKeyDown = TheMessageKeyDown
+      OnKeyUp = TheMessageKeyUp
     end
   end
   object Panel3: TPanel

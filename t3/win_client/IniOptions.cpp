@@ -35,7 +35,7 @@ IniOptions::~IniOptions ()
 }
 //---------------------------------------------------------------------------
 
-string IniOptions::getValue (const string& name) const
+string IniOptions::getValue (const string& name, string default_val) const
 {
 	//if getValue() does not find the value in ini_values, it searches
 	//tmp_values, thus freeing the caller from having to decide where to look
@@ -47,7 +47,10 @@ string IniOptions::getValue (const string& name) const
 	if (value == "")
 		value = tmp_values->Values[name.c_str()].c_str();
 
-	return value;
+	if (value == "")
+		return default_val;
+	else
+		return value;
 }
 //---------------------------------------------------------------------------
 

@@ -25,7 +25,7 @@ public:
 	void setValue (const string& name, const string& value, bool ini = true);
 	void setValueInt (const string& name, const int int_val, bool ini = true);
 						//bool ini decides if this value will be persistent
-	string getValue (const string& name) const;
+	string getValue (const string& name, string default_val = "") const;
 	int getValueInt (const string& name, int default_val = 0) const;
 
 private:

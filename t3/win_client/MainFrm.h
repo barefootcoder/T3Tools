@@ -166,7 +166,7 @@ public:		// User declarations
 
 	void openMessageForm (int what_item);
 	void readMessage (TMessageActionForm* MessageActionForm);
-	void sendMessage (TMessageActionForm* MessageActionForm, int what_item,
+	bool sendMessage (TMessageActionForm* MessageActionForm, int what_item,
 						String what_users_to);
 	void broadcastMessage (TMessageActionForm* MessageActionForm);
 	void sendStatusMessage (String what_status);

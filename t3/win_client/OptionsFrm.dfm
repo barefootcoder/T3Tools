@@ -211,32 +211,6 @@ object OptionsForm: TOptionsForm
         Font.Style = []
         ParentFont = False
       end
-      object Label12: TLabel
-        Left = 18
-        Top = 304
-        Width = 299
-        Height = 14
-        Caption = 'Abort a communication event if no response from server after'
-        Font.Charset = ANSI_CHARSET
-        Font.Color = clNavy
-        Font.Height = -11
-        Font.Name = 'Arial'
-        Font.Style = []
-        ParentFont = False
-      end
-      object Label13: TLabel
-        Left = 342
-        Top = 304
-        Width = 42
-        Height = 14
-        Caption = 'seconds'
-        Font.Charset = ANSI_CHARSET
-        Font.Color = clNavy
-        Font.Height = -11
-        Font.Name = 'Arial'
-        Font.Style = []
-        ParentFont = False
-      end
       object Label14: TLabel
         Left = 18
         Top = 52
@@ -454,21 +428,6 @@ object OptionsForm: TOptionsForm
         ParentFont = False
         TabOrder = 13
       end
-      object CommTimeout: TEdit
-        Left = 319
-        Top = 302
-        Width = 20
-        Height = 18
-        AutoSize = False
-        Font.Charset = ANSI_CHARSET
-        Font.Color = clWindowText
-        Font.Height = -11
-        Font.Name = 'Arial'
-        Font.Style = []
-        ParentFont = False
-        TabOrder = 14
-        Text = '10'
-      end
       object UserLocation: TEdit
         Left = 16
         Top = 68
@@ -480,8 +439,24 @@ object OptionsForm: TOptionsForm
         Font.Name = 'Arial'
         Font.Style = [fsBold]
         ParentFont = False
-        TabOrder = 15
+        TabOrder = 14
         Text = 'UserName'
+      end
+      object ConfirmOnClear: TCheckBox
+        Left = 16
+        Top = 296
+        Width = 313
+        Height = 25
+        Caption = 'Confirm before deleting a message that is being edited '
+        Checked = True
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        State = cbChecked
+        TabOrder = 15
       end
     end
     object TimerOptions: TTabSheet
@@ -593,6 +568,32 @@ object OptionsForm: TOptionsForm
         Width = 43
         Height = 14
         Caption = 'Seconds'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label12: TLabel
+        Left = 26
+        Top = 304
+        Width = 299
+        Height = 14
+        Caption = 'Abort a communication event if no response from server after'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label13: TLabel
+        Left = 350
+        Top = 304
+        Width = 42
+        Height = 14
+        Caption = 'seconds'
         Font.Charset = ANSI_CHARSET
         Font.Color = clNavy
         Font.Height = -11
@@ -716,6 +717,21 @@ object OptionsForm: TOptionsForm
         TabOrder = 7
         Wrap = True
       end
+      object CommTimeout: TEdit
+        Left = 327
+        Top = 302
+        Width = 20
+        Height = 18
+        AutoSize = False
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        TabOrder = 8
+        Text = '10'
+      end
     end
   end
   object Panel1: TPanel
@@ -730,7 +746,7 @@ object OptionsForm: TOptionsForm
       Top = 6
       Width = 164
       Height = 14
-      Caption = 'Development Release version 15b'
+      Caption = 'Development Release version 16a'
       Font.Charset = ANSI_CHARSET
       Font.Color = clNavy
       Font.Height = -11
@@ -797,7 +813,7 @@ object OptionsForm: TOptionsForm
     Font.Style = []
     MinFontSize = 0
     MaxFontSize = 0
-    Left = 372
-    Top = 305
+    Left = 396
+    Top = 289
   end
 end

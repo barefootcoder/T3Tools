@@ -115,6 +115,12 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 	if (MessagePump->transfer_active)
 		if (UtilityDialog->ShowModal() != mrOk)		//closed by Blinker
 		{
+			ShowMessage("There are still unsent messages. Attempts to resend "
+						"them will continue next time you go back online.");
+			MessagePump->addToUnconfirmed();
+			//Because above line now always saves unsent messages for later
+			//resend, the following option to go back on-line is no longer needed
+			/*
 			TMsgDlgButtons buttons;
 			buttons << mbYes << mbNo;
 			int check = MessageDlg("Due to communication problems, there are "
@@ -131,10 +137,8 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 				ImOnClick(ImOn);		//go back on-line
 				return;					//don't execute code below
 			}
+			*/
 		}
-			//NOTE: due to next line will probably not need above re-logon anymore -- just a notice to user
-			//that's because every attempted-to-send message is in unconfirmed colection
-	//MessagePump->saveUnconfirmed();	//now done at every ping, etc. for crash protection
 
 	cleanupApp();			//save ini settings, etc
 
@@ -700,10 +704,6 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 
 	if (have_messages)
 	{
-		//causes a repaint of contacts -- don't use, use Refresh() instead
-		//if (Contacts->Items->Count > 0)
-		//	Contacts->Items->Strings[0] = Contacts->Items->Strings[0];
-
 		//there's messages, so application icon blinks
 		Application->Icon = (blink) ? TimerActionForm->Icon : NewTimer->Icon;
 		Contacts->Refresh();
@@ -715,6 +715,26 @@ void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 		else
 			Application->Icon = TimerActionForm->Icon;	//or always on
 	}
+
+
+	//if so selected, play sound to indicate if recvd messages are in buffer
+	static int usecs_since_last_sound = 0;
+	if (have_messages && IniOpt->getValue("sound_none") == "0")
+	{
+		if (usecs_since_last_sound == 0)
+			playSound();					//first upon message receipt
+		usecs_since_last_sound += Blinker->Interval;
+		int ini_usecs = 1000 * IniOpt->getValueInt("sound_interval", 180);
+		if (ini_usecs != 0  &&  usecs_since_last_sound >= ini_usecs)
+		{
+			//play sound
+			playSound();
+			usecs_since_last_sound = 1;		//1 to distinguish from 0 (initial)
+		}
+	}
+	else
+		usecs_since_last_sound = 0;
+
 
 
 	//also use this TTimer to clean the status bar from mouse hover hangovers
@@ -1225,7 +1245,7 @@ void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 }
 //---------------------------------------------------------------------------
 
-void TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_item,
+bool TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_item,
 								String what_users_to)
 {
 	//send a message
@@ -1240,7 +1260,7 @@ void TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 		ShowMessage("Messages cannot be sent yet because authentication with "
 					"server is not completed. Please wait a few seconds and "
 					"try again.");
-		return;
+		return false;		//did not send
 	}
 
 	String send_to;
@@ -1283,6 +1303,7 @@ void TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 
 	ferryMessage(trans_out);
 
+	return true;
 }
 //---------------------------------------------------------------------------
 
@@ -1373,21 +1394,6 @@ void __fastcall TMainForm::MessageTimerTimer(TObject *Sender)
 
 		sendStatusMessage(status);
 
-		//if so selected, play sound to indicate if recvd messages are in buffer
-		static int secs_since_last_sound = 0;
-		if (have_messages && IniOpt->getValue("sound_none") == "0")
-		{
-			secs_since_last_sound += (MessageTimer->Interval / 1000);
-			int ini_secs = IniOpt->getValueInt("sound_interval", 180);
-			if (ini_secs != 0  &&  secs_since_last_sound >= ini_secs)
-			{
-				//play sound
-				playSound();
-				secs_since_last_sound = 0;
-			}
-		}
-		else
-        	secs_since_last_sound = 0;
 	}
 
 
@@ -1434,6 +1440,9 @@ void TMainForm::doContactMaintenance ()
 			Contacts->Items->Add(it->first.c_str());
 	}
 
+	String last_cursor = "";	//keep track of current focus b4 rearranging items
+	if (Contacts->ItemIndex > -1)
+		last_cursor = Contacts->Items->Strings[Contacts->ItemIndex];
 
 	//move to top any contacts from which a message was received
 	for (it = pMessageBuffer->begin(); it != pMessageBuffer->end(); it++)
@@ -1443,6 +1452,10 @@ void TMainForm::doContactMaintenance ()
 		//and scroll to the top so it's obvious a new message arrived
 		setScrollPosition(Contacts->Handle, 0);
 	}
+
+	//restore item focus
+	if (last_cursor != "")
+		Contacts->ItemIndex = Contacts->Items->IndexOf(last_cursor);
 
 	Contacts->Refresh();
 

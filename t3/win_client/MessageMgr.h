@@ -28,6 +28,7 @@ class MessageMgr
 	void resendMessages ();		//resends any messages that remain unconfirmed
 
 	//auxiliary methods
+	void addToUnconfirmed ();	//copies all NORMAL from SendBuffer to UnconfCollection
 	void saveUnconfirmed ();
 
 	//key data collections (see also private temp versions)

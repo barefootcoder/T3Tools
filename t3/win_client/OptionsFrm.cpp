@@ -64,8 +64,9 @@ void TOptionsForm::scatterOptions()
 	HistoryDivider->Text = (IniOpt->getValue("hist_message_divider") == "") ?
 					"--------------------" :	//default value
 					IniOpt->getValue("hist_message_divider").c_str();
-	CloseOnSend->Checked = (IniOpt->getValue("close_on_send") == "1");
+	CloseOnSend->Checked = (IniOpt->getValue("close_on_send", "1") == "1");
 	SelectMode->Checked = (IniOpt->getValue("multiselect_mode") == "1");
+	ConfirmOnClear->Checked = (IniOpt->getValue("confirm_on_clear", "1") == "1");
 	CommTimeout->Text = IniOpt->getValueInt("communication_timeout", 10);
 	RefreshFrequencyChange->Position =
 							IniOpt->getValueInt("server_refresh_interval", 30);
@@ -111,6 +112,7 @@ void TOptionsForm::gatherOptions()
 	IniOpt->setValue("hist_message_divider", HistoryDivider->Text.c_str());
 	IniOpt->setValue("close_on_send", CloseOnSend->Checked ? "1" : "0");
 	IniOpt->setValue("multiselect_mode", SelectMode->Checked ? "1" : "0");
+	IniOpt->setValue("confirm_on_clear", ConfirmOnClear->Checked ? "1" : "0");
 	IniOpt->setValueInt("communication_timeout", CommTimeout->Text.ToIntDef(10));
 	IniOpt->setValueInt("server_refresh_interval",
 									RefreshFrequency->Text.ToIntDef(30));
@@ -169,17 +171,25 @@ void TOptionsForm::readWavFilenames()
 
 	filespec += "\\*.wav";
 
-	struct _finddata_t fileinfo;
-	long handle = _findfirst(filespec.c_str(), &fileinfo);
-	bool theresmore;
 	MessageSound->Clear();
-	do
+
+	try
 	{
-		String filename = fileinfo.name;
-		filename.Delete(filename.Pos("."), 4);
-		MessageSound->Items->Add(filename);
+		struct _finddata_t fileinfo;
+		long handle = _findfirst(filespec.c_str(), &fileinfo);
+		bool theresmore;
+		do
+		{
+			String filename = fileinfo.name;
+			filename.Delete(filename.Pos("."), 4);
+			MessageSound->Items->Add(filename);
+		}
+		while (theresmore = !_findnext(handle, &fileinfo));
 	}
-	while (theresmore = !_findnext(handle, &fileinfo));
+	catch(...)
+	{
+		ShowMessage("Unable to locate or read sound files.");
+	}
 
 }
 //---------------------------------------------------------------------------

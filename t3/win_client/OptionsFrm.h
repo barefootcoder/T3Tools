@@ -53,9 +53,6 @@ __published:	// IDE-managed Components
 	TLabel *Label11;
 	TCheckBox *SoundOff;
 	TComboBox *MessageSound;
-	TLabel *Label12;
-	TEdit *CommTimeout;
-	TLabel *Label13;
 	TLabel *Label14;
 	TEdit *UserLocation;
 	TTabSheet *TabSheet1;
@@ -75,6 +72,10 @@ __published:	// IDE-managed Components
 	TEdit *UnconfsRefresh;
 	TUpDown *UnconfsRefreshChange;
 	TLabel *Label22;
+	TLabel *Label12;
+	TEdit *CommTimeout;
+	TLabel *Label13;
+	TCheckBox *ConfirmOnClear;
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall SetMessageFontClick(TObject *Sender);
 	void __fastcall FormShow(TObject *Sender);
