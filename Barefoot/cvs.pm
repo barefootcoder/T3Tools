@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  2000/08/28 21:01:44  buddy
+# first truly working version
+#
 # Revision 1.1  1999/11/22 15:02:38  buddy
 # Initial revision
 #
@@ -31,8 +34,7 @@ package cvs;
 
 use strict;
 
-# in the following, ~ indicates the user's name
-use constant WORKING_DIR => "/export/usr/~/proj";
+use constant WORKING_DIR => "$ENV{HOME}/proj";
 
 1;
 
@@ -41,13 +43,6 @@ use constant WORKING_DIR => "/export/usr/~/proj";
 # Subroutines:
 #
 
-
-sub working_dir
-{
-	my $wdir = WORKING_DIR;
-	$wdir =~ s/~/$ENV{USER}/;
-	return $wdir;
-}
 
 sub getLockers
 {
@@ -75,7 +70,7 @@ sub parse_module
 {
 	my ($path) = @_;
 
-	my $wdir = working_dir();
+	my $wdir = WORKING_DIR;
 	my ($project, $subdir, $module) = $path =~ m@
 			$wdir				# should start with working directory
 			/					# needs to be at least one dir below
