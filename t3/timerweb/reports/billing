@@ -166,3 +166,30 @@ if exists
 		and tlp.class_billing = 0
 	)
 go
+
+if exists
+(
+	select 1
+	from profit_item pi, time_log_profit tlp, time_log tl
+	where pi.log_source = tlp.log_source
+	and pi.log_id = tlp.log_id
+	and tlp.log_id = tl.log_id
+	and tl.cliproj is not NULL
+)
+	select p.name "project", cp.name "client's tracking code",
+			convert(numeric(6,2), sum(tlp.hours)) "hours",
+			sum(pi.total_price) "total amount"
+	from profit_item pi, time_log_profit tlp, time_log tl,
+			project p, client_project cp
+	where pi.log_source = tlp.log_source
+	and pi.log_id = tlp.log_id
+	and tlp.log_id = tl.log_id
+	and tl.client = p.client
+	and tl.proj = p.proj
+	and tl.date between p.start_date and p.end_date
+	and tl.client = cp.client
+	and tl.cliproj = cp.project_id
+	group by p.name, cp.name
+	order by p.name, cp.name
+	compute sum(sum(pi.total_price)) by p.name
+go
