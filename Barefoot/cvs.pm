@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.4  2000/11/20 20:20:59  buddy
+# changed working dir to /proj/$USER
+#
 # Revision 1.3  2000/11/20 19:45:29  buddy
 # switched from /export/usr/$USER/proj to $HOME/proj for private CVS dir
 #
@@ -37,7 +40,7 @@ package cvs;
 
 use strict;
 
-use constant WORKING_DIR => "/proj/$ENV{HOME}";
+use constant WORKING_DIR => "/proj/$ENV{USER}";
 
 1;
 
