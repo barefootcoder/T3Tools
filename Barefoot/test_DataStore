@@ -2,12 +2,13 @@
 
 use strict;
 
-use Barefoot::debug;					# comment out for production use
+use Barefoot::debug(1);					# comment out for production use
 
 use Carp;
 use POSIX qw<strftime>;
 
 use Barefoot::base;
+use Barefoot::range;
 use Barefoot::DataStore;
 use Barefoot::exception;
 
@@ -217,6 +218,7 @@ test_user_types();
 test_schema_trans();
 test_execute();
 test_vars();
+test_calc_columns();
 
 # make sure we can reopen our data store
 undef $testds;
@@ -295,7 +297,7 @@ sub test_output
 			unless defined $res;
 	my $output = "";
 	$output .= join(':', $res->all_cols()) . "\n" while $res->next_row();
-	# print STDERR "got output $output\n";
+	print STDERR "got output $output\n" if DEBUG >= 2;
 	croak($die_msg) unless $output eq $expected_output;
 }
 
@@ -303,10 +305,10 @@ sub test_output
 sub test_constants
 {
 	db_assert($testds->do("insert test1 "
-			. "values ('con', '{BEGINNING_OF_TIME}', 0)"),
+			. "values ('con', {BEGINNING_OF_TIME}, 0)"),
 			"beginning of time insert failed");
 	db_assert($testds->do("insert test1 "
-			. "values ('con', '{END_OF_TIME}', 0)"),
+			. "values ('con', {END_OF_TIME}, 0)"),
 			"end of time insert failed");
 	test_output("select * from test1 where a = 'con'",
 			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
@@ -365,6 +367,9 @@ sub test_misc_functions
 	# note: if you happen to be running this at the exact moment of midnight,
 	# I suppose it's technically possible for the Sybase date and the Unix
 	# date to fail to match.  just run it again.
+	print STDERR "current date: from data store = ",
+			substr($res->col(0), 0, 11), ", from Perl = ",
+			strftime("%b %e %Y", localtime(time())), "\n" if DEBUG >= 2;
 	die("can't get current date")
 			unless substr($res->col(0), 0, 11)
 					eq strftime("%b %e %Y", localtime(time()));
@@ -477,11 +482,11 @@ sub test_execute
 sub test_vars
 {
 	$testds->define_var("a_val", "con");
-	test_output("select * from test1 where a = '{a_val}'",
+	test_output("select * from test1 where a = {a_val}",
 			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
 			"variable set to 'con' didn't work");
 	$testds->define_var("a_val", "xxx");
-	test_output("select * from test1 where a = '{a_val}'",
+	test_output("select * from test1 where a = {a_val}",
 			"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
 			"variable set to 'xxx' didn't work");
 }
@@ -491,13 +496,13 @@ sub test_conditionals
 	$testds->define_var("a_val", "con");
 	test_output("
 				select * from test1
-				where a = '{a_val}'				{?a_val}
+				where a = {a_val}				{?a_val}
 			", 
 			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
 			"positive conditional didn't work");
 	test_output("
 				select * from test1
-				where a = '{a_val}'
+				where a ='{a_val}
 				and b = {BEGINNING_OF_TIME}		{!a_val}
 			", 
 			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
@@ -575,4 +580,39 @@ sub test_transactions
 	test_output("select * from test1 where a = 'trn'",
 			"trn:Jan  1 2001 12:00AM:0\n",
 			"commit didn't work");
+}
+
+sub test_calc_columns
+{
+	my $res;
+	db_assert($res = $testds->do("select {*fred = 1 + 2}"),
+			"can't execute calc column query");
+	$res->next_row();
+	die("couldn't get correct output for calc column")
+			unless $res->col(0) == 3;
+	test_output("select {*fred = 1 + 2}", "3\n",
+			"simplest calc column didn't work");
+	test_output("
+				select payroll_amount, overhead_amount,
+					{*overhead_pct
+						= range::round(%overhead_amount / %payroll_amount * 100,
+								range::ROUND_OFF, .01)
+					}
+				from t3.{~timer}.payroll
+				where check_date between '1/1/01' and '1/31/01'
+			", 
+			"11331.63:1294.74:11.43\n9603.26:1099.13:11.45\n",
+			"can't reference columns in calcs"
+	);
+	test_output("
+				select payroll_amount,
+					{*running = \$total_amt += %payroll_amount}
+				from t3.{~timer}.payroll
+				where check_date between '1/1/01' and '1/31/01'
+			", 
+			"11331.63:11331.63\n9603.26:20934.89\n",
+			"can't reference external vars in calcs"
+	);
+	die("running total failed")
+			unless $testds->_transform_query("{total_amt}") eq "20934.89";
 }
