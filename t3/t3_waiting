@@ -1,0 +1,20 @@
+#! /usr/bin/ksh
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
+
+readonly T3_BOX_DIR=/home/httpd/cgi-bin/t3/talker
+cd $T3_BOX_DIR
+
+echo "The following people have waiting messages ..."
+for box in *.box
+do
+	if [ -s $box ]
+	then
+		line=$(wc -l $box)
+		echo ${line%.box}
+	fi
+done
