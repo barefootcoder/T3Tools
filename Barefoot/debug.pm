@@ -41,7 +41,9 @@ use Barefoot::cvs;
 use lib (cvs::WORKING_DIR);
 
 
-$::debug = 1;
+$::debug_mode = 1;
+$::debug = $::debug_mode;					# for backwards compatibility
+# note: $debug is depracated.  please use $debug_mode in all new code
 
 1;
 
