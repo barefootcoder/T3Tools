@@ -29,17 +29,25 @@ package T3::TimerProcs;
 
 use strict;
 
-use Barefoot::debug(1);
-
 use Carp;
 
+use Barefoot::base;
+use Barefoot::range;
+use Barefoot::exception;
 use Barefoot::DataStore;
 use Barefoot::DataStore::procs;
+use Barefoot::DataStore::DataSet;
+
+use constant BAREFOOT_EPOCH => '1/31/1994';
+use Barefoot::date epoch => BAREFOOT_EPOCH;
 
 
 # have to "register" all procs with DataStore
 $DataStore::procs->{build_pay_amount} = \&build_pay_amount;
 $DataStore::procs->{build_profit_item} = \&build_profit_item;
+$DataStore::procs->{calc_insurance_contribution}
+		= \&calc_insurance_contribution;
+$DataStore::procs->{calc_salary_bank} = \&calc_salary_bank;
 
 
 1;
@@ -113,21 +121,21 @@ sub build_pay_amount
 		# clear out the old data
 	_do_or_error($ds, "
 
-		delete from {%reporting}.pay_amount
+		delete from {~reporting}.pay_amount
 	");
 
 			print STDERR "about to do insert\n" if DEBUG >= 5;
 		# put in the new data
 	_do_or_error($ds, "
 
-		insert into {%reporting}.pay_amount
+		insert into {~reporting}.pay_amount
 			(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 				pay_date, hours, requires_payment, requires_billing)
 		select log.log_source, log.log_id, log.emp_id, log.client_id,
 				log.proj_id, log.phase_id, log.log_date, log.hours,
 				pt.requires_payment, pt.requires_billing
-		from {%timer}.time_log log, {%timer}.project p,
-				{%timer}.project_type pt
+		from {~timer}.time_log log, {~timer}.project p,
+				{~timer}.project_type pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and log.log_date between p.start_date and p.end_date
@@ -140,11 +148,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pr.client_id is NULL
 			and pr.proj_id is NULL
@@ -157,11 +165,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pr.client_id is NULL
 			and pr.proj_id is NULL
@@ -174,11 +182,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pr.proj_id is NULL
@@ -191,11 +199,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pr.proj_id is NULL
@@ -208,11 +216,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pa.proj_id = pr.proj_id
@@ -225,11 +233,11 @@ sub build_pay_amount
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.pay_amount", "pa",
+			"{~reporting}.pay_amount", "pa",
 		# set
 			[ "pay_rate = pr.rate", "pay_rate_type = pr.rate_type" ],
 		"
-			from {%timer}.pay_rate pr
+			from {~timer}.pay_rate pr
 			where pa.emp_id = pr.emp_id
 			and pa.client_id = pr.client_id
 			and pa.proj_id = pr.proj_id
@@ -241,14 +249,14 @@ sub build_pay_amount
 		# if it doesn't require payment, change rate to 0
 	_do_or_error($ds, "
 
-		update {%reporting}.pay_amount
+		update {~reporting}.pay_amount
 		set pay_rate = 0
 		where requires_payment = 0
 	");
 
 			print STDERR "about to set total pay\n" if DEBUG >= 5;
 		# now figure the actual total pay
-	my $data = $ds->load_table("select * from {%reporting}.pay_amount")
+	my $data = $ds->load_table("select * from {~reporting}.pay_amount")
 			or _fatal($ds);
 	foreach (@$data)
 	{
@@ -257,7 +265,7 @@ sub build_pay_amount
 		print STDERR "  total_pay: $_->{total_pay}\n" if DEBUG >= 5;
 	}
 			print STDERR "calling replace_table\n" if DEBUG >= 5;
-	$ds->replace_table("{%reporting}.pay_amount", $data) or _fatal($ds);
+	$ds->replace_table("{~reporting}.pay_amount", $data) or _fatal($ds);
 
 			print STDERR "returning\n" if DEBUG >= 5;
 	# we don't really want any output from this
@@ -323,11 +331,11 @@ sub build_profit_item
 		# clear out the old data
 	_do_or_error($ds, "
 
-		delete from {%reporting}.time_log_profit
+		delete from {~reporting}.time_log_profit
 	");
 	_do_or_error($ds, "
 
-		delete from {%reporting}.profit_item
+		delete from {~reporting}.profit_item
 	");
 
 		# for time logs, we'll need to use the time_log_profit table
@@ -338,7 +346,7 @@ sub build_profit_item
 		# first, get time logs that will be one profit item each
 	_do_or_error($ds, "
 
-		insert {%reporting}.time_log_profit
+		insert {~reporting}.time_log_profit
 			(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 					log_date, hours, start_date, end_date,
 					requires_payment, resource_billing, class_billing,
@@ -347,8 +355,8 @@ sub build_profit_item
 				log.proj_id, log.phase_id, log.log_date, log.hours,
 				log.log_date, log.log_date, pt.requires_payment,
 				pt.resource_billing, pt.class_billing, 1, 0
-		from {%timer}.time_log log, {%timer}.project p,
-				{%timer}.project_type pt
+		from {~timer}.time_log log, {~timer}.project p,
+				{~timer}.project_type pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and log.log_date between p.start_date and p.end_date
@@ -362,7 +370,7 @@ sub build_profit_item
 		# into one profit item per project
 	_do_or_error($ds, "
 
-		insert {%reporting}.time_log_profit
+		insert {~reporting}.time_log_profit
 			(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 					log_date, hours, start_date, end_date,
 					requires_payment, resource_billing, class_billing,
@@ -371,8 +379,8 @@ sub build_profit_item
 				log.proj_id, log.phase_id, log.log_date, log.hours,
 				p.start_date, p.end_date, pt.requires_payment,
 				pt.resource_billing, pt.class_billing, 1, 1
-		from {%timer}.time_log log, {%timer}.project p,
-				{%timer}.project_type pt
+		from {~timer}.time_log log, {~timer}.project p,
+				{~timer}.project_type pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and log.log_date between p.start_date and p.end_date
@@ -388,11 +396,11 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "billing_ratio = brat.ratio" ],
 		"
-			from {%timer}.billing_ratio brat
+			from {~timer}.billing_ratio brat
 			where tlp.emp_id = brat.emp_id
 			and tlp.client_id = brat.client_id
 			and brat.proj_id is NULL
@@ -404,11 +412,11 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "billing_ratio = brat.ratio" ],
 		"
-			from {%timer}.billing_ratio brat
+			from {~timer}.billing_ratio brat
 			where tlp.emp_id = brat.emp_id
 			and tlp.client_id = brat.client_id
 			and tlp.proj_id = brat.proj_id
@@ -420,11 +428,11 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "billing_ratio = brat.ratio" ],
 		"
-			from {%timer}.billing_ratio brat
+			from {~timer}.billing_ratio brat
 			where tlp.emp_id = brat.emp_id
 			and tlp.client_id = brat.client_id
 			and tlp.proj_id = brat.proj_id
@@ -438,12 +446,12 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "bill_rate = br.rate",
 					"fixed_price_days = br.fixed_price_days" ],
 		"
-			from {%timer}.bill_rate br
+			from {~timer}.bill_rate br
 			where tlp.resource_billing = 0
 			and tlp.class_billing = 0
 			and tlp.client_id = br.client_id
@@ -455,11 +463,11 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "bill_rate = rr.rate" ],
 		"
-			from {%timer}.resource_employee re, {%timer}.resource_rate rr
+			from {~timer}.resource_employee re, {~timer}.resource_rate rr
 			where tlp.resource_billing = 1
 			and tlp.class_billing = 0
 			and tlp.emp_id = re.emp_id
@@ -475,11 +483,11 @@ sub build_profit_item
 	_fatal($ds) unless defined $ds->correlated_update(
 
 		# update
-			"{%reporting}.time_log_profit", "tlp",
+			"{~reporting}.time_log_profit", "tlp",
 		# set
 			[ "bill_rate = rr.rate" ],
 		"
-			from {%timer}.resource_employee re, {%timer}.resource_rate rr
+			from {~timer}.resource_employee re, {~timer}.resource_rate rr
 			where tlp.resource_billing = 1
 			and tlp.class_billing = 0
 			and tlp.emp_id = re.emp_id
@@ -498,7 +506,7 @@ sub build_profit_item
 				tlp.log_source, tlp.log_id,
 					tlp.hours, tlp.billing_ratio, c.to_nearest,
 				bill_rate as price_per_unit
-		from {%reporting}.time_log_profit tlp, {%timer}.client c
+		from {~reporting}.time_log_profit tlp, {~timer}.client c
 		where tlp.class_billing = 0
 		and tlp.sum_by_proj = 0
 		and tlp.fixed_price_days is NULL
@@ -512,7 +520,7 @@ sub build_profit_item
 		$_->{units} = range::round($hours / $ratio,
 				range::ROUND_UP, $to_nearest);
 	}
-	$ds->append_table("{%reporting}.profit_item", $data) or _fatal($ds);
+	$ds->append_table("{~reporting}.profit_item", $data) or _fatal($ds);
 
 =comment
 		# sum "full project" time logs
@@ -547,7 +555,7 @@ sub build_profit_item
 				$(period_end "$(period_num tlp.log_date						\
 						tlp.fixed_price_days)" tlp.fixed_price_days),
 				'time_log FIXED', 1, tlp.bill_rate
-		from {%reporting}.time_log_profit tlp
+		from {~reporting}.time_log_profit tlp
 		where tlp.fixed_price_days is not NULL
 		and tlp.bill_rate is not NULL
 =cut
@@ -560,12 +568,12 @@ sub build_profit_item
 		# STEP 1: materials logs with no project
 	_do_or_error($ds, "
 
-		insert {%reporting}.profit_item
+		insert {~reporting}.profit_item
 			(client_id, proj_id, start_date, end_date, log_source, log_id,
 					units, price_per_unit)
 		select client_id, proj_id, log_date, log_date, log_source, log_id,
 				1, amount_billed
-		from {%timer}.materials_log log
+		from {~timer}.materials_log log
 		where proj_id is null
 		$where_clause
 	");
@@ -573,13 +581,13 @@ sub build_profit_item
 		# STEP 2: materials logs for projects with "now" profit calculation
 	_do_or_error($ds, "
 
-		insert {%reporting}.profit_item
+		insert {~reporting}.profit_item
 			(client_id, proj_id, start_date, end_date, log_source, log_id,
 					units, price_per_unit)
 		select log.client_id, log.proj_id, log.log_date, log.log_date,
 				log.log_source, log.log_id, 1, log.amount_billed
-		from {%timer}.materials_log log, {%timer}.project p,
-				{%timer}.project_type pt
+		from {~timer}.materials_log log, {~timer}.project p,
+				{~timer}.project_type pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and p.project_type = pt.project_type
@@ -591,13 +599,13 @@ sub build_profit_item
 		# STEP 3: materials logs for projects with "at end" profit calculation
 	_do_or_error($ds, "
 
-		insert {%reporting}.profit_item
+		insert {~reporting}.profit_item
 			(client_id, proj_id, start_date, end_date, log_source, log_id,
 					units, price_per_unit)
 		select log.client_id, log.proj_id, log.log_date, log.log_date,
 				log.log_source, log.log_id, 1, log.amount_billed
-		from {%timer}.materials_log log, {%timer}.project p,
-				{%timer}.project_type pt
+		from {~timer}.materials_log log, {~timer}.project p,
+				{~timer}.project_type pt
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and p.project_type = pt.project_type
@@ -610,7 +618,7 @@ sub build_profit_item
 		# get class logs that are one item per class
 	_do_or_error($ds, "
 
-		insert {%reporting}.profit_item
+		insert {~reporting}.profit_item
 			(client_id, proj_id, start_date, end_date, log_source, log_id, units,
 					price_per_unit)
 		select log.client_id, log.proj_id, log.log_date, log.log_date,
@@ -618,8 +626,8 @@ sub build_profit_item
 				datediff(minute, log.start_time, log.end_time) / 60.0
 						- (isnull(log.num_breaks, 0) * .25),
 				log.num_students * br.rate
-		from {%timer}.class_log log, {%timer}.project p,
-				{%timer}.project_type pt, {%timer}.bill_rate br
+		from {~timer}.class_log log, {~timer}.project p,
+				{~timer}.project_type pt, {~timer}.bill_rate br
 		where log.client_id = p.client_id
 		and log.proj_id = p.proj_id
 		and log.log_date between p.start_date and p.end_date
@@ -657,7 +665,7 @@ sub build_profit_item
 		# that apply to the class logs, so that profit can be calculated
 		# appropriately ... of course, there's always the possibility that
 		# they're already there, so we have to be careful
-		insert {%reporting}.time_log_profit
+		insert {~reporting}.time_log_profit
 			(log_source, log_id, emp_id, client_id, proj_id, phase_id,
 					log_date, hours, start_date, end_date, requires_payment,
 					resource_billing, class_billing, billing_ratio, sum_by_proj)
@@ -676,7 +684,7 @@ sub build_profit_item
 		and not exists
 		(
 			select 1
-			from {%reporting}.time_log_profit tlp
+			from {~reporting}.time_log_profit tlp
 			where log.log_source = tlp.log_source
 			and log.log_id = tlp.log_id
 		)
@@ -686,10 +694,315 @@ sub build_profit_item
 		# the total price (which is after all the point of all this)
 	_do_or_error($ds, "
 
-		update {%reporting}.profit_item
+		update {~reporting}.profit_item
 		set total_price = units * price_per_unit
 	");
 
 	# we don't really want any output from this
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_salary_bank
+#
+# #########################################################################
+#
+# Use this procedure to calculate how an employee's actual pay affects his
+# or her salary bank, for all employees on the salary bank program.
+#
+# The following aliases are available to your where clause:
+#
+#		sd			salary draw table
+#
+# Your where clause needs to be based on sd.start_date or sd.end_date
+# (preferably both, as with a between expression) to insure that you don't
+# get any duplicates.
+#
+###########################################################################
+
+
+sub calc_salary_bank
+{
+	my ($ds, $where_clause) = @_;
+
+		# get the salary data
+	my $data = $ds->load_table("
+
+		select sd.emp_id, sd.amount_per_period, sd.max_debit,
+				sd.max_overage, sd.periods_cap
+		from {~timer}.salary_draw sd
+		where $where_clause
+
+	") or _fatal($ds);
+
+		# we'll also need total pay data
+	my $pay_data = $ds->load_table("
+
+		select pa.emp_id, sum(pa.total_pay) as total_pay
+		from {~reporting}.pay_amount pa
+		group by pa.emp_id
+
+	") or _fatal($ds);
+
+		# turn our total pay data into a hash
+	my $total_pay = {};
+	DataStore::foreach_row($pay_data, sub
+			{
+				$total_pay->{$_->{emp_id}} = $_->{total_pay};
+			}
+	);
+
+		# we also need to know how much is in the salary bank at the moment
+	my $bank_data = $ds->load_table("
+
+		select sb.emp_id, sb.bank_amount
+		from {~timer}.salary_bank sb, {~timer}.payroll pay
+		where sb.payroll_id = pay.payroll_id
+		and pay.period_end =
+		(
+			select max(pay2.period_end)
+			from {~timer}.salary_bank sb2, {~timer}.payroll pay2
+			where sb.emp_id = sb2.emp_id
+			and sb2.payroll_id = pay2.payroll_id
+			and pay2.period_end < '{start_date}'
+		)
+
+	") or _fatal($ds);
+	DataStore::dump_set($bank_data) if DEBUG >= 5;
+
+		# turn our bank before amount data into a hash
+	my $bank_before = {};
+	DataStore::foreach_row($bank_data, sub
+			{
+				$bank_before->{$_->{emp_id}} = $_->{bank_amount};
+			}
+	);
+
+		# calculate the actual amounts
+	DataStore::foreach_row($data, sub
+			{
+				my $salary_amt = $_->{amount_per_period};
+				my $max_debit_amount = $salary_amt * $_->{max_debit};
+				my $max_overage_amount = $salary_amt * $_->{max_overage};
+				my $overcap_threshhold = $salary_amt * $_->{periods_cap};
+				my $undercap_threshhold = $overcap_threshhold * -1;
+
+				my $emp_id = $_->{emp_id};
+				if (exists $total_pay->{$emp_id})
+				{
+					$_->{total_pay} = $total_pay->{$emp_id};
+				}
+				else
+				{
+					$_->{total_pay} = 0;
+				}
+				if (exists $bank_before->{$emp_id})
+				{
+					$_->{bank_before} = $bank_before->{$emp_id};
+				}
+				else
+				{
+					$_->{bank_before} = 0;
+				}
+
+				my $total_pay = $_->{total_pay};
+				my $bank_before = $_->{bank_before};
+				if ($total_pay >= $salary_amt)
+				{
+					my $overage = range::max(
+							$total_pay - $max_overage_amount, 0);
+					my $overcap = range::max($total_pay - $salary_amt
+							- $overage + $bank_before
+							- $overcap_threshhold, 0);
+					$_->{actual_pay} = $salary_amt + $overage + $overcap;
+				}
+				else					# $total_pay < $salary_amt
+				{
+					# in this one, "overage" will always be negative
+					# (thus it's almost more of an "underage", but
+					# technically a negative underage would be an overage)
+					my $overage = $salary_amt - $total_pay;
+					$overage = range::min($overage, $max_debit_amount)
+							if $bank_before - $overage < 0;
+					$overage = $bank_before - $undercap_threshhold
+							if $bank_before - $overage < $undercap_threshhold;
+					$_->{actual_pay} = $total_pay + $overage;
+				}
+
+				$_->{bank_adjustment} = $total_pay - $_->{actual_pay};
+				$_->{bank_after} = $bank_before + $_->{bank_adjustment};
+			}
+	);
+
+	# get rid of columns not used in final table
+	DataStore::remove_column($data, 'amount_per_period');
+	DataStore::remove_column($data, 'max_debit');
+	DataStore::remove_column($data, 'max_overage');
+	DataStore::remove_column($data, 'periods_cap');
+
+	# finally, put it in the table
+	$ds->replace_table("{~reporting}.salary_amount", $data)
+			or _fatal($ds);
+
+	# no output necessary
+	return "";
+}
+
+
+###########################################################################
+#
+# calc_insurance_contribution
+#
+# #########################################################################
+#
+# Use this procedure when you want to calculate the amounts that the company
+# will contribute to health insurance payments.
+#
+# No where clause is necessary for this procedure.  It expects the records
+# it needs to have been placed into the {~reporting}.pay_amount table
+# (probably by build_pay_amount or build_profit_item).
+#
+###########################################################################
+
+
+sub calc_insurance_contribution
+{
+	my ($ds) = @_;
+
+		 # first get insurance records for fixed amounts
+	my $fixed_data = $ds->load_table("
+
+		select pa.emp_id, tl.payroll_id,
+				ir.fixed_amount as company_contribution,
+				sum(pa.hours) as total_hours
+		from {~reporting}.pay_amount pa, {~timer}.insurance_rate ir,
+				{~timer}.time_log tl
+		where ir.emp_id = pa.emp_id
+		and pa.pay_date between ir.start_date and ir.end_date
+		and pa.log_source = tl.log_source
+		and pa.log_id = tl.log_id
+		and ir.fixed_amount is not NULL
+		group by pa.emp_id, tl.payroll_id, ir.fixed_amount
+
+	") or _fatal($ds);
+	print STDERR "got ", scalar(@$fixed_data),
+			" rows for insurance fixed amt\n" if DEBUG >= 2;
+
+	# use group function to insure there is only one contribution
+	# we'll also set applicable hours to NULL
+	$fixed_data = DataStore::group($fixed_data,
+			group_by	=>	[ qw<emp_id payroll_id> ],
+			constant	=>	[ qw<company_contribution total_hours> ],
+			calculate	=>	sub
+							{
+								my (undef, $dst) = @_;
+								$dst->{applicable_hours} = undef;
+							},
+	);
+	return "calc_insurance_contribution: can't have more than one fixed "
+			. "amount contribution per employee/payroll\n" unless $fixed_data;
+
+
+		 # now get insurance records for calculated amounts
+	my $calc_data = $ds->load_table("
+
+		select pa.emp_id, tl.payroll_id, ir.nonbill_hrs_limit,
+				ir.multiplier, pa.pay_date, pa.hours,
+				pa.requires_billing, pa.requires_payment
+		from {~reporting}.pay_amount pa, {~timer}.insurance_rate ir,
+				{~timer}.time_log tl
+		where ir.emp_id = pa.emp_id
+		and pa.pay_date between ir.start_date and ir.end_date
+		and pa.log_source = tl.log_source
+		and pa.log_id = tl.log_id
+
+	") or _fatal($ds);
+	print STDERR "got ", scalar(@$calc_data), " rows for insurance calcs\n"
+			if DEBUG >= 2;
+
+	# calculation step 1: get week numbers for each date
+	DataStore::foreach_row($calc_data, sub
+			{
+				$_->{week_num} = date::period_num($_->{pay_date}, 7);
+			}
+	);
+	DataStore::dump_set($calc_data) if DEBUG >= 5;
+
+	# calculation step 2: group data by weeks, totalling hours
+	$calc_data = DataStore::group($calc_data,
+			group_by	=>	[ qw<emp_id payroll_id week_num> ],
+			constant	=>	[ qw<nonbill_hrs_limit multiplier> ],
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+								print STDERR "columns in source row: ",
+										join(',', keys %$src), "\n"
+										if DEBUG >= 5;
+								print STDERR "adding $src->{hours}\n"
+										if DEBUG >= 4;
+
+								$dst->{total_hours} += $src->{hours};
+								if ($src->{requires_payment})
+								{
+									my $add_to = $src->{requires_billing}
+											? 'bill_hours' : 'nonbill_hours';
+									$dst->{$add_to} += $src->{hours};
+								}
+							},
+	);
+	return "calc_insurance_contribution: can't have more than one multiplier "
+			. "or limit per employee/payroll/week\n" unless $calc_data;
+
+	# calculation step 3: calculate applicable hours per week
+	DataStore::foreach_row($calc_data, sub
+			{
+				$_->{bill_hours} = 0 unless defined $_->{bill_hours};
+				$_->{nonbill_hours} = 0 unless defined $_->{nonbill_hours};
+				$_->{applicable_hours} = $_->{bill_hours}
+						+ range::min($_->{nonbill_hours},
+							$_->{nonbill_hrs_limit});
+			}
+	);
+
+	# calculation step 4: group again, combining weeks
+	$calc_data = DataStore::group($calc_data,
+			group_by	=>	[ qw<emp_id payroll_id> ],
+			constant	=>	[ qw<nonbill_hrs_limit multiplier> ],
+			calculate	=>	sub
+							{
+								my ($src, $dst) = @_;
+								$dst->{total_hours} += $src->{total_hours};
+								$dst->{applicable_hours}
+										+= $src->{applicable_hours};
+							},
+	);
+	# it really shouldn't be possible for this one to fail
+	return "calc_insurance_contribution: unknown error on second grouping\n"
+			unless $calc_data;
+
+	# calculation step 5: calculate contribution
+	DataStore::foreach_row($calc_data, sub
+			{
+				my $units = range::round($_->{applicable_hours} / 10,
+						range::ROUND_DOWN);
+				$_->{company_contribution} = $units * $_->{multiplier};
+			}
+	);
+
+	# calculation step 6: remove unnecessary columns
+	DataStore::remove_column($calc_data, 'nonbill_hrs_limit');
+	DataStore::remove_column($calc_data, 'multiplier');
+
+
+	# now put the fixed data and the calculated data together
+	my $new_data = [ @$fixed_data, @$calc_data ];
+
+	# and put it in the table
+	$ds->replace_table("{~reporting}.insurance_amount", $new_data)
+			or _fatal($ds);
+
+	# no output necessary
 	return "";
 }
