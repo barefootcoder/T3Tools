@@ -71,7 +71,8 @@ while ( <TMP> )
 		if ($curtimer->{last_time} < $MONDAY)
 		{
 			push @{$cur_udata->{errors}},
-					"Timer $curtimer->{name} is left over from last week";
+					"Timer $curtimer->{name} for client $curtimer->{client} "
+					. "is left over from last week";
 		}
 		elsif ($curtimer->{first_time} < $MONDAY)
 		{
@@ -82,6 +83,7 @@ while ( <TMP> )
 
 		$curtimer = {};
 		$curtimer->{name} = $timer;
+		$curtimer->{client} = $client;
 		$curtimer->{first_time} = time;
 		$curtimer->{last_time} = 0;
 
