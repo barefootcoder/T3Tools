@@ -42,42 +42,79 @@ print "<CENTER><H5>Invoice: {invoice}</H5></CENTER>"				{?invoice}
 go
 
 print "<HR><H4>Details by Date</H4>"
-select p.name "project", ph.name "phase", rr.resource_name "resource",
-		convert(char(10), tl.date, 101) "date",
-		convert(numeric(6,2), pi.units) "hours"
-from profit_item pi, time_log tl, project p, phase ph, employee e,
-		resource_rate rr, resource_employee re
-where pi.log_source = tl.log_source
-and pi.log_id = tl.log_id
-and pi.client = p.client
-and pi.proj = p.proj
-and pi.end_date between p.start_date and p.end_date
-and tl.phase = ph.phase
-and tl.emp = re.emp
-and
+if exists
 (
-	tl.phase = re.phase
-	or
+	select 1
+	from profit_item pi, project p, project_type pt
+	where pi.client = p.client
+	and pi.proj = p.proj
+	and pi.start_date between p.start_date and p.end_date
+	and p.proj_type = pt.proj_type
+	and pt.resource_billing = 1
+)
+	select p.name "project", ph.name "phase", rr.resource_name "resource",
+			convert(char(10), tl.date, 101) "date",
+			convert(numeric(6,2), pi.units) "hours"
+	from profit_item pi, time_log tl, project p, phase ph, employee e,
+			resource_rate rr, resource_employee re
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and pi.client = p.client
+	and pi.proj = p.proj
+	and pi.end_date between p.start_date and p.end_date
+	and tl.phase = ph.phase
+	and tl.emp = re.emp
+	and
 	(
-		re.phase is NULL
-		and not exists
+		tl.phase = re.phase
+		or
 		(
-			select 1
-			from resource_employee re2
-			where tl.client = re2.client
-			and tl.emp = re2.emp
-			and tl.phase = re2.phase
-			and tl.date between re2.start_date and re2.end_date
+			re.phase is NULL
+			and not exists
+			(
+				select 1
+				from resource_employee re2
+				where tl.client = re2.client
+				and tl.emp = re2.emp
+				and tl.phase = re2.phase
+				and tl.date between re2.start_date and re2.end_date
+			)
 		)
 	)
+	and tl.client = re.client
+	and tl.date between re.start_date and re.end_date
+	and re.client = rr.client
+	and re.resrc = rr.resrc
+	and tl.date between rr.start_date and rr.end_date
+	and tl.emp = e.emp
+	order by p.name, ph.name, rr.rate, pi.date
+if exists
+(
+	select 1
+	from profit_item pi, project p, project_type pt, time_log tl
+	where pi.client = p.client
+	and pi.proj = p.proj
+	and pi.start_date between p.start_date and p.end_date
+	and p.proj_type = pt.proj_type
+	and pt.resource_billing = 0
+	and pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and tl.cliproj is not NULL
 )
-and tl.client = re.client
-and tl.date between re.start_date and re.end_date
-and re.client = rr.client
-and re.resrc = rr.resrc
-and tl.date between rr.start_date and rr.end_date
-and tl.emp = e.emp
-order by p.name, ph.name, rr.rate
+	select convert(char(25), p.name) "project",
+			cp.name "tracking code", convert(char(25), ph.name) "phase",
+			convert(char(10), tl.date, 101) "date",
+			convert(numeric(6,2), pi.units) "hours"
+	from profit_item pi, time_log tl, project p, phase ph, client_project cp
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and pi.client = p.client
+	and pi.proj = p.proj
+	and pi.end_date between p.start_date and p.end_date
+	and tl.phase = ph.phase
+	and tl.client = cp.client
+	and tl.cliproj = cp.project_id
+	order by p.name, cp.name, ph.name, pi.date
 go
 
 print "<HR><H4>Totals by Project and Phase</H4>"
@@ -101,23 +138,18 @@ go
 if exists
 (
 	select 1
-	from profit_item pi, time_log tl, project p, client_project cp, employee e
+	from profit_item pi, time_log tl
 	where pi.log_source = tl.log_source
 	and pi.log_id = tl.log_id
-	and pi.client = p.client
-	and pi.proj = p.proj
-	and pi.end_date between p.start_date and p.end_date
-	and tl.client = cp.client
-	and tl.cliproj = cp.project_id
-	and tl.emp = e.emp
+	and tl.cliproj is not NULL
 )
 begin
 	print "<HR><H4>Totals by Project and Client Tracking Code</H4>"
-	select p.name "project", cp.project_id "code",
+	select convert(char(25), p.name) "project", cp.project_id "code",
 			cp.name "tracking code description",
 			convert(numeric(6,2), sum(pi.units)) "hours",
 			sum(pi.total_price) "total"
-	from profit_item pi, time_log tl, project p, client_project cp, employee e
+	from profit_item pi, time_log tl, project p, client_project cp
 	where pi.log_source = tl.log_source
 	and pi.log_id = tl.log_id
 	and pi.client = p.client
@@ -125,9 +157,25 @@ begin
 	and pi.end_date between p.start_date and p.end_date
 	and tl.client = cp.client
 	and tl.cliproj = cp.project_id
-	and tl.emp = e.emp
 	group by p.name, cp.project_id, cp.name
 	order by p.name, cp.project_id, cp.name
+	compute sum(sum(pi.total_price))
+		by p.name
+	print "<HR><H4>Totals by Project, Client Tracking Code, and Phase</H4>"
+	select convert(char(25), p.name) "project", cp.project_id "code",
+			ph.name "phase", convert(numeric(6,2), sum(pi.units)) "hours",
+			sum(pi.total_price) "total"
+	from profit_item pi, time_log tl, project p, client_project cp, phase ph
+	where pi.log_source = tl.log_source
+	and pi.log_id = tl.log_id
+	and pi.client = p.client
+	and pi.proj = p.proj
+	and pi.end_date between p.start_date and p.end_date
+	and tl.client = cp.client
+	and tl.cliproj = cp.project_id
+	and tl.phase = ph.phase
+	group by p.name, cp.project_id, cp.name, ph.name
+	order by p.name, cp.project_id, cp.name, ph.name
 	compute sum(sum(pi.total_price))
 		by p.name
 end
