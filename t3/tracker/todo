@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -54,7 +54,8 @@ use constant TodoTask =>
     Phase:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    Description:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+    Description:  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
+    ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
 
 #################################
@@ -91,6 +92,7 @@ tie %menu_list, 'Tie::IxHash',
 	"Edit a task"			=>		\&edit_todo,
 	"Cancel a task"			=>		\&cancel_todo,
 	"Complete a task"		=>		\&complete_todo,
+	"Refresh task list"		=>		\&refresh_list,
 	"Quit program"			=>		sub { exit },
 );
 
@@ -171,8 +173,7 @@ sub cancel_todo
 	{
 		my $old_todo = splice @todo_list, $index, 1;
 		sync_lists();
-		save_history($parminfo->{history}, $parminfo->{user}, "cancel",
-				todo_fields($old_todo));
+		save_history($parminfo->{user}, "cancel", todo_fields($old_todo));
 		writefile();
 	}
 }
@@ -187,10 +188,17 @@ sub complete_todo
 	{
 		my $old_todo = splice @todo_list, $index, 1;
 		sync_lists();
-		save_history($parminfo->{history}, $parminfo->{user}, "complete",
-				todo_fields($old_todo));
+		save_history($parminfo->{user}, "complete", todo_fields($old_todo));
 		writefile();
 	}
+}
+
+
+sub refresh_list
+{
+	# clear the list, then reread the file: that refreshes the list
+	undef @todo_list;
+	readfile();
 }
 
 
@@ -236,16 +244,14 @@ sub initialize
 {
 	$parminfo->{user} ||= t3_username();
 
-	($parminfo->{filename}, $parminfo->{history})
-			= t3_filenames("todo", $parminfo->{user});
-
 	readfile();
 }
 
 
 sub readfile
 {
-	open(IN, $parminfo->{filename}) or die("can't read todo file");
+	open(IN, T3::base_filename(TODO => $parminfo->{user}))
+			or die("can't read todo file");
 	while ( <IN> )
 	{
 		chomp;
@@ -267,11 +273,11 @@ sub readfile
 
 sub writefile
 {
-	open(OUT, ">$parminfo->{filename}") or die("can't write todo file");
+	open(OUT, ">" . T3::base_filename(TODO => $parminfo->{user}))
+			or die("can't write todo file");
 	foreach my $todo (@todo_list)
 	{
-		print OUT
-				join("\t", todo_fields($todo)), "\n";
+		print OUT join("\t", todo_fields($todo)), "\n";
 	}
 	close(OUT);
 }
@@ -356,8 +362,10 @@ sub get_existing_todo
 		$todo->{"${which}_name"} = one_datum($query);
 	}
 
+	# make a copy for the format, else the field itself will get eaten
+	my $descr = $todo->{descr};
 	writeln(TodoTask, @$todo{ qw<client client_name project project_name
-			due phase phase_name tracking tracking_name descr> } );
+			due phase phase_name tracking tracking_name> }, $descr);
 	print "\n\n";
 
 	return $todo_index{$name};
@@ -411,6 +419,34 @@ BEGIN
 		# '+' and number of days offset
 		return true if $_[0] =~ /^\+\d+$/;
 
+		# allow just month/date
+		# supply year such that resulting date is always in the future
+		# after adjusting our parameter, it will be verified by isValid below
+		if (my ($month, $day) = $_[0] =~ m@^(\d+)[/.-](\d+)$@)
+		{
+			my ($this_month, $this_date, $this_year)
+					= split('/', date::today());
+			if ($month == $this_month)
+			{
+				if ($day < $this_date)
+				{
+					$_[0] = "$month/$day/" . ($this_year + 1);
+				}
+				else			# must be $day >= $this_date
+				{
+					$_[0] = "$month/$day/$this_year";
+				}
+			}
+			elsif ($month < $this_month)
+			{
+				$_[0] = "$month/$day/" . ($this_year + 1);
+			}
+			else				# must be $month > $this_month
+			{
+				$_[0] = "$month/$day/$this_year";
+			}
+		}
+
 		# valid date is okay, obviously
 		return true if date::isValid($_[0]);
 
@@ -422,8 +458,9 @@ BEGIN
 
 sub save_history
 {
-	my ($file, $user, $command, @todo_fields) = @_;
+	my ($user, $command, @todo_fields) = @_;
 
+	my $file = T3::hist_filename(TODO => $user);
 	open(HIST, ">>$file") or die("can't open history file $file");
 	print HIST join("\t", $ENV{USER}, date::today(), $command, $user,
 			@todo_fields), "\n";
