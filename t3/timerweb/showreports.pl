@@ -9,6 +9,8 @@ use CGI;
 use Barefoot::base;
 use Barefoot::string;
 
+use Barefoot::T3::base;
+
 
 my $cgi = new CGI;
 my $cookie_array = [];
@@ -70,7 +72,7 @@ my $title = 'TIMER Reports';
 my $scripturlpath = "/cgi-bin/timer/scripts";
 my $scriptpath = "/home/httpd" . $scripturlpath; 
 my $basepath = DEBUG ? "/proj/$ENV{REMOTE_USER}/t3/timerweb/reports"
-		: "/home/httpd/sybase/timer_reports";
+		: T3::config(T3::WREPORTDIR_DIRECTIVE);
 
 							debug("env has cookies $ENV{HTTP_COOKIE}");
 
