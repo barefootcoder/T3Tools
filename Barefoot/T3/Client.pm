@@ -28,6 +28,7 @@ package T3::Client;
 
 use strict;
 
+use Barefoot::base;
 use Barefoot::exception;
 use Barefoot::T3::common;
 
