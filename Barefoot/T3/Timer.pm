@@ -31,8 +31,11 @@ use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
 @EXPORT_OK = qw<timer_command readfile calc_time calc_date>;
 
+use Date::Format;
+
 use Barefoot::base;
 use Barefoot::range;
+use Barefoot::exception;
 
 use Barefoot::T3::base;
 
@@ -58,6 +61,7 @@ our %timer_commands =
 sub _remove_timer
 {
 	my ($opts, $command, $timers, $timer_to_remove) = @_;
+	print STDERR "entering _remove_timer\n" if DEBUG >= 5;
 
 	# save to history file, get rid of timer, and reset current timer marker
 	# if the removed timer is the current one
@@ -81,6 +85,7 @@ sub _remove_timer
 sub timer_command
 {
 	my ($command, $opts, $timers) = @_;
+	print "in timer_command with $command\n" if DEBUG >= 4;
 
 	die("command not supported ($command)")
 			unless exists $timer_commands{$command};
@@ -132,12 +137,11 @@ sub writefile
 	my ($user, $timers) = @_;
 	print STDERR "entering writefile function\n" if DEBUG >= 5;
 
-=comment
 	# don't really care whether this succeeds or not
 	try
 	{
 		print STDERR "in try block\n" if DEBUG >= 5;
-		# save_to_db($timers);
+		save_to_db($user, $timers);
 	}
 	catch
 	{
@@ -145,7 +149,6 @@ sub writefile
 		return;					# from catch block
 	};
 	print STDERR "made it past exception block\n" if DEBUG >= 5;
-=cut
 
 	my $tfile = T3::base_filename(TIMER => $user);
 	print STDERR "going to print to file $tfile\n" if DEBUG >= 3;
@@ -237,6 +240,235 @@ sub calc_date
 
 	my ($day, $mon, $year) = (localtime $seconds)[3..5];
 	return ++$mon . "/" . $day . "/" . ($year + 1900);
+}
+
+
+
+###########################
+# Database Procedures
+###########################
+
+
+my $connected;
+
+sub test_connection
+{
+	print STDERR "Entered test_connection\n" if DEBUG >= 5;
+
+	if (defined $connected)
+	{
+		# presumably, this means that we've been here before
+		# let's just save time and return what we found out last time
+		return $connected;
+	}
+
+	$connected = &t3->_ping();
+	if (DEBUG >= 4)
+	{
+		print STDERR
+				$connected
+					? "Leaving test_connection w/o error"
+					: ("test_connection got error: " . &t3->last_error())
+				,
+				"\n";
+	}
+
+	return $connected;
+}
+
+
+sub insert_time_log
+{
+	my ($user, $emp, $client, $proj, $phase, $tracking, $date,
+			$hours, $comments) = @_;
+
+	my $query = '
+			insert into {@time_log}
+				(	emp_id, client_id, proj_id, phase_id, tracking_code,
+					log_date, hours, comments,
+					create_user, create_date
+				)
+			values
+			(	{emp}, {client}, {proj}, {phase}, {tracking},
+				{date}, {hours}, {comments},
+				{user}, {&curdate}
+			)
+	';
+
+	print STDERR "$query\n" if DEBUG >= 3;
+	my $result = &t3->do($query,
+			emp => $emp, client => $client, proj => $proj, phase => $phase,
+			tracking => $tracking, date => $date, hours => $hours,
+			comments => $comments, user => $user,
+	);
+	die("database error: ", &t3->last_error())
+			unless defined $result and $result->rows_affected() == 1;
+	return true;
+}
+
+
+sub save_to_db
+{
+	my ($user, $timers) = @_;
+	print STDERR "Entered save_to_db\n" if DEBUG >= 5;
+
+	# get the workgroup user ID because just about every query needs that
+	my $wuser_data = &t3->load_table("select wuser_id "
+			. "from {\@workgroup_user} where nickname = '$user'");
+	# sneaky way to quickly get a datum: 1st col of 1st row of "entire" table
+	my $wuser_id = $wuser_data->[0]->[0];
+	print STDERR "got workgroup user id $wuser_id\n" if DEBUG >= 2;
+
+	my $posted_timers = &t3->do('
+
+			select t.timer_name
+			from {@timer} t
+			where t.wuser_id = {wuser_id}
+	',
+			wuser_id => $wuser_id
+	);
+	return false unless $posted_timers;
+
+	# see what timer names are already in the db
+	my $db_timernames = {};
+	while ($posted_timers->next_row())
+	{
+		$db_timernames->{$posted_timers->col('timer_name')} = 1;
+	}
+
+	while (my ($tname, $timer) = each %$timers)
+	{
+		# ignore tags
+		next if substr($tname, 0, 1) eq ':';
+
+		print STDERR "Calling db_post_timer for $tname\n" if DEBUG >= 3;
+		return false unless db_post_timer($wuser_id, $tname, $timer,
+				$db_timernames);
+	}
+
+	while (my $tname = each %$db_timernames)
+	{
+		print STDERR "Deleting leftover db timer $tname\n" if DEBUG >= 3;
+		db_delete_timer($wuser_id, $tname);
+	}
+
+	print STDERR "Leaving save_to_db w/o error\n" if DEBUG >= 5;
+	return true;
+}
+
+
+sub db_post_timer
+{
+	my ($wuser_id, $tname, $timer, $timernames) = @_;
+	print STDERR "Entered db_post_timer, processing $tname\n" if DEBUG >= 5;
+
+	# if the name was found in the list ...
+	if ( exists $timernames->{$tname} )
+	{
+		print STDERR "Removing old timer $tname from list\n" if DEBUG >= 3;
+		# if it hasn't been posted ...
+		if (not $timer->{posted})
+		{
+			# try to delete it from the db
+			print STDERR "Deleting old timer $tname from db before posting\n"
+					if DEBUG >= 2;
+			return false unless db_delete_timer($wuser_id, $tname);
+		}
+		# remove it from the list
+		delete $timernames->{$tname};
+	}
+	else
+	{
+		# not found in the list, mark it as unposted
+		$timer->{posted} = false;
+	}
+
+	# if it hasn't been posted ...
+	if (not $timer->{posted})
+	{
+		print STDERR "Posting unposted timer $tname\n" if DEBUG >= 2;
+
+		my $result = &t3->do('
+
+				insert into {@timer}
+					(wuser_id, timer_name, client_id, proj_id, phase_id)
+				values
+					( {wuser_id}, {timer_name}, {client}, {proj}, {phase} )
+		',
+				wuser_id => $wuser_id, timer_name => $tname,
+				client => $timer->{client}, proj => $timer->{project},
+				phase => $timer->{phase},
+		);
+		print STDERR &t3->last_error() and return false
+				unless $result and $result->rows_affected() == 1;
+
+		foreach my $chunk (split(',', $timer->{time}))
+		{
+			$chunk =~ s@^(\d+)/@@;
+			my $divisor = $1 || 1;
+
+			my ($start_secs, $end_secs) = split('-', $chunk);
+			my $start = time2str("%b %d, %Y %H:%M:%S", $start_secs);
+			my $end = $end_secs
+					? time2str("%b %d, %Y %H:%M:%S", $end_secs)
+					: undef;
+
+			my $result = &t3->do('
+
+					insert into {@timer_chunk}
+						(wuser_id, timer_name, divisor, start_time, end_time)
+					values
+						( {wuser_id}, {timer_name}, {divisor},
+								{start_time}, {end_time} )
+			',
+					wuser_id => $wuser_id,
+					timer_name => $tname, divisor => $divisor,
+					start_time => $start, end_time => $end,
+			);
+			print STDERR &t3->last_error() and return false
+					unless $result and $result->rows_affected() == 1;
+		}
+
+		# note that timers that are still timing (easy to tell because their
+		# time chunks string ends in a dash) are never considered posted
+		$timer->{posted} = true unless substr($timer->{time}, -1) eq '-';
+	}
+
+	print STDERR "Leaving db_post_timer w/o error\n" if DEBUG >= 5;
+	return true;
+}
+
+
+sub db_delete_timer
+{
+	my ($wuser_id, $tname) = @_;
+	print STDERR "Entered db_delete_timer: timer $tname, user $wuser_id\n"
+			if DEBUG >= 4;
+
+	my $result = &t3->do('
+
+			delete from {@timer_chunk}
+			where wuser_id = {wuser_id}
+			and timer_name = {timer_name}
+	',
+		wuser_id => $wuser_id, timer_name => $tname,
+	);
+	return false unless $result;
+	print STDERR "First delete (timer_chunk) finished w/o error\n"
+			if DEBUG >= 5;
+
+	$result = &t3->do('
+
+			delete from {@timer}
+			where wuser_id = {wuser_id}
+			and timer_name = {timer_name}
+	',
+		wuser_id => $wuser_id, timer_name => $tname,
+	);
+	return false unless $result and $result->rows_affected() == 1;
+
+	print STDERR "Leaving db_delete_timer w/o error\n" if DEBUG >= 5;
+	return true;
 }
 
 
@@ -345,10 +577,11 @@ sub cancel                   # cancel a timer
 }
 
 
-sub done                   # done with a timer
+sub done					# done with a timer
 {
 	my ($opts, $timers) = @_;
 	my $timersent = $opts->{timer};
+	print "entering done function\n" if DEBUG >= 5;
 
     unless (exists $timers->{$timersent})
     {
@@ -357,6 +590,7 @@ sub done                   # done with a timer
 
 	# cheat by calling the log command, which does exactly what we need
 	log_time($opts, $timers);
+	print STDERR "logged time, about to call _remove_timer\n" if DEBUG >= 5;
 
 	# get rid of timer
 	_remove_timer($opts, DONE => $timers, $timersent);
@@ -366,7 +600,7 @@ sub done                   # done with a timer
 }
 
 
-sub log_time
+sub log_time				# log time not connected to a timer
 {
 	my ($opts, $timers) = @_;
 
