@@ -210,6 +210,7 @@ while ($results->next_row())
 die("didn't get proper number of rows back")
 		unless $count == NUM_TEST_ROWS * 2;
 
+test_aliases();
 test_constants();
 test_bogus_function();
 test_indices();
@@ -253,9 +254,9 @@ unlink "new.dstore";
 print "ALL TESTS PASSED\n";
 
 
-#
-# Subroutines:
-#
+################
+# SUBS
+################
 
 
 sub db_assert
@@ -299,6 +300,27 @@ sub test_output
 	$output .= join(':', $res->all_cols()) . "\n" while $res->next_row();
 	print STDERR "got output $output\n" if DEBUG >= 2;
 	croak($die_msg) unless $output eq $expected_output;
+}
+
+
+sub test_aliases
+{
+	# make an alias for our test table
+	$testds->configure_alias('t1' => 'test1');
+	$testds->commit_configs();
+
+	# check output from alias; should be same as test1 table
+	test_output(q<select * from {@t1} where a = 'xxx'>,
+			"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
+			"select from alias failed");
+	
+	# now try a bogus alias
+	test_error
+	{
+		$testds->do('select * from {@bogus}');
+	}
+	catch { /unknown alias: bogus/ }
+	or die("didn't detect bogus alias");
 }
 
 
