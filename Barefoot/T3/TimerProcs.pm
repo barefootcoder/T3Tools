@@ -820,11 +820,11 @@ sub calc_salary_bank
 				}
 				else					# $total_pay < $salary_amt
 				{
-					# in this one, "overage" will always be negative
-					# (thus it's almost more of an "underage", but
-					# technically a negative underage would be an overage)
 					my $overage = $salary_amt - $total_pay;
-					$overage = range::min($overage, $max_debit_amount)
+					# max debit should not kick in till bank is totally
+					# exhausted, thus the addition of the two below
+					$overage = range::min($overage,
+									$max_debit_amount + $bank_before)
 							if $bank_before - $overage < 0;
 					$overage = $bank_before - $undercap_threshhold
 							if $bank_before - $overage < $undercap_threshhold;
