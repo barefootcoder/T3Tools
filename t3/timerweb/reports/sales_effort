@@ -23,14 +23,29 @@ from #emp_comm
 order by emp, client, proj, date
 */
 go
+select tlp.client, 
+	tlp.proj,
+    tlp.emp,
+	sum(pi.units) units,
+	sum(tlp.hours) hours,
+	sum(pi.total_price) total_price ,
+	sum(pi.simple_profit)  simple_profit
+into #base
+from profit_item pi, time_log_profit tlp
+where  tlp.log_id *= pi.log_id
+and tlp.log_source *= pi.log_source
+group by tlp.client, tlp.proj, tlp.emp
+go
+create index idx1 on #base ( client )
+create index idx2 on #base ( emp )
+go
 
 -- save totals for calculating percentages
-select sum(pi.total_price) "all_sales", sum(tlp.hours) "all_hours",
-		sum(pi.simple_profit) "all_sprofit"
+select sum(total_price) "all_sales", 
+		sum(hours) "all_hours",
+		sum(simple_profit) "all_sprofit"
 into #grand_totals
-from profit_item pi, time_log_profit tlp
-where pi.log_source *= tlp.log_source
-and pi.log_id *= tlp.log_id
+from #base
 go
 
 -- gross sales
@@ -38,7 +53,7 @@ select c.client "C", c.name "client",
 		sum(pi.total_price) "gross sales",
 		convert(numeric(5,2),
 				100.0 * sum(pi.total_price) / gt.all_sales) "% Tot"
-from profit_item pi, client c, #grand_totals gt
+from #base pi, client c, #grand_totals gt
 where pi.client = c.client
 group by c.client, c.name, gt.all_sales
 order by c.client
@@ -47,16 +62,14 @@ go
 
 -- billable hours
 select c.client "C", c.name "client",
-		sum(tlp.hours) "total hours",
+		sum(b.hours) "total hours",
 		convert(numeric(5,2),
-				100.0 * sum(tlp.hours) / gt.all_hours) "% Tot"
-from profit_item pi, time_log_profit tlp, client c, #grand_totals gt
-where pi.log_source = tlp.log_source
-and pi.log_id = tlp.log_id
-and pi.client = c.client
+				100.0 * sum(b.hours) / gt.all_hours) "% Tot"
+from #base b, client c, #grand_totals gt
+where b.client = c.client
 group by c.client, c.name, gt.all_hours
 order by c.client
-compute sum(sum(tlp.hours))
+compute sum(sum(b.hours))
 go
 
 -- simple profit
@@ -66,9 +79,49 @@ select c.client "C", c.name "client",
 				/ sum(pi.total_price)) "margin",
 		convert(numeric(5,2),
 				100.0 * sum(pi.simple_profit) / gt.all_sprofit) "% Tot"
-from profit_item pi, client c, #grand_totals gt
+from #base pi, client c, #grand_totals gt
 where pi.client = c.client
 group by c.client, c.name, gt.all_sprofit
 order by c.client
 compute sum(sum(pi.simple_profit))
+go
+
+print ""
+print "<H4>Project Summaries: By Client</H4>"
+print ""
+-- gross sales
+select c.client "C", 
+	substring ( c.name, 1,12) "Client",
+	b.proj PRJ,
+	convert ( numeric(8,2), sum(b.hours)) "Payed Hrs",
+	convert ( numeric(8,2), sum(b.units)) "Billed Hrs" ,
+	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 
+from client c , #base b, employee e
+where b.client = c.client
+and b.emp = e.emp
+group by c.client, c.name, b.proj
+order by client, b.proj
+compute sum( convert ( numeric(12,2), sum(b.total_price)))
+	by c.client
+go
+print ""
+print "<H4>Detail: By Client, Project, Employee</H4>"
+print ""
+-- gross sales
+select c.client "C", 
+	substring ( c.name, 1,12) "Client",
+	b.proj PRJ,
+    $(employee_name e) "Employee", 
+	convert ( numeric(7,2), sum(b.units)) "Billed Hrs" ,
+	convert ( numeric(7,2), sum(b.hours)) "Payed Hrs",
+	convert ( numeric(12,2), sum(b.total_price)) "Gross Sales" 
+from #base b, client c , employee e
+where b.client = c.client
+and b.emp = e.emp
+group by c.client, c.name, b.proj, $(employee_name e) 
+order by client, b.proj
+compute sum( convert ( numeric(12,2), sum(b.total_price)))
+	by c.client, b.proj
+compute sum( convert ( numeric(12,2), sum(b.total_price)))
+	by c.client
 go
