@@ -1,0 +1,187 @@
+#! /usr/bin/perl
+
+# NOTES:
+# Dedicated component that resides in server and processes message requests
+# Adapted from Jay's code, which was Copyright 1998-2000 Oaesys Corporation.
+
+# this app expects messages to have "to", "from", and "status" attributes in the
+# first 3 attribute positions for one-element messages, and that these attrbs
+# have certain predefined values, but makes no other
+# assumptions about the xml message format
+
+# ---------------------------------------------------------------------------
+
+use strict;
+
+use CGI;
+use Barefoot::file;
+
+
+use constant MERROR =>
+		'<MESSAGE from="" to="" status="ERROR">ERROR_TEXT</MESSAGE>';
+use constant TALKERPATH => "./talker/";		# where message box files are found
+
+# functions:
+sub qualifyString;
+sub processMessage;
+sub addToBox;
+sub addToRoll;
+
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# main()
+
+my $HitID = "";				#  to store argument sent by browser
+my $reply = "";				#  to store the data to be sent to browser
+my $cgi = new CGI;			#  for CGI operations
+
+my $pquery = $::ENV{QUERY_STRING};
+
+if ($pquery)
+{
+	$HitID = $pquery;
+}
+else
+{
+	# THIS NEXT LINE IS FOR TEST ONLY, TO GET ARG FROM KEYBOARD
+	# $HitID = <STDIN>;
+	# IN RELEASE VERSION, ONLY THE NEXT LINE SHOULD BE EXPOSED:
+	exit;     			  		  # nothing to do
+}
+
+$reply = qualifyString($HitID);	# Decodes string and pre-tests if valid
+
+eval
+{
+	$reply = processMessage($reply);
+};
+$reply = MERROR and chomp($@) and $reply =~ s/ERROR_TEXT/$@/ if $@;
+
+# now send string to the browser:
+print $cgi->header(), $reply;
+
+# <STDIN>;  # Pause Program so we can see output --- TESTING PURPOSES ONLY
+
+# ---------------------------------------------------------------------------
+
+sub qualifyString
+{
+	my ($message) = @_;
+
+	# also decodes space encoding
+	# (full CGI decoding may be needed later)
+
+	my $attr = getAttrs($message);
+	$attr->{time} = time();
+	$message = buildMessage($attr);
+
+	# always true -- validation not implemented in this version
+	return 1 ? $message : MERROR;
+}
+# ---------------------------------------------------------------------------
+
+sub processMessage
+{
+	my ($message) = @_;
+
+	my $attr = getAttrs($message);
+
+	# save the received messages
+	if ($attr->{status} eq "NORMAL")
+	{
+		addToBox($attr->{to}, $message);
+	}
+	else         # assuming either "IMON" or "IMOFF" -- no others implemented
+	{
+		addToRoll($attr->{from}, $attr->{status}, $attr->{_DATA_}, $message);
+		addToBox($attr->{from});	# dummy to force box creation if new user
+	}
+
+	# generate the reply
+	my $user_box_filename = TALKERPATH . $attr->{from} . ".box";
+	my $users_roll_filename = TALKERPATH . "users.roll";
+
+	my $reply = file::get_lock($users_roll_filename);
+	my $lh = file::open_lock($user_box_filename);
+	$reply .= file::get($lh);
+
+	file::store($lh, undef);		# blanks the file
+
+	return($reply);
+}
+# ---------------------------------------------------------------------------
+
+sub getAttrs
+{
+	my ($element) = @_;
+
+	my ($open_tag) = $element =~ /<([^\/].*?)>/;
+
+	# read attributes
+	my $attr;
+	$attr->{$1} = $2 while $open_tag =~ m/(\w+)="(.*?)"/g;
+
+	($attr->{_DATA_}) = $element =~ /<.*?>(.*?)<\/.*>/;
+
+	return $attr;
+}
+# ---------------------------------------------------------------------------
+
+sub buildMessage
+{
+	my ($attr) = @_;
+
+	# get the data out of the attr so it won't show up in the attlist
+	my $data = delete $attr->{_DATA_};
+
+	my $message = "<MESSAGE";
+	foreach my $attname (keys %$attr)
+	{
+		$message .= "+$attname=\"$attr->{$attname}\"";
+	}
+	$message .= ">$data</MESSAGE>\r\n";
+
+	return $message;
+}
+# ---------------------------------------------------------------------------
+
+sub addToBox
+{
+	my ($user, $message) = @_;
+
+	# append only (automatically creates if does not exist)
+
+	my $path = TALKERPATH . $user . ".box";
+
+	file::append_lock($path, $message);
+}
+# ---------------------------------------------------------------------------
+
+sub addToRoll
+{
+	my ($user, $status, $data, $message) = @_;
+
+	my $users_filename = TALKERPATH . "users.roll";
+
+	my $lh = file::open_lock($users_filename);
+	my @usersroll = file::get($lh);
+
+	my $found = 0;
+	foreach my $roll (@usersroll)
+	{
+		my $attr = getAttrs($roll);
+		next unless $attr->{from} eq $user;
+		# if already in list with same status and message content, do nothing
+		close($lh) and return 
+				if $attr->{status} eq $status and $attr->{_DATA_} eq $data;
+		$roll = $message;
+		$found = 1 and last;				# found it, no need to check further
+	}
+	# totally new user, just append it
+	push @usersroll, "$message\n" if not $found;
+
+	file::store($lh, @usersroll);
+}
+# ---------------------------------------------------------------------------
+
