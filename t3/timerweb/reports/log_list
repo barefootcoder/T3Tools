@@ -10,16 +10,16 @@
 	and e.person_id = pe.person_id
 	and pe.person_id = wu.person_id
 {if user}
-	and wu.nickname = '{user}'
+	and wu.nickname = {user}
 {endif}
 	and tl.client_id = c.client_id
 {if client}
-	and c.client_id = '{client}'
+	and c.client_id = {client}
 {endif}
 {if proj}
-	and tl.proj_id = '{proj}'
+	and tl.proj_id = {proj}
 {endif}
-	and tl.log_date between '{start_date}' and '{end_date}'
+	and tl.log_date between {start_date} and {end_date}
 	order by tl.log_date
 	# compute sum(l.hours)
 ;
@@ -36,16 +36,16 @@ Totals by Client/Project
 	and e.person_id = pe.person_id
 	and pe.person_id = wu.person_id
 {if user}
-	and wu.nickname = '{user}'
+	and wu.nickname = {user}
 {endif}
 	and tl.client_id = c.client_id
 {if client}
-	and c.client_id = '{client}'
+	and c.client_id = {client}
 {endif}
 {if proj}
-	and tl.proj_id = '{proj}'
+	and tl.proj_id = {proj}
 {endif}
-	and tl.log_date between '{start_date}' and '{end_date}'
+	and tl.log_date between {start_date} and {end_date}
 	group by tl.emp_id, pe.first_name, tl.client_id, c.name,
 			tl.proj_id, tl.phase_id
 	order by tl.client_id, tl.proj_id
@@ -67,9 +67,9 @@ Totals by Employee
 	from time_log tl, employee e, client c						{!user}
 	where tl.emp = e.emp										{!user}
 	and tl.client = c.client									{!user}
-	and c.client = '{client}'									{!user}	{?client}
-	and tl.proj = '{proj}'										{!user}	{?proj}
-	and tl.date between '{start_date}' and '{end_date}'			{!user}
+	and c.client = {client}									{!user}	{?client}
+	and tl.proj = {proj}										{!user}	{?proj}
+	and tl.date between {start_date} and {end_date}			{!user}
 	group by tl.emp, $(employee_name e), tl.client,				{!user}
 			c.name, tl.proj										{!user}
 	order by tl.emp, tl.client, tl.proj							{!user}
@@ -90,16 +90,16 @@ Totals by Client Tracking Code
 	and e.person_id = pe.person_id
 	and pe.person_id = wu.person_id
 {if user}
-	and wu.nickname = '{user}'
+	and wu.nickname = {user}
 {endif}
 	and tl.client_id = c.client_id
 {if client}
-	and c.client_id = '{client}'
+	and c.client_id = {client}
 {endif}
 {if proj}
-	and tl.proj_id = '{proj}'
+	and tl.proj_id = {proj}
 {endif}
-	and tl.log_date between '{start_date}' and '{end_date}'
+	and tl.log_date between {start_date} and {end_date}
 	group by tl.emp_id, pe.first_name, tl.client_id, c.name, tl.tracking_code
 	order by tl.client_id, tl.tracking_code
 	# compute sum(sum(tl.hours)) by tl.client_id
