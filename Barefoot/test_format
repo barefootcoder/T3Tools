@@ -2,14 +2,52 @@
 
 use strict;
 
-use Barefoot::debug;
+use Barefoot::debug(1);
+
+use Carp;
+use Date::Parse;
 
 use Barefoot::base;
 use Barefoot::format;
 
 
-# test
+use constant SIMPLE_FORMAT => '@<< @|| @>> @#.##';
+use constant SIMPLE_FORMAT_RESULT => "A    B    C 12.35";
+
+
+# test swrite()
+test_format("simple format test",
+		swrite(SIMPLE_FORMAT, qw<A B C>, 12.345), SIMPLE_FORMAT_RESULT);
+
+# test writeln()
+my $testfile = "format.tst";
+open(TEST, ">$testfile") or die("can't create file for testing");
+select TEST;
+writeln(SIMPLE_FORMAT, qw<A B C>, 12.345);
+close(TEST);
+test_format("writeln test", `cat $testfile`, SIMPLE_FORMAT_RESULT . "\n");
+unlink($testfile);
+select STDOUT;
+
+# test date formats
+my $datetime = str2time("5/7/1997 14:23");
+test_format("simple date test",
+		swrite('@m/@d/@yyy', $datetime), " 5/ 7/1997");
+test_format("mixed date test",
+		swrite('@ww @m/#d/@yyy', $datetime, $datetime), "Wed  5/07/1997");
 
 
 # everything looks good
 print "ALL TESTS PASSED\n";
+
+
+sub test_format
+{
+	my ($msg, $formatted, $expected) = @_;
+
+	unless ($formatted eq $expected)
+	{
+		print STDERR "$msg: wanted $expected, got $formatted\n" if DEBUG >= 2;
+		die("failed $msg");
+	}
+}
