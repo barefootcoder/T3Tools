@@ -31,11 +31,8 @@ use Carp;
 use FileHandle;
 
 use Barefoot::base;
+use Barefoot::cvsdir;
 use Barefoot::exception;
-
-
-use constant WORKING_DIR => "/proj/" .
-		scalar(exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER});
 
 use constant CONTROL_DIR => "CONTROL";
 use constant RELEASE_FILE => "RELEASE";
