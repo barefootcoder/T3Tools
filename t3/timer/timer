@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.5  1999/05/04 04:25:24  buddy
+# changed timerdata::insert_log() call to check for failure
+#
 # Revision 1.4  1999/05/04 01:27:23  buddy
 # added time logging directly to Sybase
 # changed -d and -r options
@@ -813,16 +816,18 @@ sub log_to_sybase
 	print "\n  {Try to log this timer out again later.}\n" and exit
 			unless <STDIN> =~ /^y/i;
 
-	if (timerdata::insert_log($emp, $client, $proj, $phase, $cliproj, $date,
-			$hours, $comments))
+	my $error = timerdata::insert_log($emp, $client, $proj, $phase, $cliproj,
+			$date, $hours, $comments);
+	if ($error)
 	{
-		print "\ntime has been logged to Sybase\n\n";
+		print "\nthere was some error!\n";
+		print "{$error}\n";
+		print "please report this to a system administrator for resolution\n";
+		exit();
 	}
 	else
 	{
-		print "\nthere was some error!\n";
-		print "please report this to a system administrator for resolution\n";
-		exit();
+		print "\ntime has been logged to Sybase\n\n";
 	}
 }
 
