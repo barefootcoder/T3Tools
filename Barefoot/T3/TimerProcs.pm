@@ -30,6 +30,7 @@ package T3::TimerProcs;
 use strict;
 
 use Carp;
+use Data::Dumper;
 
 use Barefoot::base;
 use Barefoot::range;
@@ -503,9 +504,8 @@ sub build_profit_item
 	my $data = $ds->load_table("
 
 		select tlp.client_id, tlp.proj_id, tlp.start_date, tlp.end_date,
-				tlp.log_source, tlp.log_id,
-					tlp.hours, tlp.billing_ratio, c.to_nearest,
-				bill_rate as price_per_unit
+				tlp.log_source, tlp.log_id, tlp.hours, tlp.billing_ratio,
+				c.to_nearest, bill_rate as price_per_unit
 		from {~reporting}.time_log_profit tlp, {~timer}.client c
 		where tlp.class_billing = 0
 		and tlp.sum_by_proj = 0
@@ -513,13 +513,13 @@ sub build_profit_item
 		and tlp.client_id = c.client_id
 		and tlp.bill_rate is not NULL
 	") or _fatal($ds);
-	foreach (@$data)
+	$data->add_column("units", sub
 	{
 		my ($hours, $ratio, $to_nearest)
-				= delete @$_{ qw<hours billing_ratio to_nearest> };
-		$_->{units} = range::round($hours / $ratio,
-				range::ROUND_UP, $to_nearest);
-	}
+				= @$_{ qw<hours billing_ratio to_nearest> };
+		return range::round($hours / $ratio, range::ROUND_UP, $to_nearest);
+	});
+	$data->remove_column($_) foreach qw<hours billing_ratio to_nearest>;
 	$ds->append_table("{~reporting}.profit_item", $data) or _fatal($ds);
 
 =comment
