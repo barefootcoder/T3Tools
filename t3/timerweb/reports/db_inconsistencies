@@ -1,6 +1,13 @@
 -- SORT GROUP: Error Checkers
 -- TITLE: Database Consistency Errors
 
+print "projects with end dates before start dates"
+go
+select *
+from project
+where end_date < start_date
+go
+
 print "projects that don't match a client"
 go
 select p.*
@@ -29,10 +36,69 @@ from project
 where end_date = '12/31/99'
 go
 
+print "bill rates with end dates before start dates"
+go
+select *
+from bill_rate
+where end_date < start_date
+go
+
+print "bill rates that don't match any existing project"
+go
+select br.*
+from bill_rate br
+where not exists
+(
+	select 1
+	from project p
+	where p.client = br.client
+	and p.proj = br.proj
+)
+go
+
+print "bill rates for resource billing projects"
+go
+select br.*
+from bill_rate br, project p, project_type pt
+where br.client = p.client
+and br.proj = p.proj
+and p.proj_type = pt.proj_type
+and pt.resource_billing = 1
+go
+
+print "bill rates with at least one date outside corresponding project dates"
+go
+select br.*
+from bill_rate br
+where not exists
+(
+	select 1
+	from project p
+	where p.client = br.client
+	and p.proj = br.proj
+	and br.start_date between p.start_date and p.end_date
+)
+or not exists
+(
+	select 1
+	from project p
+	where p.client = br.client
+	and p.proj = br.proj
+	and br.end_date between p.start_date and p.end_date
+)
+go
+
 print "bill rates with end dates at 12/31/99"
 select *
 from bill_rate
 where end_date = '12/31/99'
+go
+
+print "emp/resrc assignments with end dates before start dates"
+go
+select *
+from resource_employee
+where end_date < start_date
 go
 
 print "emp/resrc assignment with dates outside resource dates"
@@ -44,6 +110,27 @@ and
 (
 	re.start_date < rr.start_date
 	or re.end_date > rr.end_date
+)
+go
+
+print "resource rates with end dates before start dates"
+go
+select *
+from resource_rate
+where end_date < start_date
+go
+
+print "resource rates for clients with no resource billing projects"
+go
+select rr.*
+from resource_rate rr
+where not exists
+(
+	select 1
+	from project p, project_type pt
+	where rr.client = p.client
+	and p.proj_type = pt.proj_type
+	and pt.resource_billing = 1
 )
 go
 
@@ -82,6 +169,28 @@ where not exists
 	from client_employee ce
 	where ce.emp = e.emp
 	and ce.client = '011'
+)
+go
+
+print "client/employee assignments with end dates before start dates"
+go
+select *
+from client_employee
+where end_date < start_date
+go
+
+print "client/employee assignments outside project dates"
+go
+select ce.*
+from client_employee ce
+where not exists
+(
+	select 1
+	from project p
+	where ce.client = p.client
+	and isnull(ce.proj, p.proj) = p.proj
+	and ce.start_date between p.start_date and p.end_date
+	and ce.end_date between p.start_date and p.end_date
 )
 go
 
@@ -146,7 +255,7 @@ go
 
 set nocount on
 $(build_profit_item "
-	log.date >= '1/1/1998'
+	log.date >= '1/1/1999'
 ")
 exec calc_total_price
 exec calc_total_cost
