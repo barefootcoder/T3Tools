@@ -2,18 +2,6 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.3  2001/08/05 02:24:39  buddy
-# moved stuff from comp.pm (in order to phase out that module)
-# changed min and max to be able to handle lists of arbitrary length
-#
-# Revision 1.2  2000/08/28 21:06:18  buddy
-# first truly working version
-#
-# Revision 1.1  2000/02/03 16:02:21  buddy
-# Initial revision
-#
-#
 # $Id$
 # $Revision$
 
@@ -45,14 +33,15 @@ package range;
 
 use strict;
 
-use Barefoot::array;
+use Carp;
 
 
 # constants for round()
 use constant ROUND_OFF => 'O';
 use constant ROUND_UP => 'U';
 use constant ROUND_DOWN => 'D';
-my @_rounding_types = (ROUND_OFF, ROUND_UP, ROUND_DOWN);
+# note that you can't use => below, as it turns the constants into identifiers
+my %_rounding_types = (ROUND_OFF, '', ROUND_UP, '', ROUND_DOWN, '');
 
 
 1;
@@ -101,7 +90,7 @@ sub round
 	$whichway = ROUND_OFF if !defined $whichway;
 	$towhat = 1 if !$towhat;
 
-	die("illegal rounding type") unless in @_rounding_types, $whichway;
+	croak("illegal rounding type") unless exists $_rounding_types{$whichway};
 
 	$number /= $towhat;
 	if ($number =~ /\.(\d)/)
