@@ -7,12 +7,15 @@ $| = 1;
 
 use constant DEBUG => 0;
 
+my $debug_user;
+($debug_user) = $ENV{SCRIPT_FILENAME} =~ m@/([^/]*?)test/@ if DEBUG;
+
 my $cgi = new CGI;
 my $script = "/tmp/sqlcgi$$.ksh";
-my $basepath = DEBUG ? "/home/buddy/proj/timerweb/reports/"
+my $basepath = DEBUG ? "/export/usr/$debug_user/proj/t3/timerweb/reports/"
 		: "/home/httpd/sybase/timer_reports/";
 my $lib = "/usr/local/bin/kshlib";
-my $db = "timer";
+my $db = DEBUG ? "timertest" : "timer";
 my $title = "";
 my $debug_string = "";
 
@@ -76,7 +79,7 @@ sub create_script
 {
 	my ($file, $script) = @_;
 
-	open(FILE, $file) or die("can't get file");
+	open(FILE, $file) or die("can't get file $file");
 	open(SCRIPT, ">$script") or die("can't make script");
 
 	print SCRIPT <<END;
