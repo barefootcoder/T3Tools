@@ -3,9 +3,9 @@
 
 &proc build_profit_item
 
-		log.client_id = '{client}'
+		log.client_id = {client}
 	{if proj}
-		and log.proj_id = '{proj}'
+		and log.proj_id = {proj}
 	{endif}
 
 	{if invoice}
@@ -14,12 +14,12 @@
 			select 1
 			from {~timer}.invoice i
 			where log.invoice_id = i.invoice_id
-			and i.invoice_number = '{invoice}'
+			and i.invoice_number = {invoice}
 		)
 	{endif}
 
 	{if !invoice}
-		and log.log_date <= '{end_date}'
+		and log.log_date <= {end_date}
 		and log.invoice_id is NULL
 	{endif}
 
