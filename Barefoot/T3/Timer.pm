@@ -29,7 +29,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<timer_command readfile calc_time calc_date>;
+@EXPORT_OK = qw<timer_command readfile calc_time calc_date test_connection>;
 
 use Date::Format;
 
