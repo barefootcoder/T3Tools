@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.7  2001/01/04 20:17:07  tryan
+# Added update rights to the payroll table.
+#
 # Revision 1.6  2000/11/13 18:26:42  tryan
 # Added tables salary_draw, salary_bank to support salary handling
 # in payroll. Added the field has_insurance to employee as an indicator
@@ -892,6 +895,58 @@ run_query -S$server -U$user -D$destdb <<-END
     create unique index salary_draw
     on salary_draw (emp, start_date)
     go
+
+
+	-- insurance_rate
+
+	print "making insurance_rate"
+	go
+
+    $(overwrite_table insurance_rate "
+		emp                   internal_id  NOT NULL,
+		fixed_amount          money        NULL,
+		nonbill_hrs_limit     int          NULL,
+		multiplier            numeric(5,2) NULL,
+		start_date            datetime     NOT NULL,
+		end_date              datetime     NOT NULL,
+		create_user           varchar(20)  NOT NULL,
+		create_date           datetime     NOT NULL,
+		chguser               varchar(20)  NULL,
+		chgdate               datetime     NULL,
+	 ")
+
+	 grant select on insurance_rate to public
+	 go
+
+	 create unique index un_ir_idx 
+	 on insurance_rate ( emp, start_date )
+	 on index_seg
+	 go
+ 
+
+	-- insurance_contribution
+
+	print "making insurance_contribution"
+	go
+
+    $(overwrite_table insurance_contribution "
+		emp              internal_id 	NOT NULL,
+		payroll_id       unique_id   	NULL,
+		amount           money       	NOT NULL,
+		create_user      varchar(20) 	NOT NULL,
+		create_date      datetime    	NOT NULL,
+		chguser          varchar(20) 	NULL,
+		chgdate          datetime    	NULL
+	")
+
+ 	grant insert on insurance_contribution to christy, wayne
+ 	grant select  on insurance_contribution to public
+	go
+
+ 	create unique index un_ic_idx 
+	on insurance_contribution ( emp, payroll_id )
+	on index_seg
+	go
 
 END
 
