@@ -1,11 +1,11 @@
 -- SORT GROUP: Management Reports
 -- TITLE: Category Percentages for Internal Projects (by user)
 
-print "Period from [start_date] to [end_date]"
+print "Period from {start_date} to {end_date}"
 go
 
 $(build_pay_amount "
-	log.date between '[start_date]' and '[end_date]'
+	log.date between '{start_date}' and '{end_date}'
 	and exists
 	(
 		select 1
