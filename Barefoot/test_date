@@ -19,6 +19,8 @@ die("failed valid test") unless date::isValid("31-Dec-01");
 die("failed valid test") unless date::isValid("31-Dec-2001");
 die("failed valid test") unless date::isValid("20011231");
 die("failed valid test") unless date::isValid("Dec 31 2001 12:00AM");
+# raw time values shouldn't really be considered valid dates
+die("raw time considered valid") if date::isValid(time());
 
 # test invalid ones
 die("failed invalid test") if date::isValid("bmoogle");
@@ -37,6 +39,25 @@ die("today's date is wrong") unless date::today() eq $date_cmd;
 die("increment zero test failed") unless
 		date::mdy(date::dateTimeSeconds(date::incDays(date::today(), 0)))
 				eq date::today();
+my $four_days_ago = date::dateTimeSeconds(date::today()) - 4 * 24 * 60 * 60;
+my $inc_to_now = date::incDays($four_days_ago, 4);
+$inc_to_now = date::mdy(date::dateTimeSeconds($inc_to_now));
+unless ($inc_to_now eq date::today())
+{
+	print "incDays returned $inc_to_now\n" if DEBUG >= 2;
+	print "today is ", date::today(), "\n" if DEBUG >= 2;
+	die("increment with raw times failed");
+}
+
+
+# test dayDiff a bit
+die("day diff test failed") unless
+		date::dayDiff(date::incDays(date::today(), -4), date::today()) == 4;
+my $raw_diff = date::dayDiff(
+		date::dateTimeSeconds(date::incDays(date::today(), -4)),
+		date::dateTimeSeconds(date::today()));
+print "raw diff is $raw_diff\n" if DEBUG >= 2;
+die("day diff with raw times failed") unless $raw_diff == 4;
 
 
 # other tests
