@@ -201,6 +201,8 @@ sub start                   # start a timer
 	# if not restarting an existing timer, got to build up some structure
     if (not exists $timerinfo->{timers}->{$timersent})
 	{
+		$timerinfo->{timers}->{$timersent}->{name} = $timersent;
+
 		foreach my $attrib ( qw<client project phase> )
 		{
 			$timerinfo->{timers}->{$timersent}->{$attrib}
