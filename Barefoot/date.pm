@@ -21,6 +21,15 @@ use Time::Local;
 use Barefoot::string;
 
 
+use enum qw(
+	:PART_		SEC MIN HR DAY MON YR DOW DOY DST
+);
+
+use vars qw(@DAY_NAME);
+@DAY_NAME = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+		'Friday', 'Saturday');
+
+
 1;
 
 
@@ -126,15 +135,20 @@ sub sortableString
 	return $date;
 }
 
-sub MondayDate
+sub MondayTime
 {
-	my $today = (localtime(time))[6];
+	my $today = (localtime(time))[PART_DOW];
 
 	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
 	# now num_days will be number of days ago the last Monday was
 	my $num_days = $today == 0 ? 6 : $today - 1;
 
-	my $monday_time = time - $num_days * 24 * 60 * 60;
+	return time - $num_days * 24 * 60 * 60;
+}
+
+sub MondayDate
+{
+	my $monday_time = MondayTime();
 	my ($day, $mon, $year) = (localtime $monday_time)[3..5];
 	$mon += 1, $year += 1900;
 	return "$mon/$day/$year";
