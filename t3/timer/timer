@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.11  1999/12/03 22:41:05  buddy
+# added grand totals to -t option
+#
 # Revision 1.10  1999/10/07 18:59:34  buddy
 # fixed bug with redo CLIENT when prompting for client number
 #
@@ -101,7 +104,7 @@ if (@ARGV == 0)
 		"       -c:   cancel a timer\n",
 		"       -n:   new name for a timer\n",
 		"       -e:   show elapsed time for all timers\n",
-		"       -r:   run the time logger\n",
+		"       -r:   run the time logger directly\n",
 		"       -b:   break down a timer's portions\n",
 		"       -t:   total for all timers this week (by client)\n",
 		"       -f:   force (ignore all confirmations)\n",
@@ -316,7 +319,7 @@ if ($func eq 'n')					# new name for a timer
 	writefile($timerinfo);
 }
 
-if ($func eq 'b')
+if ($func eq 'b')					# break down a timer
 {
 	if (!$timerinfo->{force})
 	{
@@ -415,9 +418,9 @@ if ($func eq 't')					# total timers by client
 	writeln($::Totals, "", "Grand Total", $grand_total);
 }
 
-if ($func eq 'r')					# run the logger program (currently can't)
+if ($func eq 'r')					# run the logger portion
 {
-	error(1, "can't run the time logger (coming soon!)\n");
+	log_to_sybase($timerinfo);
 }
 
 if ($func eq 'd')					# done with a timer
@@ -452,9 +455,9 @@ if ($func eq 'd')					# done with a timer
 	save_history($timerinfo, "done");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	if ($timerinfo->{curtimer} eq $timerinfo->{giventimer})
-		{
+	{
 		undef($timerinfo->{curtimer});
-		}
+	}
 	print_elapsed($timerinfo);
 	
 	writefile($timerinfo);
@@ -683,6 +686,12 @@ sub calc_date
 	{
 		$seconds = time;
 	}
+
+	# adjust for working after midnight ... if the time is before 6am,
+	# we'll just subtract a day
+	my ($hour) = (localtime $seconds)[2];
+	$seconds -= 24*60*60 if $hour < 6;
+
 	my ($day, $mon, $year) = (localtime $seconds)[3..5];
 	return ++$mon . "/" . $day . "/" . ($year + 1900);
 }
