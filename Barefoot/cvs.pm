@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.5  2000/11/20 20:38:50  buddy
+# fixed stupid mistake where $USER was $HOME instead
+#
 # Revision 1.4  2000/11/20 20:20:59  buddy
 # changed working dir to /proj/$USER
 #
@@ -52,19 +55,22 @@ use constant WORKING_DIR => "/proj/$ENV{USER}";
 
 sub getLockers
 {
-	my ($module, $flag_ref) = @_;
+	my ($cvsroot, $module, $flag_ref) = @_;
 
-	# we assume that module is valid; all checking should be done
-	# before this function is called
+	# unix - USER, windows - USERNAME (some flavors anyway)
+	# one of them needs to be set
+	my $username = $::ENV{USER};
+	$username = $::ENV{USERNAME} if !$username;
 
 	my @lockers = ();
 
-	open(ED, "cvs editors $module |") or die("getLockers: can't open pipe");
+	open(ED, "cvs -d $cvsroot editors $module |") or 
+									die("getLockers: can't open pipe");
 	while ( <ED> )
 	{
 		my @fields = split();
 		my $user = $fields[0] eq $module ? $fields[1] : $fields[0];
-		$$flag_ref = 1 if defined $flag_ref and $user eq $::ENV{USER};
+		$$flag_ref = 1 if defined $flag_ref and $user eq $username;
 		push @lockers, $user;
 	}
 	close(ED);
@@ -111,3 +117,18 @@ sub project_group
 	my $project_grname = getgrgid($project_gid);
 	return $project_grname;
 }
+
+sub is_offsite
+{
+	my ($cvsroot) = @_;
+
+	if ( $cvsroot =~ /^\:pserver\:/ || $cvsroot =~ /^\:ext\:/ )
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
