@@ -76,6 +76,11 @@ Payroll Checks paid on {check_date}
 	where pa.emp_id = e.emp_id
 	and e.person_id = pe.person_id
 	and pa.client_id = c.client_id
+	and
+	(
+		pa.pay_rate_type is NULL        -- this should never happen
+		or pa.total_pay = 0             -- there better be some pay there
+	)
 	order by pa.emp_id, pa.client_id, pa.proj_id, pa.pay_date
 ->suppress_empty
 ->format
@@ -89,9 +94,10 @@ Payroll Checks paid on {check_date}
 ;
 
 {if !check_date}
-	select pa.emp_id, pe.first_name, pa.client_id, c.name,
-			pa.proj_id, pa.pay_date, pa.hours, pa.pay_rate,
-			pa.pay_rate_type, pa.total_pay
+	select pa.emp_id as EMP, pe.first_name as employee,
+			pa.client_id as CLI, c.name as client, pa.proj_id as PRJ,
+			pa.pay_date, pa.hours, pa.pay_rate as "pay $",
+			pa.pay_rate_type as PT, pa.total_pay as ttl_pay
 	from {~reporting}.pay_amount pa, {~timer}.employee e, {~t3}.person pe,
 			{~timer}.client c
 	where pa.emp_id = e.emp_id
@@ -102,15 +108,16 @@ Payroll Checks paid on {check_date}
 	order by pa.emp_id, pa.client_id, pa.proj_id, pa.pay_date
 ->suppress_empty
 ->format
-	H->
-	H->
-	H->WARNING!  The following log entries are suspicious,
-	H->because they are for hours before the start date of
-	H->the payroll period.
-	H->
-	H->E   employee             C   client               PRJ date        hours pay $  PT total pay
-	H->--- -------------------- --- -------------------- --- ----------- ----- ------ -- -------
-	B->@<< @<<<<<<<<<<<<<<<<<<< @<< @<<<<<<<<<<<<<<<<<<< @<< @>>>>>>>>>> @#.## @##.## @< @###.##
+	H=>
+	H=>
+	H=>WARNING!  The following log entries are suspicious,
+	H=>because they are for hours before the start date of
+	H=>the payroll period.
+	H=>
+	H=>%default
+	B->@<< @<x20 @<< @<x20 @<< @>x11 @#.## @##.## @< @###.##
+	F=>
+	F=>
 {endif}
 ;
 
