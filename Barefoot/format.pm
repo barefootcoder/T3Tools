@@ -92,7 +92,10 @@
 #		in your format, what you're really doing is making two separate
 #		formats, and that means you have to send your variable twice.
 #
-# Also, a sub which allows you deal with double-quoted, comma-separated
+#
+# ADDITIONAL FUNCTIONS
+#
+# A function which allows you deal with double-quoted, comma-separated
 # values (commonly referred to as CSV) just as you would a normal split:
 #
 #	my @fields = CSV::split($expr);
@@ -185,6 +188,9 @@ sub swrite
 		# handle different types of formats
 		foreach (@pieces)
 		{
+			# ignore undef's (make them "")
+			$vars[$pos] = "" unless defined $vars[$pos];
+
 			if ( / ^ $STD_FMT $ /x )
 			{
 				# nothing special to do, standard format will take care of it
