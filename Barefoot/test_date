@@ -2,7 +2,7 @@
 
 use strict;
 
-use Barefoot::debug;
+use Barefoot::debug(1);
 
 use Barefoot::base;
 use Barefoot::date;
@@ -29,8 +29,14 @@ die("failed invalid test") if date::isValid("1/42/01");
 # test today function
 my $date_cmd = `date +"%-m/%-d/%Y"`;
 chomp $date_cmd;
-print "date returned $date_cmd\n" if DEBUG >= 3;
+print "today test: date returned $date_cmd\n" if DEBUG >= 3;
 die("today's date is wrong") unless date::today() eq $date_cmd;
+
+
+# test incDays a bit
+die("increment zero test failed") unless
+		date::mdy(date::dateTimeSeconds(date::incDays(date::today(), 0)))
+				eq date::today();
 
 
 # other tests
