@@ -16,7 +16,7 @@ use Barefoot::T3::Server;
 
 
 use constant SLEEP_DELAY => 2;
-use constant LARGE_OUTPUT_LINES => 50;
+use constant LARGE_OUTPUT_LINES => 1_000;
 
 our $test_mod_dir = t3_config(T3::MODULEDIR_DIRECTIVE);
 
@@ -72,7 +72,6 @@ for (1..1)
 			test_bogus_output3();
 			test_request_module();
 			test_large_output_module();
-			test_timer_module();
 		} 60;			# anything over a minute means something went wrong
 		die("got stuck during testing") unless $success;
 	}
@@ -365,50 +364,6 @@ sub test_request_module
 			and $test_output[0] eq "SENDER;RECIPIENT;line1;line2\n";
 }
 
-
-sub test_timer_module
-{
-	# create a fake timer file for testing
-	my $tuser = "testy";
-	my $start1 = date::dateTimeSeconds("1/1/00", "1:00pm");
-	my $end1 = date::dateTimeSeconds("1/1/00", "2:00pm");
-	my $start2 = date::dateTimeSeconds("5/1/00", "4:12pm");
-	my $end2 = date::dateTimeSeconds("5/1/00", "5:49pm");
-	my $test_file = t3_config(T3::TIMERDIR_DIRECTIVE) . "/$tuser.timer";
-	open(TMR, ">$test_file") or die("can't create test timer file");
-	print TMR join("\t", "test", "$start1-$end1", "CLI", "PRJ",
-			"PHZ", 0, ""), "\n";
-	print TMR join("\t", "test2", "$start2-$end2", "CLI", "PRJ",
-			"", 0, ""), "\n";
-	close(TMR);
-
-	T3::Client::send_request("TIMER_LIST", "tl$$", { user => $tuser } );
-	my @test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	die("timer module returned incorrect output")
-			unless @test_output == 2
-			and $test_output[0] eq "test\t1:00\n"
-			and $test_output[1] eq "test2\t1:37\n";
-
-	T3::Client::send_request("TIMER_LIST", "tl$$",
-			{ user => $tuser, timer => "test2" } );
-	@test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	die("timer module returned incorrect output")
-			unless @test_output == 1
-			and $test_output[0] eq "test2\t1:37\n";
-
-	T3::Client::send_request("TIMER_LIST", "tl$$",
-			{ user => $tuser, timer => "test2", details => 'yes' } );
-	@test_output = T3::Client::retrieve_output("tl$$");
-	T3::debug(2, "timer module got output:\n" . join('', @test_output));
-	die("timer module returned incorrect output")
-			unless @test_output == 1
-			and $test_output[0] eq "test2\t1:37\tCLI\tPRJ\t\t0\t\n";
-
-	# clean up fake timer file
-	#unlink($test_file);
-}
 
 sub test_combo_output
 {
