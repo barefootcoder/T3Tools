@@ -279,7 +279,7 @@ sub _transform_query
 
 		print STDERR "about to check for calc cols in $query\n" if DEBUG >= 5;
 		# calculated columns
-		while ($query =~ / { \* (.*?) \s* = \s* (.*) } /sx)
+		while ($query =~ / { \* (.*?) \s* = \s* (.*?) } /sx)
 		{
 			my $field_spec = quotemeta($&);
 			my $calc_col = $1;
