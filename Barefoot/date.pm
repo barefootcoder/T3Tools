@@ -56,3 +56,16 @@ sub sortableString
 	chomp $date;
 	return $date;
 }
+
+sub MondayDate
+{
+	my $today = (localtime(time))[6];
+
+	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
+	# now num_days will be number of days ago the last Monday was
+	my $num_days = $today == 0 ? 6 : $today - 1;
+
+	my $monday_time = time - $num_days * 24 * 60 * 60;
+	my ($day, $mon, $year) = (localtime $monday_time)[3..5];
+	return "$mon/$day/$year";
+}
