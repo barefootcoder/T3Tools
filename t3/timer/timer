@@ -192,7 +192,7 @@ if ($command eq 'START')					# start a timer
 
 	if (not exists $timers->{$parminfo->{timer}})
 	{
-		if ($parminfo->{connected})
+		if (test_connection())
 		{
 			print STDERR "given timer doesn't exist, getting new values\n"
 					if DEBUG >= 5;
@@ -255,7 +255,7 @@ if ($command eq 'RENAME')					# new name for a timer
 		$parminfo->{newtimer} = input("new name for this timer?", $defname);
 	}
 
-	if ($parminfo->{connected})
+	if (test_connection())
 	{
 		get_timer_parameter("client");
 		get_timer_parameter("project");
@@ -321,7 +321,7 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 
 if ($command eq 'TOTAL')					# total timers by client
 {
-	unless ($parminfo->{connected})
+	unless (test_connection())
 	{
 		print STDERR "The data store is not accessible. Action canceled.\n";
 		exit;
@@ -366,7 +366,7 @@ if ($command eq 'TOTAL')					# total timers by client
 
 if ($command eq 'LOG')					# log time directly to the DB
 {
-	unless ($parminfo->{connected})
+	unless (test_connection())
 	{
 		print STDERR "The data store is not accessible. Action canceled.\n";
 		exit;
@@ -377,7 +377,7 @@ if ($command eq 'LOG')					# log time directly to the DB
 
 if ($command eq 'DONE')					# done with a timer
 {
-	unless ($parminfo->{connected})
+	unless (test_connection())
 	{
 		print STDERR "The data store is not accessible. Action canceled.\n";
 		exit;
@@ -519,7 +519,7 @@ sub get_timer_parameter
 	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n"
 			if DEBUG >= 4;
 
-	# objinfo would be the give timer, which we get here
+	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{timer}};
 
 	# this is somewhat complicated.  we need to figure out what the
@@ -528,11 +528,11 @@ sub get_timer_parameter
 	# info from: the default for this user (from the database; get_parameter
 	# knows how to retrieve that), the thing already set (for a pre-existing
 	# timer; this comes from objinfo), or the thing specified on the command
-	# line (if specified at all; this comes from parminfo, a.k.a. timerinfo).
-	# for most cases, the priority is: command line, pre-existing, default.
-	# for the start command, however, a pre-existing parameter can't be
-	# changed if it exists, so we use it and exit.	also, if -f (force) was
-	# specified (that flag is in parminfo), we can quit right there.
+	# line (if specified at all; this comes from parminfo).  for most cases,
+	# the priority is: command line, pre-existing, default.  for the start
+	# command, however, a pre-existing parameter can't be changed if it
+	# exists, so we use it and exit.	also, if -f (force) was specified
+	# (that flag is in parminfo), we can quit right there.
 
 	# got it? here we go ...
 
@@ -687,14 +687,15 @@ sub gather_log_info
 
 	# Get phase information
 	($phase, $phase_name) = $phase_needed
-			? get_timer_parameter("phase") : ("","");
+			? get_timer_parameter("phase") : (undef, "");
+	$parminfo->{phase} = $phase;
 
 	($tracking, $tracking_name) = $tracking_needed ?
-			get_timer_parameter("client tracking code") : ("","");
+			get_timer_parameter("client tracking code") : (undef, "");
 	$parminfo->{tracking} = $tracking;
 
 	COMMENTS: {
-		$comments = "";
+		$comments = undef;
 		last unless $comments_needed;
 		print "\nEnter comments below (maximum 255 chars):\n";
 		print "  (255 chars is a little over 3 lines if your screen is 80\n";
@@ -717,11 +718,13 @@ sub gather_log_info
 	print "working.....\n";
 
 	# show everything and double check:
-	writeln(Log, $emp_id, $emp_fullname,
-			$client, $client_name, $date,
-			$project, $project_name,
-			$phase, $phase_name, $hours,
-			$tracking, $tracking_name);
+	writeln(Log,
+			$emp_id,	$emp_fullname,
+			$client,	$client_name,				$date,
+			$project,	$project_name,
+			$phase,		$phase_name,				$hours,
+							$tracking, $tracking_name
+	);
 	writeln(Log_Comments, $comments);
 
 	unless (get_yn("\n\nis everything okay?"))
@@ -730,19 +733,6 @@ sub gather_log_info
 		exit 1;
 	}
 
-=comment
-	my $error = insert_time_log($emp_id, $client, $project, $phase,
-			$tracking, $date, $hours, $comments);
-	if ($error)
-	{
-		print "\nthere was some error!\n";
-		print "{$error}\n";
-		print "please report this to a system administrator for resolution\n";
-		exit();
-	}
-	else
-	{
-		print "\ntime has been logged to Sybase\n\n";
-	}
-=cut
+	print STDERR "parms after gather_log_info: ", Dumper($parminfo)
+			if DEBUG >= 4;
 }
