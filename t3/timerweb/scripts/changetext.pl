@@ -45,7 +45,7 @@ if ($cgi->param('SADMIN'))
 
 
 # Main Program
-timerdata::set_connection("SYBASE_1","timertest");
+timerdata::set_connection("SYBASE_1","timer");
 
 checkchange();
 print_header();
