@@ -1,0 +1,48 @@
+-- SORT GROUP: Financial Reports
+-- TITLE: Insurance Contributions
+
+print "Checks dates between [start_date] to [end_date]"			?!check_date
+print ""														?!check_date
+print ""														?!check_date
+go																?!check_date
+
+print "Insurance paid on Payroll Check date: [check_date]"		??check_date
+print ""														??check_date
+print ""														??check_date
+go																??check_date
+
+
+-- Overall Totals
+print ''
+print '<H4>Summary of Insurance Contributions</H4>'
+select ic.emp "Emp",
+	$(employee_name e) "Employee",
+	sum ( amount ) "Barefoot Contribution" ,
+	avg ( amount ) "Avg BF Contribution/Check" 
+from insurance_contribution ic, employee e, payroll p
+where ic.emp = e.emp
+and p.payroll_id = ic.payroll_id
+and p.check_date between '[start_date]' and '[end_date]'        ?!check_date
+and p.check_date = '[check_date]'                               ??check_date
+and e.login = '[user]'                                          ??user
+group by ic.emp, $(employee_name e)
+order by ic.emp
+compute sum ( sum ( amount ) ), avg ( avg (amount))
+go
+-- Broken out Totals
+print ''
+print '<H4>Detail of Insurance Contributions</H4>'
+select ic.emp "Emp",
+	$(employee_name e) "Employee",
+	convert (char(10), p.period_start, 101) "Period Start",
+	convert (char(10), p.period_end, 101) "Period End",
+	convert (char(10), p.check_date, 101) "Check Date",
+	ic.amount "Barefoot Contribution" 
+from insurance_contribution ic, employee e, payroll p
+where ic.emp = e.emp
+and p.payroll_id = ic.payroll_id
+and p.check_date between '[start_date]' and '[end_date]'        ?!check_date
+and p.check_date = '[check_date]'                               ??check_date
+and e.login = '[user]'                                          ??user
+order by ic.emp, p.check_date
+go

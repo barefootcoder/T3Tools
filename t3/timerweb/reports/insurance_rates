@@ -1,0 +1,50 @@
+-- SORT GROUP: Database Lists
+-- TITLE: History of Insurance Rates 
+
+select ia.emp ,
+	start_date,
+	end_date,
+	fixed_amount,
+	nonbill_hrs_limit,
+	multiplier,
+	'Inactive' active
+into #insurance_rate_tmp
+from insurance_rate ia, employee e
+where ia.emp = e.emp
+and e.login = '[user]'                                          ??user
+order by ia.emp, ia.start_date
+go
+update #insurance_rate_tmp
+set active = 'Active'  
+where end_date = $END_OF_TIME
+go
+
+print ''
+print '<H4>Current Insurance Rates Only</H4>'
+select irt.emp "Emp",
+	$(employee_name e) emp_name,
+	convert ( char(10), irt.start_date, 101 ) start_date, 
+	convert ( char(10), irt.end_date, 101 ) end_date,
+	convert ( numeric(10,2), irt.fixed_amount ) "Fixed Amt",
+	irt.nonbill_hrs_limit "NonBill Hrs Limit",
+	irt.multiplier "Multiplier",
+	irt.active
+from #insurance_rate_tmp irt, employee e
+where irt.emp = e.emp
+and irt.active = 'Active'
+order by irt.emp, irt.start_date
+go
+print ''
+print '<H4>All Insurance Rates </H4>'
+select irt.emp "Emp",
+	$(employee_name e) emp_name,
+	convert ( char(10), irt.start_date, 101 ) start_date, 
+	convert ( char(10), irt.end_date, 101 ) end_date,
+	convert ( numeric(10,2), irt.fixed_amount ) "Fixed Amt",
+	irt.nonbill_hrs_limit "NonBill Hrs Limit",
+	irt.multiplier "Multiplier",
+	irt.active
+from #insurance_rate_tmp irt, employee e
+where irt.emp = e.emp
+order by irt.emp, irt.start_date
+go
