@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  2000/10/16 22:21:49  tryan
+# Added statements for creating the commission_modifier table.
+#
 # Revision 1.1  2000/09/16 03:11:50  buddy
 # Initial revision
 #
@@ -758,7 +761,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	$(overwrite_table commission_modifier "
-		emp					internal_id		NOT NULL,
+		pay_to				internal_id		NOT NULL,
 		comm_type			type_id			NOT NULL,
 		pay_type			char(1)			NOT NULL,
 		modifier			percentage 		NOT NULL,
