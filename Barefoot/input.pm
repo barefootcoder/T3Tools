@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  2000/10/23 20:32:46  tryan
+# Changed 'return' test from $answer to ( $answer ne "" ), so
+# that the input 0 works.
+#
 # Revision 1.2  2000/08/28 21:12:40  buddy
 # first truly working version
 # implements get_yn() and input()
@@ -67,7 +71,7 @@ sub input
 	my ($prompt, $default) = @_;
 
 	local ($|) = 1;							# autoflush stdout
-	print $prompt;
+	print $prompt if $prompt;
 	print " (", $default, ")" if defined($default);
 	print "  " if defined($prompt);
 
