@@ -55,10 +55,19 @@ while (1)									# command "quit" will drop out
 		}
 		elsif ($status eq T3::TALKER_MESSAGE)
 		{
+			my $misdelivered = 1;
+			foreach my $user (split (',', $to))
+			{
+				if ($user eq $T3::username)
+				{
+					$misdelivered = 0;
+				}
+			}
 			print STDERR "misdelivered message; should have gone to $to\n"
-					and next unless $to eq $T3::username;
+					and next if $misdelivered;
+
 			$online{$from} = MESSAGE;
-			push @waiting_messages, "$from/$time/$message";
+			push @waiting_messages, "$from/$to/$time/$message";
 		}
 		elsif ($status eq T3::ERROR_MESSAGE)
 		{
@@ -100,15 +109,18 @@ while (1)									# command "quit" will drop out
 				{
 					# we'll just read one ... if there's more than one
 					# waiting message, you'll need to do multiple "get"s
-					my ($from, $time, $message)
+					my ($from, $to, $time, $message)
 							= split('/', shift @waiting_messages);
 					my @message_lines = decode_message($message);
+
+					# pretty up To field
+					my $addresses = ($to eq $T3::username)?"you":$to;
 
 					# build a full-screen format
 					my $cols = 80;			# _should_ try to get term width
 					my $format = '^' . '<' x ($cols - 4) . '~~';
-					print "Message from $from at ", scalar(localtime($time)),
-							":\n";
+					print "Message from $from to $addresses at ",
+							scalar(localtime($time)), ":\n";
 					foreach (@message_lines)
 					{
 						writeln($format, $_);
@@ -122,30 +134,47 @@ while (1)									# command "quit" will drop out
 					print "No waiting messages\n";
 				}
 			}
-			elsif ($command =~ /^send (.*)\s*$/)
+			elsif (($command eq "send") || ($command =~ /^send (.*)\s*$/))
 			{
-				my $to = $1;
+				# if we don't kill the impending alarm, you might timeout
+				# in the middle of typing your message ... trust me,
+				# it's very annoying ...
+				alarm 0;
 
-				# no messaging to people who don't exist
-				if (not exists $online{$to})
+				my $tolist;
+				if ($command eq "send")
 				{
-					print "Unrecognized user $to\n";
+					$tolist = input("To:");
 				}
 				else
 				{
-					# if we don't kill the impending alarm, you might timeout
-					# in the middle of typing your message ... trust me,
-					# it's very annoying ...
-					alarm 0;
-
-					# get a bunch of lines till they type ^D
-					my @lines = <STDIN>;
-					$current_message = T3::build_message($T3::username, $to,
-							T3::TALKER_MESSAGE, @lines);
-					# hop out so the outer loop will send the message
-					# (and reset the alarm for timeout)
-					die "breaking out";
+					$tolist = $1;
 				}
+
+				my $keepmsg = 1;
+				foreach my $to (split (',', $tolist))
+				{
+					# no messaging to people who don't exist
+					if (not exists $online{$to})
+					{
+						print "Unrecognized user $to\n";
+						print "Specify comma-delimited users only\n";
+						$keepmsg = 0;
+					}
+				}
+
+				if ($keepmsg)
+				{
+					# get a bunch of lines till they type ^D
+					print "Enter message, terminated with ^D:\n";
+					my @lines = <STDIN>;
+
+					$current_message = T3::build_message($T3::username, $tolist,
+							T3::TALKER_MESSAGE, @lines);
+				}
+				# hop out so the outer loop will send the message
+				# (and reset the alarm for timeout)
+				die "breaking out";
 			}
 			elsif ($command eq "refresh")
 			{
