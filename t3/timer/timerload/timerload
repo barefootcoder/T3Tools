@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  1998/12/17 04:08:25  gregg
+# Initial revision
+#
 # $Id$
 # $Revision$
 
@@ -14,7 +17,7 @@ srcdb=TIMERLOAD
 destdb=TIMER
 
 # get the raw data into Sybase
-# dbf2sybase *.DBF
+dbf2sybase *.DBF
 
 run_query -S$server -U$user -D$destdb <<-END
 
