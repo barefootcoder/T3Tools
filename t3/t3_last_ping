@@ -16,9 +16,10 @@ use Barefoot::input qw(input);
 
 
 my $opt = {};
-getopts('lo:', $opt);
+getopts('lo:n:', $opt);
 my $list_only = $opt->{l};
 my $older_than = $opt->{o};
+my $newer_than = $opt->{n};
 
 my %users;
 open(LOG, "/var/log/httpd/access_log") or die("can't open server log");
@@ -45,7 +46,8 @@ foreach my $user (sort { $users{$a} <=> $users{$b} } keys %users)
 	my $datetime = $users{$user};
 	# print "    $datetime\n";
 	$datetime =~ s/^(.*?)##//;
-	next unless not $older_than or $1 < time() - $older_than * 60;
+	next if $older_than and $1 > time() - $older_than * 60;
+	next if $newer_than and $1 < time() - $newer_than * 60;
 	print "$user";
 	print ": $datetime" unless $list_only;
 	print "\n";
