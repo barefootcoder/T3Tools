@@ -1,0 +1,85 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::date;
+use Barefoot::input qw(get_yn input);
+use Barefoot::timerdata;
+
+
+################
+#    main()    #
+################
+
+my $rows = timerdata::query_results("
+		select client, total_price
+		from profit_item
+	");
+die("couldn't access timer database") unless defined($rows);
+
+my $num_rows = @$rows;
+my $client = $rows->[0]->[0];
+my $total_price = 0;
+foreach my $row (@$rows)
+{
+	die("more than one client found in the profit items table")
+			unless $row->[0] eq $client;
+	my $price = $row->[1];
+	$price =~ s/,//g;
+	$total_price += $price;
+}
+print "\nInvoice for client $client: "
+		. "$num_rows rows totalling \$$total_price\n";
+exit 1 unless get_yn("Is this right?");
+
+my $inv_num = input("\nInvoice number:");
+my $bill_date = input("Billing date:");
+die("illegal date") unless date::isValid($bill_date);
+
+my $insert_query = "
+	insert invoice
+		(client, invoice_number, invoice_amount, invoice_billdate,
+				create_user, create_date)
+	values ('$client', '$inv_num', $total_price, '$bill_date',
+			'$::ENV{USER}', getdate())
+	go
+
+	update time_log
+	set invoice_id = i.invoice_id, chguser = '$::ENV{USER}',
+			chgdate = getdate()
+	from time_log tl, profit_item pi, invoice i
+	where tl.log_source = pi.log_source
+	and tl.log_id = pi.log_id
+	and i.invoice_number = '$inv_num'
+	go
+";
+
+timerdata::set_user($::ENV{USER});
+my $results = timerdata::run_query("
+	begin tran
+	go
+
+	$insert_query
+
+	rollback tran
+	go
+");
+die("mark failed <<$results>>") unless
+		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
+
+print "\nInitial attempt successful for invoice $inv_num, client $client,\n";
+print "    billing date $bill_date, affecting $num_rows rows\n";
+exit 1 unless get_yn("Proceed?");
+
+my $results = timerdata::run_query("
+	begin tran
+	go
+
+	$insert_query
+
+	commit tran
+	go
+");
+die("theoretically impossible error occurred <<$results>>") unless
+		$results =~ /^\(1 row affected\)\n\($num_rows rows? affected\)/;
+print "\nmark was successful\n";
