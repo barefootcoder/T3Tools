@@ -1,11 +1,11 @@
 object OptionsForm: TOptionsForm
-  Left = 660
-  Top = 241
+  Left = 498
+  Top = 268
   BorderIcons = []
   BorderStyle = bsSingle
   Caption = 'General Options'
-  ClientHeight = 326
-  ClientWidth = 442
+  ClientHeight = 387
+  ClientWidth = 450
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -48,8 +48,8 @@ object OptionsForm: TOptionsForm
   object TabOptions: TPageControl
     Left = 0
     Top = 29
-    Width = 442
-    Height = 297
+    Width = 450
+    Height = 358
     ActivePage = TalkerOptions
     Align = alClient
     Font.Charset = ANSI_CHARSET
@@ -61,7 +61,7 @@ object OptionsForm: TOptionsForm
     ParentFont = False
     TabOrder = 0
     object TalkerOptions: TTabSheet
-      Caption = ' &Talker '
+      Caption = ' Talker &Preferences'
       object Label1: TLabel
         Left = 18
         Top = 8
@@ -77,7 +77,7 @@ object OptionsForm: TOptionsForm
       end
       object Label2: TLabel
         Left = 226
-        Top = 56
+        Top = 104
         Width = 104
         Height = 14
         Caption = 'Contact Server Every'
@@ -90,7 +90,7 @@ object OptionsForm: TOptionsForm
       end
       object Label3: TLabel
         Left = 277
-        Top = 77
+        Top = 125
         Width = 43
         Height = 14
         Alignment = taRightJustify
@@ -104,7 +104,7 @@ object OptionsForm: TOptionsForm
       end
       object Label4: TLabel
         Left = 18
-        Top = 56
+        Top = 104
         Width = 59
         Height = 14
         Caption = 'Server URL:'
@@ -117,7 +117,7 @@ object OptionsForm: TOptionsForm
       end
       object Label5: TLabel
         Left = 18
-        Top = 152
+        Top = 200
         Width = 131
         Height = 14
         Caption = 'Message Divider in History:'
@@ -130,7 +130,7 @@ object OptionsForm: TOptionsForm
       end
       object Label6: TLabel
         Left = 226
-        Top = 152
+        Top = 200
         Width = 114
         Height = 14
         Caption = 'Message Window Font:'
@@ -143,7 +143,7 @@ object OptionsForm: TOptionsForm
       end
       object SetMessageFont: TSpeedButton
         Left = 370
-        Top = 169
+        Top = 217
         Width = 20
         Height = 20
         Hint = 'Select Message Font'
@@ -173,7 +173,7 @@ object OptionsForm: TOptionsForm
       end
       object Label9: TLabel
         Left = 18
-        Top = 104
+        Top = 152
         Width = 112
         Height = 14
         Caption = 'Got-a-Message Sound:'
@@ -186,7 +186,7 @@ object OptionsForm: TOptionsForm
       end
       object Label10: TLabel
         Left = 226
-        Top = 104
+        Top = 152
         Width = 85
         Height = 14
         Caption = 'Play Sound Every'
@@ -199,11 +199,50 @@ object OptionsForm: TOptionsForm
       end
       object Label11: TLabel
         Left = 277
-        Top = 125
+        Top = 173
         Width = 43
         Height = 14
         Alignment = taRightJustify
         Caption = 'Seconds'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label12: TLabel
+        Left = 18
+        Top = 304
+        Width = 299
+        Height = 14
+        Caption = 'Abort a communication event if no response from server after'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label13: TLabel
+        Left = 342
+        Top = 304
+        Width = 42
+        Height = 14
+        Caption = 'seconds'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label14: TLabel
+        Left = 18
+        Top = 52
+        Width = 70
+        Height = 14
+        Caption = 'User Location:'
         Font.Charset = ANSI_CHARSET
         Font.Color = clNavy
         Font.Height = -11
@@ -227,7 +266,7 @@ object OptionsForm: TOptionsForm
       end
       object RefreshFrequency: TEdit
         Left = 224
-        Top = 72
+        Top = 120
         Width = 33
         Height = 23
         Font.Charset = ANSI_CHARSET
@@ -241,7 +280,7 @@ object OptionsForm: TOptionsForm
       end
       object RefreshFrequencyChange: TUpDown
         Left = 257
-        Top = 72
+        Top = 120
         Width = 15
         Height = 23
         Associate = RefreshFrequency
@@ -253,7 +292,7 @@ object OptionsForm: TOptionsForm
       end
       object CloseOnSend: TCheckBox
         Left = 16
-        Top = 208
+        Top = 256
         Width = 193
         Height = 25
         Caption = 'Close Message window on Send'
@@ -267,7 +306,7 @@ object OptionsForm: TOptionsForm
       end
       object ServerURL: TEdit
         Left = 16
-        Top = 72
+        Top = 120
         Width = 185
         Height = 22
         Font.Charset = ANSI_CHARSET
@@ -281,7 +320,7 @@ object OptionsForm: TOptionsForm
       end
       object HistoryDivider: TEdit
         Left = 16
-        Top = 168
+        Top = 216
         Width = 185
         Height = 22
         Font.Charset = ANSI_CHARSET
@@ -295,7 +334,7 @@ object OptionsForm: TOptionsForm
       end
       object MessageFont: TEdit
         Left = 224
-        Top = 168
+        Top = 216
         Width = 145
         Height = 22
         AutoSize = False
@@ -311,7 +350,7 @@ object OptionsForm: TOptionsForm
       end
       object TestMode: TCheckBox
         Left = 346
-        Top = 73
+        Top = 121
         Width = 73
         Height = 25
         Caption = 'Test Mode'
@@ -339,7 +378,7 @@ object OptionsForm: TOptionsForm
       end
       object SelectMode: TCheckBox
         Left = 16
-        Top = 232
+        Top = 280
         Width = 377
         Height = 17
         Caption = 
@@ -355,7 +394,7 @@ object OptionsForm: TOptionsForm
       end
       object ReplaySound: TEdit
         Left = 224
-        Top = 120
+        Top = 168
         Width = 33
         Height = 23
         Hint = 'Set to 0 to play only once'
@@ -372,7 +411,7 @@ object OptionsForm: TOptionsForm
       end
       object ReplaySoundChange: TUpDown
         Left = 257
-        Top = 120
+        Top = 168
         Width = 16
         Height = 23
         Hint = 'Set to 0 to play only once'
@@ -388,7 +427,7 @@ object OptionsForm: TOptionsForm
       end
       object SoundOff: TCheckBox
         Left = 346
-        Top = 118
+        Top = 166
         Width = 73
         Height = 25
         Caption = 'No Sound'
@@ -403,7 +442,7 @@ object OptionsForm: TOptionsForm
       end
       object MessageSound: TComboBox
         Left = 16
-        Top = 120
+        Top = 168
         Width = 153
         Height = 22
         Font.Charset = ANSI_CHARSET
@@ -415,26 +454,283 @@ object OptionsForm: TOptionsForm
         ParentFont = False
         TabOrder = 13
       end
+      object CommTimeout: TEdit
+        Left = 319
+        Top = 302
+        Width = 20
+        Height = 18
+        AutoSize = False
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        TabOrder = 14
+        Text = '10'
+      end
+      object UserLocation: TEdit
+        Left = 16
+        Top = 68
+        Width = 185
+        Height = 22
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+        ParentFont = False
+        TabOrder = 15
+        Text = 'UserName'
+      end
     end
     object TimerOptions: TTabSheet
       Caption = ' &Timer '
       ImageIndex = 1
       TabVisible = False
     end
+    object TabSheet1: TTabSheet
+      Caption = 'Talker &Advanced'
+      ImageIndex = 2
+      object Label15: TLabel
+        Left = 34
+        Top = 28
+        Width = 263
+        Height = 14
+        Alignment = taRightJustify
+        Caption = 'Resend Messages not Acknowledged by Server After'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label16: TLabel
+        Left = 360
+        Top = 28
+        Width = 43
+        Height = 14
+        Caption = 'Seconds'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label17: TLabel
+        Left = 23
+        Top = 60
+        Width = 274
+        Height = 14
+        Alignment = taRightJustify
+        Caption = 'Resend Messages not Acknowledged by Recipient After'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label18: TLabel
+        Left = 360
+        Top = 60
+        Width = 37
+        Height = 14
+        Caption = 'Minutes'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label19: TLabel
+        Left = 71
+        Top = 92
+        Width = 226
+        Height = 14
+        Alignment = taRightJustify
+        Caption = 'Resend Messages not Read by Recipient After'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label20: TLabel
+        Left = 360
+        Top = 92
+        Width = 29
+        Height = 14
+        Caption = 'Hours'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label21: TLabel
+        Left = 47
+        Top = 148
+        Width = 250
+        Height = 14
+        Alignment = taRightJustify
+        Caption = 'Update Displayed List of Messages-in-Transit Every'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label22: TLabel
+        Left = 360
+        Top = 148
+        Width = 43
+        Height = 14
+        Caption = 'Seconds'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object ResendAfterNoRCVD: TEdit
+        Left = 304
+        Top = 24
+        Width = 33
+        Height = 23
+        Hint = 'Set to 0 for never resending'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 0
+        Text = '10'
+      end
+      object ResendAfterNoRCVDChange: TUpDown
+        Left = 337
+        Top = 24
+        Width = 15
+        Height = 23
+        Associate = ResendAfterNoRCVD
+        Min = 0
+        Max = 600
+        Position = 10
+        TabOrder = 1
+        Wrap = True
+      end
+      object ResendAfterNoDLVD: TEdit
+        Left = 304
+        Top = 56
+        Width = 33
+        Height = 23
+        Hint = 'Set to 0 for never resending'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 2
+        Text = '2'
+      end
+      object ResendAfterNoDLVDChange: TUpDown
+        Left = 337
+        Top = 56
+        Width = 15
+        Height = 23
+        Associate = ResendAfterNoDLVD
+        Min = 0
+        Max = 600
+        Position = 2
+        TabOrder = 3
+        Wrap = True
+      end
+      object ResendAfterNoREAD: TEdit
+        Left = 304
+        Top = 88
+        Width = 33
+        Height = 23
+        Hint = 'Set to 0 for never resending'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 4
+        Text = '2'
+      end
+      object ResendAfterNoREADChange: TUpDown
+        Left = 337
+        Top = 88
+        Width = 15
+        Height = 23
+        Associate = ResendAfterNoREAD
+        Min = 0
+        Max = 240
+        Position = 2
+        TabOrder = 5
+        Wrap = True
+      end
+      object UnconfsRefresh: TEdit
+        Left = 304
+        Top = 144
+        Width = 33
+        Height = 23
+        Hint = 'Set to 0 for never resending'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 6
+        Text = '5'
+      end
+      object UnconfsRefreshChange: TUpDown
+        Left = 337
+        Top = 144
+        Width = 15
+        Height = 23
+        Associate = UnconfsRefresh
+        Min = 1
+        Max = 15
+        Position = 5
+        TabOrder = 7
+        Wrap = True
+      end
+    end
   end
   object Panel1: TPanel
     Left = 0
     Top = 0
-    Width = 442
+    Width = 450
     Height = 29
     Align = alTop
     TabOrder = 1
     object Label8: TLabel
       Left = 8
       Top = 6
-      Width = 158
+      Width = 164
       Height = 14
-      Caption = 'Development Release version 13'
+      Caption = 'Development Release version 15b'
       Font.Charset = ANSI_CHARSET
       Font.Color = clNavy
       Font.Height = -11
@@ -443,7 +739,7 @@ object OptionsForm: TOptionsForm
       ParentFont = False
     end
     object Save: TBitBtn
-      Left = 380
+      Left = 388
       Top = 2
       Width = 25
       Height = 25
@@ -468,7 +764,7 @@ object OptionsForm: TOptionsForm
         FFFFFFFFFFFFFFFF0000}
     end
     object Cancel: TBitBtn
-      Left = 408
+      Left = 416
       Top = 2
       Width = 25
       Height = 25
@@ -501,7 +797,7 @@ object OptionsForm: TOptionsForm
     Font.Style = []
     MinFontSize = 0
     MaxFontSize = 0
-    Left = 316
-    Top = 249
+    Left = 372
+    Top = 305
   end
 end

@@ -1,9 +1,9 @@
 //---------------------------------------------------------------------------
-#include <vcl.h>
+//#include <vcl.h>
 #pragma hdrstop
 
 #include "MessagesImp.h"
-#include "MainFrm.h"
+
 
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
@@ -21,6 +21,7 @@ Message::Message (String xml_message)
 	parseXmlElement(xml_message, attr_set, message_text);
 
 	//convert attribute values to Message properties:
+	message_id = attr_set->Values["id"];
 	from = attr_set->Values["from"];
 	location = attr_set->Values["location"];
 	time = attr_set->Values["time"];
@@ -36,12 +37,13 @@ Message::Message (String xml_message)
 }
 //---------------------------------------------------------------------------
 
-Message::Message (String who_from, String who_to, String what_status,
-					String what_thread, String what_message_text)
+Message::Message (String what_id, String who_from, String who_to,
+				  String what_status, String what_thread, String what_message_text)
 {
 	//constructs Message object from discrete data
 	//(args must be passed by value because some may come from temp objects)
 
+	message_id = what_id;
 	from = who_from;
 	to = who_to;
 	status = what_status;
@@ -52,7 +54,7 @@ Message::Message (String who_from, String who_to, String what_status,
 }
 //---------------------------------------------------------------------------
 
-String Message::toXML ()
+String Message::toXML () const
 {
 	//creates XML message from a Message object
 	//this code may change based on changes to the structure of XML message
@@ -66,6 +68,7 @@ String Message::toXML ()
 	xmlEscape(encoded_message_text);
 
 	String xml = "<MESSAGE";
+	xml += ( " id=\"" + message_id + '\"');
 	xml += ( " from=\"" + from + '\"');
 	xml += ( " location=\"" + location + '\"');
 	xml += ( " time=\"" + time + '\"');
@@ -78,7 +81,7 @@ String Message::toXML ()
 }
 //---------------------------------------------------------------------------
 
-void Message::xmlEscape (String& what_text)
+void Message::xmlEscape (String& what_text) const
 {
 	for (int i = 1; i <= what_text.Length(); i++)
 	{
@@ -92,6 +95,11 @@ void Message::xmlEscape (String& what_text)
 		  case '\n' :
 			what_text.Delete(i, 1);
 			what_text.Insert("&#10;", i);
+			i += 4;
+			break;
+		  case '/' :
+			what_text.Delete(i, 1);
+			what_text.Insert("&#47;", i);
 			i += 4;
 			break;
 		  case '<' :
@@ -109,12 +117,17 @@ void Message::xmlEscape (String& what_text)
 			what_text.Insert("&quot;", i);
 			i += 5;
 			break;
+		  case '&' :
+			what_text.Delete(i, 1);
+			what_text.Insert("&amp;", i);
+			i += 4;
+			break;
 		}
 	}
 }
 //---------------------------------------------------------------------------
 
-void Message::xmlUnEscape (String& what_text)
+void Message::xmlUnEscape (String& what_text) const
 {
 	for (int i = 1; i <= what_text.Length(); i++)
 	{
@@ -130,6 +143,11 @@ void Message::xmlUnEscape (String& what_text)
 				what_text.Delete(i, 5);
 				what_text.Insert("\n", i);
 			}
+			else if (what_text.SubString(i, 5) == "&#47;")
+			{
+				what_text.Delete(i, 5);
+				what_text.Insert("/", i);
+			}
 			else if (what_text.SubString(i, 4) == "&lt;")
 			{
 				what_text.Delete(i, 4);
@@ -144,6 +162,11 @@ void Message::xmlUnEscape (String& what_text)
 			{
 				what_text.Delete(i, 6);
 				what_text.Insert("\"", i);
+			}
+			else if (what_text.SubString(i, 5) == "&amp;")
+			{
+				what_text.Delete(i, 5);
+				what_text.Insert("&", i);
 			}
 
 		}

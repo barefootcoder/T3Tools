@@ -3,17 +3,19 @@
 #define MessagesImpH
 //---------------------------------------------------------------------------
 
+#include <vcl.h>
+
 //---------------------------------------------------------------------------
 class Message
 {
 public:
 	Message () {}
 	Message (String xml_message);		//constructs Message from XML message
-	Message (String who_from, String who_to,		//constructs from data
+	Message (String what_id, String who_from, String who_to,	//const from data
 			String what_status, String what_thread, String what_message_text);
 
 	//key methods
-	String toXML ();					//turns Message into XML message
+	String toXML () const;					//turns Message into XML message
 
 	//key properties
 	String message_id;					//RFU
@@ -30,8 +32,8 @@ public:
 
 private:
 	//auxiliary methods
-	void xmlEscape (String& what_text);
-	void xmlUnEscape (String& what_text);
+	void xmlEscape (String& what_text) const;
+	void xmlUnEscape (String& what_text) const;
 
 
 };

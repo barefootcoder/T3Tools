@@ -8,19 +8,24 @@
 #include <sstream>
 
 #include "MainFrm.h"
+#include "IniOptions.h"
+#include "MessageMgr.h"
 #include "NewTimr.h"
 #include "TimerActionFrm.h"
 #include "MessageActionFrm.h"
 #include "OptionsFrm.h"
 #include "TestFrm.h"
+#include "TransThread.h"
+#include "UtilityDialg.h"
+#include "InTransitFrm.h"
 
 
-const int TIMER_DIGITS_WIDTH = 80;
-const int TIMER_ICONS_WIDTH = 212;
-const int SPACE_AFTER_DIGITS = 16;
-const int SPACE_BEFORE_NAMES = 2;
-const int DIGITS_PLUS_ICONS = TIMER_DIGITS_WIDTH + SPACE_AFTER_DIGITS
-												 + TIMER_ICONS_WIDTH;
+using namespace user_options;
+using namespace message_pump;
+
+//pointers to objects to be used by any units in application
+IniOptions* user_options::IniOpt;
+MessageMgr* message_pump::MessagePump;
 
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
@@ -30,6 +35,7 @@ TMainForm *MainForm;
 __fastcall TMainForm::TMainForm(TComponent* Owner)
 	: TForm(Owner)
 {
+
 	KeyPreview = true;		//for form to respond to keyboard events
 
 	CurrTimer = TimerCollection.end();	//no timer is active at startup
@@ -38,14 +44,25 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 	available = true;
 	blink = false;
 	no_timer_update = false;
+	have_messages = false;
+	busy_on_shut_down = false;
+	message_base_id = 0x0ui64;		//****SET TO 0x0ui64 BEFORE RELEASE****
 
-	ini_settings = new TStringList();
-	readIniFile();						//read ini settings
+	initApp();							//read ini settings, etc.
 
-	//set after reading ini:
+	//set after reading ini settings:
+
 	contacts_width = Contacts->Width;
-	hist_buffer = new TStringList();
-	hist_buffer->LoadFromFile(hist_filename);
+
+	MessagePump = new MessageMgr(hist_filename.c_str());
+	pUserCollection = &(MessagePump->UserCollection);
+	pMessageBuffer = &(MessagePump->MessageBuffer);
+	pStatusBuffer = &(MessagePump->StatusBuffer);
+	puser_list = &(MessagePump->user_list);
+
+	//seed initial user names from values read from ini file
+	for (int i = 0; i < puser_list->size(); i++)
+		Contacts->Items->Add((*puser_list)[i].c_str());
 
 	if (hidden_timer_panes[0])  HideTimerNames->Picture = ShowArrow->Picture;
 	else  HideTimerNames->Picture = HideArrow->Picture;
@@ -67,9 +84,9 @@ __fastcall TMainForm::TMainForm(TComponent* Owner)
 void __fastcall TMainForm::FormShow(TObject *Sender)
 {
 
-	Blinker->Enabled = true;		//don't start Blinker until form is ready
-
 	ImOnClick(ImOn);				//immediately go on-line at startup
+
+	Blinker->Enabled = true;		//can start Blinker now that form is ready
 
 	//if no hidden panes, create new init value (otherwise retains ini value):
 	//(this will reset proper width of timer names if it gets out of whack)
@@ -83,35 +100,45 @@ void __fastcall TMainForm::FormClose(TObject *Sender, TCloseAction &Action)
 {
 	static bool dejavu = false;
 
-	if (dejavu) return;		//this is to prevent code below to be called twice
+	if (dejavu) return;	//this is to prevent code below from being called twice
 	dejavu = true;
 
-	//check whether there are any messages in SendBuffer
-	if (!SendBuffer.empty())
-	{
-		TMsgDlgButtons buttons;
-		buttons << mbNo << mbYes;
-		int check;
-		check = MessageDlg(String("Due to communication problems, the last ") +
-							SendBuffer.size() + " messages "
-							"you sent have not yet been delivered.\n Closing the "
-							"program now will terminate all attempts to deliver "
-							"these messages. \nClose Anyway?",
-							mtConfirmation, buttons, 0);
-		if (check != mrYes)
-		{
-			Action = caNone;		//do not close this form
-			dejavu = false;			//so this code can be called again
-			return;					//don't execute code below
-		}
-	}
+	if (MessagePump->transfer_active)	//we're currently communicating, so
+		busy_on_shut_down = true;		//we'll have to wait for it too
 
 	if (online)
 		ImOnClick(ImOn);	//if user still on-line, press on/off-line button
 
-	writeIniFile();			//save ini settings
-	delete ini_settings;
-	delete hist_buffer;
+
+	//show closing dialog and check whether there are messages in SendBuffer
+
+	if (MessagePump->transfer_active)
+		if (UtilityDialog->ShowModal() != mrOk)		//closed by Blinker
+		{
+			TMsgDlgButtons buttons;
+			buttons << mbYes << mbNo;
+			int check = MessageDlg("Due to communication problems, there are "
+							"still messages that have not been sent.\n"
+							"Closing T3Client now will "
+							"terminate further attempts to deliver "
+							"these messages.\n\nClose Anyway?",
+							mtConfirmation, buttons, 0);
+			if (check != mrYes)
+			{
+				Action = caNone;		//do not close this form
+				dejavu = false;			//so this code can be called again
+				busy_on_shut_down = false;
+				ImOnClick(ImOn);		//go back on-line
+				return;					//don't execute code below
+			}
+		}
+			//NOTE: due to next line will probably not need above re-logon anymore -- just a notice to user
+			//that's because every attempted-to-send message is in unconfirmed colection
+	//MessagePump->saveUnconfirmed();	//now done at every ping, etc. for crash protection
+
+	cleanupApp();			//save ini settings, etc
+
+	delete MessagePump;
 }
 //---------------------------------------------------------------------------
 
@@ -225,12 +252,12 @@ void __fastcall TMainForm::ContactsDrawItem(TWinControl *Control,
 	  int Index, TRect &Rect, TOwnerDrawState State)
 {
 
-	map<String, Message>::iterator it;				//who is on?
-	it = UserCollection.find(Contacts->Items->Strings[Index]);
+	map<string, Message>::iterator it;				//who is on?
+	it = pUserCollection->find(Contacts->Items->Strings[Index].c_str());
 
-	multimap<String, Message>::iterator mess_it;	//who has sent messages?
-	mess_it = MessageBuffer.find(Contacts->Items->Strings[Index]);
-	bool has_message = (mess_it != MessageBuffer.end());
+	multimap<string, Message>::iterator mess_it;	//who has sent messages?
+	mess_it = pMessageBuffer->find(Contacts->Items->Strings[Index].c_str());
+	bool has_message = (mess_it != pMessageBuffer->end());
 
 
 	int i;
@@ -568,14 +595,14 @@ void __fastcall TMainForm::TimersListMouseMove(TObject *Sender,
 	  TShiftState Shift, int X, int Y)
 {
 	//called both by Contacts and Timers lists
-
+												
 	TListBox* WhatList = (TListBox*) Sender;
 
 	int item_number = (Y / WhatList->ItemHeight) +
 										getScrollPosition(WhatList->Handle);
 
-	String temp_str;
 	String empty = "";
+	String temp_str = empty;
 
 	if (item_number < WhatList->Items->Count)
 	{
@@ -583,9 +610,10 @@ void __fastcall TMainForm::TimersListMouseMove(TObject *Sender,
 			temp_str = WhatList->Items->Strings[item_number];
 		else	//if contacts
 		{
-			map<String, Message>::iterator it;
-			it = UserCollection.find(Contacts->Items->Strings[item_number]);
-			temp_str = it->second.message_text;
+			map<string, Message>::iterator it;
+			it = pUserCollection->find(Contacts->Items->Strings[item_number].c_str());
+			if (it != pUserCollection->end())
+				temp_str = it->second.message_text;
 		}
 	}
 	else
@@ -612,9 +640,65 @@ void __fastcall TMainForm::TimersListMouseMove(TObject *Sender,
 
 void __fastcall TMainForm::BlinkerTimer(TObject *Sender)
 {
+	//fast timer (< 0.5 secs) to do any interface updates needing quick refresh
+
+	have_messages = !pMessageBuffer->empty();
+
+	//process any status messages that may exist
+	if (!pStatusBuffer->empty())
+	{
+		map<string, Message>::iterator it;
+		for (it = pStatusBuffer->begin(); it != pStatusBuffer->end(); it++)
+		{
+			//if we still don't have first message id, get it now if available
+			if (message_base_id == 0x0ui64 && it->second.status == "ID")
+			{
+				string id_value = it->second.message_id.c_str();
+				if (id_value.empty())
+					id_value = "0";
+
+				if (!(istringstream(id_value) >> hex >> message_base_id))
+					message_base_id = 0x0ui64;	//if assignment fails, guarantee 0
+
+				pStatusBuffer->erase(it);
+				//we have id, so immediately issue IMON
+				sendStatusMessage(available ? "IMON" : "IMBUSY");
+			}
+
+			//else if () -- add here other statuses that may need processing
+		}
+	}
+
+
+	if (MessagePump->thread_finished)	//true once for every communication event
+	{
+
+		//update status bar
+		status1 = "";
+		StatBar->Refresh();
+
+		//keep contacts display updated, since it can change w/ ea comm
+		doContactMaintenance();
+
+		MessagePump->thread_finished = false;	//rearm for next comm use
+
+		//next code needs to be after above because it may start another comm
+		//this 'if' is only meaningful during shutdown when UtilityDialog is up
+		if (busy_on_shut_down) //don't close it yet, pending comm just ended
+		{
+			busy_on_shut_down = false;		//dialog will close after next comm
+			sendStatusMessage("IMOFF");		//which we need to regenerate
+		}
+		else if (MessagePump->SendBuffer.empty())
+			UtilityDialog->ModalResult = mrOk;
+		else
+			UtilityDialog->ModalResult = mrCancel;
+	}
+
+
 	blink = !blink;
 
-	if (!MessageBuffer.empty())
+	if (have_messages)
 	{
 		//causes a repaint of contacts -- don't use, use Refresh() instead
 		//if (Contacts->Items->Count > 0)
@@ -988,15 +1072,19 @@ void __fastcall TMainForm::TestButtonClick(TObject *Sender)
 
 	delete attrs;  */
 
-	ShowMessage(getScrollPosition(Contacts->Handle));
+	//ShowMessage(getScrollPosition(Contacts->Handle));
+	//setScrollPosition(Contacts->Handle, 1);
 
-	setScrollPosition(Contacts->Handle, 1);
+	//ShowMessage("Before Thread");
+	//TransferThread *test = new TransferThread(false);
+	//ShowMessage("After Thread");
 
 }
 //---------------------------------------------------------------------------
 
 void TMainForm::displayTestStuff (int what_test, String whatever)
 {
+	//used for any kind of data display -- so keep this
 
 	if (what_test == 1)		//this test displays whatever talker server returns
 	{
@@ -1004,7 +1092,14 @@ void TMainForm::displayTestStuff (int what_test, String whatever)
 		TestForm->ShowWhatever->Lines->Add(whatever);
 		TestForm->ShowWhatever->Lines->Add("-----------------------");
 	}
-
+	else if (what_test == 0)	//t3client shutting down - not currently used
+	{
+		TestForm->Caption = "Shutting Down";
+		TestForm->Show();
+		TestForm->ShowWhatever->Font->Color = clRed;
+		TestForm->ShowWhatever->Font->Size = 12;
+		TestForm->ShowWhatever->Lines->Add(whatever);
+	}
 
 }
 //---------------------------------------------------------------------------
@@ -1082,10 +1177,10 @@ void TMainForm::openMessageForm (int what_item)
 
 void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 {
-	multimap<String, Message>::iterator it;
-	it = MessageBuffer.find(MessageActionForm->user);
+	multimap<string, Message>::iterator it;
+	it = pMessageBuffer->find(MessageActionForm->user.c_str());
 
-	if (it != MessageBuffer.end())		//if there's a message from this user
+	if (it != pMessageBuffer->end())	//if there's a message from this user
 	{
 		MessageActionForm->TheMessage->Text = it->second.message_text;
 		MessageActionForm->last_read_message = it->second;
@@ -1108,9 +1203,16 @@ void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 
 		MessageActionForm->Caption = title_bar;
 
-		MessageBuffer.erase(it);
+		//send confirmation that message has been read
+		//build status message to send out (the 'from' of received will now be 'to')
+		Message trans_out(it->second.message_id, IniOpt->getValue("user_name").c_str(),
+					it->second.from, "NORMAL_READ", "", "");
+		trans_out.location = IniOpt->getValue("user_location").c_str();
+		ferryMessage(trans_out);
+
+		pMessageBuffer->erase(it);
 	}
-				  
+
 	//display the message subject/thread:
 	String tempstr = MessageActionForm->last_read_message.thread;
 
@@ -1118,6 +1220,7 @@ void TMainForm::readMessage (TMessageActionForm* MessageActionForm)
 		tempstr.Insert(" ", loc);
 
 	MessageActionForm->Topic->Text = tempstr;
+
 
 }
 //---------------------------------------------------------------------------
@@ -1127,10 +1230,18 @@ void TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 {
 	//send a message
 
-	/* TODO 4 -oJay -cTalker : 
+	/* TODO 4 -cTalker :
 	Simplify sendMessage() by reducing to a single arg, Message
 	-- requires adding a makeMessage() method to MessageActionForm that does the stuff done here,
 	then that form's send and broadcast simply passes the Message to sendMessage() */
+
+	if (message_base_id == 0x0ui64)
+	{
+		ShowMessage("Messages cannot be sent yet because authentication with "
+					"server is not completed. Please wait a few seconds and "
+					"try again.");
+		return;
+	}
 
 	String send_to;
 
@@ -1153,27 +1264,24 @@ void TMainForm::sendMessage (TMessageActionForm* MessageActionForm, int what_ite
 							MessageActionForm->last_read_message.message_text);
 	}
 
-	Message trans_out(ini_settings->Values["user_name"], send_to,
+	Message trans_out("", IniOpt->getValue("user_name").c_str(), send_to,
 					"NORMAL", subject, MessageActionForm->TheMessage->Text);
-	String response = doTransfer(trans_out);
 
-	if (response != CONNECT_ERROR)		//if comm w/ server did not fail
+	trans_out.location = IniOpt->getValue("user_location").c_str();
+
+	stringstream mess_id;
+	mess_id << hex << message_base_id++;
+	trans_out.message_id = mess_id.str().c_str();
+
+	//assign now-time if the time is empty
+	if (!trans_out.time.Length())
 	{
-		processServerTrans(response);
-	}
-	else
-	{
-		SendBuffer.push_back(trans_out);
-		ShowMessage("Unable to confirm message transmission. \nAttempts to resend "
-					"message will continue automatically until receipt"
-					" is confirmed by the server.");
+		time_t t;
+		time(&t);
+		trans_out.time = t;
 	}
 
-	//copy to history
-	static String last_message("");		//to prevent multistore of broadcasts
-	if (last_message != MessageActionForm->TheMessage->Text)
-		addToHistory(trans_out);
-	last_message = MessageActionForm->TheMessage->Text;		//reset
+	ferryMessage(trans_out);
 
 }
 //---------------------------------------------------------------------------
@@ -1187,33 +1295,17 @@ void TMainForm::broadcastMessage (TMessageActionForm* MessageActionForm)
 }
 //---------------------------------------------------------------------------
 
-void TMainForm::addToHistory(Message& what_messg)
+void TMainForm::sendStatusMessage (String what_status)
 {
-	//assign now-time if the time is empty (as in a just-sent message)
-	if (!what_messg.time.Length())
-	{
-		time_t t;
-		time(&t);
-		what_messg.time = t;
-	}
+	//called by other functions to send any kind of content-free status message
 
-	//copy to history
-	String mess_rec = what_messg.toXML();
+	Message trans_out("", IniOpt->getValue("user_name").c_str(), "",
+					what_status, "", IniOpt->getValue("user_status").c_str());
 
-	ofstream history(hist_filename.c_str(), ios_base::app);
+	trans_out.location = IniOpt->getValue("user_location").c_str();
+							
+	ferryMessage(trans_out);
 
-	history << mess_rec.c_str() << endl;
-	history.close();
-	
-	hist_buffer->Add(mess_rec);			//keep sync'd with file
-}
-//---------------------------------------------------------------------------
-
-String TMainForm::DataCGI(String WhatName, String WhatValue)
-//encodes data in URLencoded format -- returns the encoded data in the format "name=value"
-{
-  URLencoder->InputString = WhatValue;
-  return ( WhatName + '=' + URLencoder->Encode );
 }
 //---------------------------------------------------------------------------
 
@@ -1221,7 +1313,7 @@ void __fastcall TMainForm::ImOnClick(TObject *Sender)
 {
 	//toggle on/off-line for messaging purposes
 
-	if (ini_settings->Values["user_name"] == "")
+	if (IniOpt->getValue("user_name") == "")
 	{
 		ShowMessage("Please enter a UserName in General Options.");
 		return;
@@ -1230,21 +1322,19 @@ void __fastcall TMainForm::ImOnClick(TObject *Sender)
 	online = !online;
 	available = true;				//this always resets available
 
-	String status = online ? "IMON" : "IMOFF";
+	MessageTimer->Enabled = online;	//ping is on only when user is on-line
 
+	String status = online ? "LOGON" : "LOGOFF";
 
-	Message trans_out(ini_settings->Values["user_name"], "",
-							status, "", ini_settings->Values["user_status"]);
-	String ServerResponse = doTransfer(trans_out);
+	sendStatusMessage(status);
 
-	if (ServerResponse != CONNECT_ERROR)
-	{
-		ImOn->Picture = online ? ImageOn->Picture : ImageOff->Picture;
-		processServerTrans(ServerResponse);
-	}
-	else
-		ShowMessage("No acknowledgment received from server. Please try"
-					" to update your on-line status again.");
+	//this now only means that an update was requested -- not necessarily ack'd
+	ImOn->Picture = online ? ImageOn->Picture : ImageOff->Picture;
+
+	if (status == "LOGOFF")
+		message_base_id = 0x0ui64;	//then base id is no longer valid
+
+	doContactMaintenance();		//for immediate refresh w/o waiting for Blinker
 }
 //---------------------------------------------------------------------------
 
@@ -1259,188 +1349,36 @@ void __fastcall TMainForm::ImOnMouseDown(TObject *Sender,
 
 		String status = available ? "IMON" : "IMBUSY";
 
+		sendStatusMessage(status);
 
-		Message trans_out(ini_settings->Values["user_name"], "",
-							status, "", ini_settings->Values["user_status"]);
-		String ServerResponse = doTransfer(trans_out);
-
-		if (ServerResponse != CONNECT_ERROR)
-		{
-			ImOn->Picture = available ? ImageOn->Picture : ImageBusy->Picture;
-			processServerTrans(ServerResponse);
-		}
-		else
-			ShowMessage("No acknowledgment received from server. Please try"
-					" to update your on-line status again.");
-
+		//this now only signals that status change was *requested*
+		ImOn->Picture = available ? ImageOn->Picture : ImageBusy->Picture;
 	}
 }
 //---------------------------------------------------------------------------
 
-String TMainForm::doTransfer (Message& trans_out)
-{
-	//basic communication exchange -- sends a Transmission to server and
-	//receives a Transmission from server
-
-	String xml_trans = trans_out.toXML();
-
-	xml_trans.Insert("DATA=", 1);	//add "DATA=" to beginning of message string
-
-	String cgi_exe = ini_settings->Values["server_url"];
-
-	String trans_in = CONNECT_ERROR;		//default
-	WebConnection->Body = CONNECT_ERROR;	//default
-
-	status1 = CONNECTING_TO_SERVER;
-	StatBar->Refresh();
-
-	talk_comm_error = true;		//default; will also set to true if comm failure
-	int pingct = 0;
-	while (talk_comm_error && pingct < 10)	//try to connect to server up to 10X
-	{
-		try
-		{
-			WebConnection->Post(cgi_exe, xml_trans);
-							//will timeout and raise exception if no response
-			trans_in = WebConnection->Body;
-			talk_comm_error = false;	//if got here, connection was successful
-		}
-		catch(...)
-		{
-			talk_comm_error = true;		//redundant since also set by OnFailure
-			pingct++;
-		}
-	}
-
-	//Currently, valid strings received from server must start w/  "<MESSAGE"
-	//  -- if that's not the case, then an error occurred:
-	//TODO -cTalker : MainFrm should not know about format of "<MESSAGE" string
-
-	if ( talk_comm_error || trans_in.SubString(1, 8) != "<MESSAGE" )
-		trans_in = CONNECT_ERROR;
-
-	//update status bar
-	if (trans_in == CONNECT_ERROR)		
-		status1 = CONNECT_ERROR_STATUS;
-	else
-		status1 = "";
-	StatBar->Refresh();
-
-	return trans_in;
-}
-//---------------------------------------------------------------------------
-
-void __fastcall TMainForm::WebConnectionFailure(CmdType Cmd)
-{
-	talk_comm_error = true;
-}
-//---------------------------------------------------------------------------
-
-void TMainForm::processServerTrans (String ServerResponse)
-{
-	//parses a set of messages received from server and acts on them as needed
-
-	if (OptionsForm->TestMode->Checked)        //for Testing Only
-		displayTestStuff(1, ServerResponse);
-
-	TStringList* message_set = new TStringList();
-	message_set->Text = ServerResponse;
-
-	//scan list of messages (lines), and remove junk ones
-	for (int i = 0; i < message_set->Count; i++)
-	{
-		if (!message_set->Strings[i].Pos("MESSAGE"))
-		{
-			message_set->Delete(i--);	//lower i because next one moves up
-		}
-	}
-
-	if (message_set->Count == 0)		//if all lines were junk
-	{           						//there's nothing to do -- abort
-		delete message_set;
-		return;
-	}
-
-	UserCollection.clear();		//empty local user collection,
-								//we'll build a new updated one
-
-	for (int i = 0; i < message_set->Count; i++)
-	{
-		Message new_message(message_set->Strings[i]);
-
-		if (new_message.status == "NORMAL")
-		{
-			//add to message buffer
-			MessageBuffer.insert(make_pair(new_message.from, new_message));
-			//if so selected, play sound to indicate message arrival
-			if (ini_settings->Values["sound_none"] == "0")
-			{
-				//play sound
-				playSound();
-			}
-			//copy to history
-			addToHistory(new_message);
-		}
-		else //if (new_message.from != ini_settings->Values["user_name"]) //!self -- self is now OK
-		{
-			//these are the "IMON" and "IMOFF" messages
-			//add all contacts to collection
-			UserCollection.insert(make_pair(new_message.from, new_message));
-			//and to contact display if not already there
-			if (Contacts->Items->IndexOf(new_message.from) == -1)
-				Contacts->Items->Add(new_message.from);
-		}
-	}
-
-	//delete from display any contacts that are no longer in collection
-	map<String, Message>::iterator it;
-	for (int i = 0; i < Contacts->Items->Count; i++)
-	{
-		it = UserCollection.find(Contacts->Items->Strings[i]);
-		if (it == UserCollection.end())
-			Contacts->Items->Delete(i);
-	}
-
-	//if any contacts sent a message, they should be moved to the top
-	for (multimap<String, Message>::iterator mit = MessageBuffer.begin();
-									mit != MessageBuffer.end(); mit++)
-	{
-		//move from current position to top position:
-		Contacts->Items->Move(Contacts->Items->IndexOf(mit->first), 0);
-		//and scroll to the top so it's obvious a new message arrived
-		setScrollPosition(Contacts->Handle, 0);
-    }
-
-	//causes a repaint without flicker
-	//if (Contacts->Items->Count > 0)  //don't use this, use Refresh()
-	//	Contacts->Items->Strings[0] = Contacts->Items->Strings[0];
-	Contacts->Refresh();
-
-	delete message_set;
-}
-//---------------------------------------------------------------------------
 void __fastcall TMainForm::MessageTimerTimer(TObject *Sender)
 {
 	//if user is on-line, periodically issue IMON message to server
 
-	if (online)
+	MessagePump->resendMessages();	//check for resends - will also go now, if any
+
+	if (online)			//if is redundant since offline disables MessageTimer
 	{
 		String status;
 		status = available ? "IMON" : "IMBUSY";
 
-		Message trans_out(ini_settings->Values["user_name"], "",
-							status, "", ini_settings->Values["user_status"]);
-		String ServerResponse = doTransfer(trans_out);
+		//but if there's no id, just keep sending LOGON
+		if (!message_base_id) status = "LOGON";
 
-		if (ServerResponse != CONNECT_ERROR)
-			processServerTrans(ServerResponse);
+		sendStatusMessage(status);
 
-		//if so selected, play sound to indicate that messages are in buffer
+		//if so selected, play sound to indicate if recvd messages are in buffer
 		static int secs_since_last_sound = 0;
-		if (!MessageBuffer.empty() && ini_settings->Values["sound_none"] == "0")
+		if (have_messages && IniOpt->getValue("sound_none") == "0")
 		{
 			secs_since_last_sound += (MessageTimer->Interval / 1000);
-			int ini_secs = ini_settings->Values["sound_interval"].ToIntDef(180);
+			int ini_secs = IniOpt->getValueInt("sound_interval", 180);
 			if (ini_secs != 0  &&  secs_since_last_sound >= ini_secs)
 			{
 				//play sound
@@ -1452,28 +1390,61 @@ void __fastcall TMainForm::MessageTimerTimer(TObject *Sender)
         	secs_since_last_sound = 0;
 	}
 
-	//also attempt to send any messages that may still be in SendBuffer
-	//(it is not necessary for user to be on-line)
-
-	if (!SendBuffer.empty())
-	{
-		for (int i = 0; i < SendBuffer.size(); i++)
-        {
-			String ServerResponse = doTransfer(SendBuffer[i]);
-
-			if (ServerResponse != CONNECT_ERROR)
-			{
-				SendBuffer.erase(SendBuffer.begin() + i--);
-				processServerTrans(ServerResponse);
-			}
-		}
-
-		
-	}
 
 	//reset interval in case it has changed
 	MessageTimer->Interval =
-		ini_settings->Values["server_refresh_interval"].ToIntDef(30) * 1000;
+					IniOpt->getValueInt("server_refresh_interval", 30) * 1000;
+
+}
+//---------------------------------------------------------------------------
+void TMainForm::ferryMessage(Message what_messg)
+{
+	//this is the output gateway for messages of any status that need to
+	//go out.  all functions with messages to go out must call ferryMessage()
+
+	MessagePump->initTransfer(what_messg);
+
+
+	if (MessagePump->transfer_active)
+	{
+		status1 = CONNECTING_TO_SERVER;
+		StatBar->Refresh();
+	}
+
+}
+//---------------------------------------------------------------------------
+
+void TMainForm::doContactMaintenance ()
+{
+	//maintemance of Contacts list to catch up with received messages, etc.
+
+	map<string, Message>::const_iterator it;
+
+	//delete from display any contacts that are no longer in collection
+	for (int i = 0; i < Contacts->Items->Count; i++)
+	{
+		it = pUserCollection->find(Contacts->Items->Strings[i].c_str());
+		if (it == pUserCollection->end())
+			Contacts->Items->Delete(i);
+	}
+	for (it = pUserCollection->begin(); it != pUserCollection->end(); it++)
+	{
+		//add to contact display any contacts not yet there
+		if (Contacts->Items->IndexOf(it->first.c_str()) == -1)
+			Contacts->Items->Add(it->first.c_str());
+	}
+
+
+	//move to top any contacts from which a message was received
+	for (it = pMessageBuffer->begin(); it != pMessageBuffer->end(); it++)
+	{
+		//move from current position to top position:
+		Contacts->Items->Move(Contacts->Items->IndexOf(it->first.c_str()), 0);
+		//and scroll to the top so it's obvious a new message arrived
+		setScrollPosition(Contacts->Handle, 0);
+	}
+
+	Contacts->Refresh();
 
 }
 //---------------------------------------------------------------------------
@@ -1488,9 +1459,11 @@ void __fastcall TMainForm::OptionsClick(TObject *Sender)
 //	METHODS TO MANAGE INI FILE AND EQUIVALENT MEMORY BUFFER
 //---------------------------------------------------------------------------
 
-void TMainForm::readIniFile ()
+void TMainForm::initApp ()
 {
 	//reads ini file and sets values accordingly
+
+	String ini_filename;
 
 	//add HOME path to filename if it exists
 	if (getenv(HOME.c_str()))
@@ -1503,35 +1476,36 @@ void TMainForm::readIniFile ()
 		ini_filename = INIFILENAME;
 		hist_filename = HISTFILENAME;
 	}
-
+					
 	try
 	{
-		ini_settings->LoadFromFile(ini_filename);
+		IniOpt = new IniOptions(ini_filename.c_str());
 	}
 	catch(...)
 	{
-		;
+		ShowMessage(String("Unable to read ") + INIFILENAME );
 	}
 
 	//General Options, other forms positions, etc. are done in respective
 	//forms (MessageActionForm, OptionsForm) -- they must exist first anyway
-
-	//recover the contact list order
-	String users = ini_settings->Values["contact_order"];
-	int pos;
-	do
-	{
-		pos = users.Pos(",");
-		String next = pos ? users.SubString(1, pos - 1) : users;
-		users.Delete(1, pos);
-		Contacts->Items->Add(next);
-	}
-	while (pos);
+											  
 
 	//set main window size and position from ini file
-	if (ini_settings->Values["mainform_left"] != "")	//otherwise, it's 1st time
+	if (IniOpt->getValue("mainform_left") != "")	//otherwise, it's 1st time
 	{
 		MainForm->Position = poDesigned;
+		MainForm->Left = IniOpt->getValueInt("mainform_left", MainForm->Left);
+		MainForm->Top = IniOpt->getValueInt("mainform_top", MainForm->Top);
+		MainForm->Width = IniOpt->getValueInt("mainform_width", MainForm->Width);
+		MainForm->Height = IniOpt->getValueInt("mainform_height", MainForm->Height);
+		Contacts->Width = IniOpt->getValueInt("talker_width", Contacts->Width);
+		timernames_width = IniOpt->getValueInt("timernames_width", 50);
+		hidden_timer_panes[0] = IniOpt->getValueInt("hide_timer_names", 0);
+		hidden_timer_panes[1] = IniOpt->getValueInt("hide_timer_digits", 0);
+		hidden_timer_panes[2] = IniOpt->getValueInt("hide_timer_icons", 0);
+
+
+		/*
 		MainForm->Left = ini_settings->Values["mainform_left"].ToIntDef(MainForm->Left);
 		MainForm->Top = ini_settings->Values["mainform_top"].ToIntDef(MainForm->Top);
 		MainForm->Width = ini_settings->Values["mainform_width"].ToIntDef(MainForm->Width);
@@ -1541,12 +1515,13 @@ void TMainForm::readIniFile ()
 		hidden_timer_panes[0] = ini_settings->Values["hide_timer_names"].ToIntDef(0);
 		hidden_timer_panes[1] = ini_settings->Values["hide_timer_digits"].ToIntDef(0);
 		hidden_timer_panes[2] = ini_settings->Values["hide_timer_icons"].ToIntDef(0);
+		*/
 	}
 
 }
 //---------------------------------------------------------------------------
 
-void TMainForm::writeIniFile ()
+void TMainForm::cleanupApp ()
 {
 	//save current user list order
 	String user_list;
@@ -1556,8 +1531,23 @@ void TMainForm::writeIniFile ()
 		if (Contacts->Items->Count > i + 1)
 			user_list += ',';
 	}
-	ini_settings->Values["contact_order"] = user_list;
 
+	bool save_to_ini = true;
+	IniOpt->setValue("contact_order", user_list.c_str(), save_to_ini);
+	//ini_settings->Values["contact_order"] = user_list;
+
+	//save current size and position of main window
+	IniOpt->setValueInt("mainform_left", MainForm->Left, save_to_ini);
+	IniOpt->setValueInt("mainform_top", MainForm->Top, save_to_ini);
+	IniOpt->setValueInt("mainform_width", MainForm->Width, save_to_ini);
+	IniOpt->setValueInt("mainform_height", MainForm->Height, save_to_ini);
+	IniOpt->setValueInt("talker_width", Contacts->Width, save_to_ini);
+	IniOpt->setValueInt("timernames_width", timernames_width, save_to_ini);
+	IniOpt->setValueInt("hide_timer_names", (int) hidden_timer_panes[0], save_to_ini);
+	IniOpt->setValueInt("hide_timer_digits", (int) hidden_timer_panes[1], save_to_ini);
+	IniOpt->setValueInt("hide_timer_icons", (int) hidden_timer_panes[2], save_to_ini);
+
+	/*
 	//save current size and position of main window
 	ini_settings->Values["mainform_left"] = MainForm->Left;
 	ini_settings->Values["mainform_top"] = MainForm->Top;
@@ -1568,9 +1558,12 @@ void TMainForm::writeIniFile ()
 	ini_settings->Values["hide_timer_names"] = (int) hidden_timer_panes[0];
 	ini_settings->Values["hide_timer_digits"] = (int) hidden_timer_panes[1];
 	ini_settings->Values["hide_timer_icons"] = (int) hidden_timer_panes[2];
+	*/
 
 	//write to file, updating current user options as well
-	ini_settings->SaveToFile(ini_filename);
+	//ini_settings->SaveToFile(ini_filename);
+
+	delete IniOpt;
 }
 //---------------------------------------------------------------------------
 
@@ -1605,7 +1598,7 @@ void TMainForm::playSound()
 	try
 	{
 		SoundPlayer->FileName =
-			getPathFilename(ini_settings->Values["sound_file"], ".wav");
+			getPathFilename(IniOpt->getValue("sound_file").c_str(), ".wav");
 
 		SoundPlayer->Open();
 		SoundPlayer->Wait = true;
@@ -1617,7 +1610,7 @@ void TMainForm::playSound()
 	{
 		;	//sound cannot play if there's no hardware, etc., so do nothing
 			//unless we're in test mode:
-		if (OptionsForm->TestMode->Checked)
+		if ((IniOpt->getValue("test_mode") == "1"))
 			ShowMessage("Unable to play sound.");
 	}
 
@@ -1672,6 +1665,12 @@ void TMainForm::setScrollPosition(HWND handle, short int pos)
 
 	SendMessage(handle, WM_VSCROLL, *wpar, NULL);
 
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TMainForm::InTransitClick(TObject *Sender)
+{
+	InTransitForm->Show();
 }
 //---------------------------------------------------------------------------
 

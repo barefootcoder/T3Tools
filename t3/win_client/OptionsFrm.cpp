@@ -5,7 +5,10 @@
 #include <io.h>
 
 #include "OptionsFrm.h"
-#include "MainFrm.h"
+#include "IniOptions.h"
+
+using namespace user_options;
+
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
 #pragma resource "*.dfm"
@@ -28,7 +31,7 @@ void __fastcall TOptionsForm::FormShow(TObject *Sender)
 //---------------------------------------------------------------------------
 
 void __fastcall TOptionsForm::FormClose(TObject *Sender,
-      TCloseAction &Action)
+	  TCloseAction &Action)
 {
 	if (ModalResult == mrCancel)
 		return;
@@ -52,70 +55,94 @@ void __fastcall TOptionsForm::SetMessageFontClick(TObject *Sender)
 
 void TOptionsForm::scatterOptions()
 {
-	//populate form fields with current user options (from ini file buffer)
+	//populate form fields with current user options (from options buffer)
 
-	UserName->Text = MainForm->ini_settings->Values["user_name"];
-	UserStatus->Text = MainForm->ini_settings->Values["user_status"];
-	ServerURL->Text = MainForm->ini_settings->Values["server_url"];
-	HistoryDivider->Text = (HistoryDivider->Text == "") ?
-					String("--------------------") :	//default value
-					MainForm->ini_settings->Values["hist_message_divider"];
+	UserName->Text = IniOpt->getValue("user_name").c_str();
+	UserLocation->Text = IniOpt->getValue("user_location").c_str();
+	UserStatus->Text = IniOpt->getValue("user_status").c_str();
+	ServerURL->Text = IniOpt->getValue("server_url").c_str();
+	HistoryDivider->Text = (IniOpt->getValue("hist_message_divider") == "") ?
+					"--------------------" :	//default value
+					IniOpt->getValue("hist_message_divider").c_str();
+	CloseOnSend->Checked = (IniOpt->getValue("close_on_send") == "1");
+	SelectMode->Checked = (IniOpt->getValue("multiselect_mode") == "1");
+	CommTimeout->Text = IniOpt->getValueInt("communication_timeout", 10);
 	RefreshFrequencyChange->Position =
-		MainForm->ini_settings->Values["server_refresh_interval"].ToIntDef(30);
-	CloseOnSend->Checked = (MainForm->ini_settings->Values["close_on_send"] == "1")
-							? true : false;
-	SelectMode->Checked = (MainForm->ini_settings->Values["multiselect_mode"] == "1")
-							? true : false;
+							IniOpt->getValueInt("server_refresh_interval", 30);
+	ResendAfterNoRCVDChange->Position =
+							IniOpt->getValueInt("resend_if_no_rcvd_interval", 10);
+	ResendAfterNoDLVDChange->Position =
+							IniOpt->getValueInt("resend_if_no_dlvd_interval", 2);
+	ResendAfterNoREADChange->Position =
+							IniOpt->getValueInt("resend_if_no_read_interval", 2);
+	UnconfsRefreshChange->Position =
+							IniOpt->getValueInt("refresh_unconfs_view", 5);
+
 
 	//sound settings
-	MessageSound->Text = MainForm->ini_settings->Values["sound_file"];
-	ReplaySoundChange->Position =
-				MainForm->ini_settings->Values["sound_interval"].ToIntDef(180);
-	SoundOff->Checked = (MainForm->ini_settings->Values["sound_none"] == "1")
-							? true : false;
+	MessageSound->Text = IniOpt->getValue("sound_file").c_str();
+	ReplaySoundChange->Position = IniOpt->getValueInt("sound_interval", 180);
+	SoundOff->Checked = (IniOpt->getValue("sound_none") == "1");
 
 	//message-window font attributes options  (from ini file buffer)
-	if (MainForm->ini_settings->Values["messagefont_name"] != "")
+	if (IniOpt->getValue("messagefont_name") != "")
 	{
-		MessageFont->Font->Name = MainForm->ini_settings->Values["messagefont_name"];
+		MessageFont->Font->Name = IniOpt->getValue("messagefont_name").c_str();
 		MessageFont->Text = MessageFont->Font->Name;
-		MessageFont->Font->Size = MainForm->ini_settings->Values["messagefont_size"].ToIntDef(8);
-		MessageFont->Font->Color = MainForm->ini_settings->Values["messagefont_color"].ToIntDef(clBlack); //OK for 32-bit int
-		if (MainForm->ini_settings->Values["messagefont_bold"].ToIntDef(0))
+		MessageFont->Font->Size = IniOpt->getValueInt("messagefont_size", 8);
+		MessageFont->Font->Color = IniOpt->getValueInt("messagefont_color", clBlack); //OK for 32-bit int
+		if (IniOpt->getValueInt("messagefont_bold", 0))
 			MessageFont->Font->Style = MessageFont->Font->Style << fsBold;
-		if (MainForm->ini_settings->Values["messagefont_italic"].ToIntDef(0))
+		if (IniOpt->getValueInt("messagefont_italic", 0))
 			MessageFont->Font->Style = MessageFont->Font->Style << fsItalic;
 	}
+
 }
 //---------------------------------------------------------------------------
 
 void TOptionsForm::gatherOptions()
 {
-	//save user name, server refresh, etc.
-	MainForm->ini_settings->Values["user_name"] = UserName->Text;
-	MainForm->ini_settings->Values["user_status"] = UserStatus->Text;
-	MainForm->ini_settings->Values["server_url"] = ServerURL->Text;
-	MainForm->ini_settings->Values["server_refresh_interval"] =
-									RefreshFrequency->Text.ToIntDef(30);
-	MainForm->ini_settings->Values["hist_message_divider"] = HistoryDivider->Text;
-	MainForm->ini_settings->Values["close_on_send"] = CloseOnSend->Checked ? "1" : "0";
-	MainForm->ini_settings->Values["multiselect_mode"] = SelectMode->Checked ? "1" : "0";
+	//read values from the form fields to the options buffer (IniOpt object)
 
-	//save message sound alert settings
-	MainForm->ini_settings->Values["sound_file"] = MessageSound->Text;
-	MainForm->ini_settings->Values["sound_interval"] = ReplaySound->Text.ToIntDef(180);
-	MainForm->ini_settings->Values["sound_none"] = SoundOff->Checked ? "1" : "0";
+	IniOpt->setValue("user_name", UserName->Text.c_str());
+	IniOpt->setValue("user_location", UserLocation->Text.c_str());
+	IniOpt->setValue("user_status", UserStatus->Text.c_str());
+	IniOpt->setValue("server_url", ServerURL->Text.c_str());
+	IniOpt->setValue("hist_message_divider", HistoryDivider->Text.c_str());
+	IniOpt->setValue("close_on_send", CloseOnSend->Checked ? "1" : "0");
+	IniOpt->setValue("multiselect_mode", SelectMode->Checked ? "1" : "0");
+	IniOpt->setValueInt("communication_timeout", CommTimeout->Text.ToIntDef(10));
+	IniOpt->setValueInt("server_refresh_interval",
+									RefreshFrequency->Text.ToIntDef(30));
+	IniOpt->setValueInt("resend_if_no_rcvd_interval",
+									ResendAfterNoRCVD->Text.ToIntDef(10));
+	IniOpt->setValueInt("resend_if_no_dlvd_interval",
+									ResendAfterNoDLVD->Text.ToIntDef(2));
+	IniOpt->setValueInt("resend_if_no_read_interval",
+									ResendAfterNoREAD->Text.ToIntDef(2));
+	IniOpt->setValueInt("refresh_unconfs_view",
+									UnconfsRefresh->Text.ToIntDef(5));
 
-	//save message window font
+	//message sound alert settings
+	IniOpt->setValue("sound_file", MessageSound->Text.c_str());
+	IniOpt->setValueInt("sound_interval", ReplaySound->Text.ToIntDef(180));
+	IniOpt->setValue("sound_none", SoundOff->Checked ? "1" : "0");
+
+	//message window font
 	int bold, italic;
 	bold = MessageFont->Font->Style.Contains(fsBold);
 	italic = MessageFont->Font->Style.Contains(fsItalic);
 
-	MainForm->ini_settings->Values["messagefont_name"] = MessageFont->Font->Name;
-	MainForm->ini_settings->Values["messagefont_size"] = MessageFont->Font->Size;
-	MainForm->ini_settings->Values["messagefont_color"] = MessageFont->Font->Color;
-	MainForm->ini_settings->Values["messagefont_bold"] = bold;
-	MainForm->ini_settings->Values["messagefont_italic"] = italic;
+	IniOpt->setValue("messagefont_name", MessageFont->Font->Name.c_str());
+	IniOpt->setValueInt("messagefont_size", MessageFont->Font->Size);
+	IniOpt->setValueInt("messagefont_color", MessageFont->Font->Color);
+	IniOpt->setValueInt("messagefont_bold", bold);
+	IniOpt->setValueInt("messagefont_italic", italic);
+
+	//non-persistent settings
+	bool persistent = false;
+	IniOpt->setValue("test_mode", TestMode->Checked ? "1" : "0", persistent);
+
 }
 //---------------------------------------------------------------------------
 

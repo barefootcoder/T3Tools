@@ -11,10 +11,10 @@
 #include <CheckLst.hpp>
 #include <Graphics.hpp>
 #include <ImgList.hpp>
-#include <NMURL.hpp>
+//#include <NMURL.hpp>
 #include <ComCtrls.hpp>
-#include <NMHttp.hpp>
-#include <Psock.hpp>
+//#include <NMHttp.hpp>
+//#include <Psock.hpp>
 #include <MPlayer.hpp>
 
 #include <map>
@@ -23,17 +23,22 @@
 #include "TimersImp.h"
 #include "MessagesImp.h"
 
-class TMessageActionForm;	//just a forward declaration
+using namespace std;
 
-const String INIFILENAME = "Timer.ini";
-const String HISTFILENAME = "Timer.his";
-const String SOUNDSFOLDER = "sounds";
-const String HOME = "HOME";		//holds name of env var w/ user path name
+const String INIFILENAME = "t3client.ini";
+const String HISTFILENAME = "t3client.his";		   
 const String CONNECTING_TO_SERVER = "COMMUNICATING";		//display on status bar
 const String CONNECT_ERROR = "CANNOT CONNECT TO SERVER";
 const String CONNECT_ERROR_STATUS = "ERROR COMMUNICATING";	//display on status bar
 
-using namespace std;
+const int TIMER_DIGITS_WIDTH = 80;
+const int TIMER_ICONS_WIDTH = 212;
+const int SPACE_AFTER_DIGITS = 16;
+const int SPACE_BEFORE_NAMES = 2;
+const int DIGITS_PLUS_ICONS = TIMER_DIGITS_WIDTH + SPACE_AFTER_DIGITS
+												 + TIMER_ICONS_WIDTH;
+
+class TMessageActionForm;	//just forward declaration
 
 //---------------------------------------------------------------------------
 class TMainForm : public TForm
@@ -51,14 +56,8 @@ __published:	// IDE-managed Components
 	TImage *ShowArrow;
 	TImage *AddTimer;
 	TImage *HideArrow;
-	TImageList *HoursBlack;
-	TImageList *HoursRed;
-	TImageList *MinutesBlack;
-	TImageList *MinutesRed;
 	TImage *RunningDude;
-	TImageList *ContactsGlyphs;
 	TButton *TestButton;
-	TNMURL *URLencoder;
 	TImage *ImOn;
 	TImage *ImageOff;
 	TImage *ImageOn;
@@ -67,8 +66,13 @@ __published:	// IDE-managed Components
 	TImage *Options;
 	TStatusBar *StatBar;
 	TImage *ImageBusy;
-	TNMHTTP *WebConnection;
 	TMediaPlayer *SoundPlayer;
+	TImageList *MinutesRed;
+	TImageList *MinutesBlack;
+	TImageList *HoursRed;
+	TImageList *HoursBlack;
+	TImageList *ContactsGlyphs;
+	TImage *InTransit;
 	void __fastcall FormResize(TObject *Sender);
 	void __fastcall TimersListClick(TObject *Sender);
 	void __fastcall SystemTimerTimer(TObject *Sender);
@@ -104,25 +108,26 @@ __published:	// IDE-managed Components
           TStatusPanel *Panel, const TRect &Rect);
 	void __fastcall ImOnMouseDown(TObject *Sender, TMouseButton Button,
           TShiftState Shift, int X, int Y);
-	void __fastcall WebConnectionFailure(CmdType Cmd);
 	void __fastcall FormKeyDown(TObject *Sender, WORD &Key,
           TShiftState Shift);
+	void __fastcall InTransitClick(TObject *Sender);
 private:	// User declarations
 	bool newmode;
 	bool online;							//this user is on-line for messaging
 	bool available;							//this user is available to talk
-	bool talk_comm_error;					//talker error connecting to server
+	bool have_messages;						//there's new messages to read
+	bool busy_on_shut_down;
 	bool blink;
 	bool hidden_timer_panes[3];				//to keep track of timer panes display
 	bool no_timer_update;					//prevents repainting of the timers
-	map<String, Message> UserCollection;	//collection of ON/OFF mssgs = Users
+	unsigned __int64 message_base_id;		//64-bit message id for a session
 	map<String, Timer> TimerCollection;		//collection of timers indxd by name
 	map<String, Timer>::iterator CurrTimer;		//to keep track of active timer
 	int item_number;	//currently picked (right-clicked, etc.) item on GUI list
 	int contacts_width;	//width of Contacts list
 	int timernames_width;	//width of leftmost (variable) pane of timers list
-	String status1, status2;				//strings to display on status bar
 
+	//helper methods
 	void ClearDisplay ();
 	void updateClocks ();
 	bool canNixWidth (bool caller_is_talker);
@@ -137,12 +142,15 @@ private:	// User declarations
 public:		// User declarations
 	__fastcall TMainForm(TComponent* Owner);
 
-	multimap<String, Message> MessageBuffer;	//collection of unread messages
-	vector<Message> SendBuffer;				//collection of to-send messages
-	String ini_filename;					//full-path name of ini file
+			//TO REMOVE
+	multimap<string, Message>* pMessageBuffer;	//collection of unread messages
+	multimap<string, Message>* pStatusBuffer;	//collectn of unprocessed status
+	map<string, Message>* pUserCollection;	//collection of ON/OFF mssgs = Users
+	vector<string>* puser_list;
+
 	String hist_filename;					//full-path name of history file
-	TStringList* hist_buffer;				//memory copy of history file
 	TMessageActionForm* form_last_viewed;	//last message form that had focus
+	String status1, status2;				//strings to display on status bar
 
 	//Timers management methods
 	void addNewTimer ();
@@ -154,21 +162,20 @@ public:		// User declarations
 	void manageTimerButtons ();
 
 	//Messages management methods
+	void ferryMessage(Message what_messg);		//the only message-out gateway
+
 	void openMessageForm (int what_item);
 	void readMessage (TMessageActionForm* MessageActionForm);
 	void sendMessage (TMessageActionForm* MessageActionForm, int what_item,
 						String what_users_to);
 	void broadcastMessage (TMessageActionForm* MessageActionForm);
-	String doTransfer (Message& trans_out);
-	void processServerTrans (String ServerResponse);
-	void addToHistory(Message& what_messg);
-
-	String DataCGI(String WhatName, String WhatValue);
+	void sendStatusMessage (String what_status);
+	void doContactMaintenance ();
 
 	//Ini file management methods and properties
-	void readIniFile ();
-	void writeIniFile ();
-	TStringList* ini_settings;
+	void initApp ();
+	void cleanupApp ();
+	//TStringList* ini_settings;
 
 	//Other methods
 	void playSound();

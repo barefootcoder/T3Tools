@@ -6,10 +6,14 @@
 #include <sstream>
 
 #include "MessageActionFrm.h"
-#include "MainFrm.h"
-#include "OptionsFrm.h"
+#include "IniOptions.h"
+#include "MessageMgr.h"
+#include "MainFrm.h"			//TODO :  eventually remove dependency on MainForm
+								//		  and rely solely on MessageMgr instead
 
 using namespace std;
+using namespace user_options;
+using namespace message_pump;
 
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
@@ -21,27 +25,40 @@ __fastcall TMessageActionForm::TMessageActionForm(TComponent* Owner)
 {
 	KeyPreview = true;		//for form to respond to keyboard events
 
-	//set message window size and position from ini file
-	if (MainForm->ini_settings->Values["messageform_left"] != "")
+	//read message window size and position from ini file
+	if (IniOpt->getValue("messageform_left") != "")		//if not first time
 	{
 		Position = poDesigned;				//to override default Center
-		Left = MainForm->ini_settings->Values["messageform_left"].ToIntDef(Left);
-		Top = MainForm->ini_settings->Values["messageform_top"].ToIntDef(Top);
-		Width = MainForm->ini_settings->Values["messageform_width"].ToIntDef(Width);
-		Height = MainForm->ini_settings->Values["messageform_height"].ToIntDef(Height);
+		Left = IniOpt->getValueInt("messageform_left", Left);
+		Top = IniOpt->getValueInt("messageform_top", Top);
+		Width = IniOpt->getValueInt("messageform_width", Width);
+		Height = IniOpt->getValueInt("messageform_height", Height);
 
 		//until a Message form closes, this is the new value for staggered view
-		MainForm->ini_settings->Values["messageform_left"] = Left + 10;
-		MainForm->ini_settings->Values["messageform_top"] = Top + 10;
-		MainForm->ini_settings->Values["messageform_width"] = Width + 10;
-		MainForm->ini_settings->Values["messageform_height"] = Height + 10;
+		bool save_to_ini = true;
+		IniOpt->setValueInt("messageform_left", Left + 10, save_to_ini);
+		IniOpt->setValueInt("messageform_top", Top + 10, save_to_ini);
+		IniOpt->setValueInt("messageform_width", Width + 10, save_to_ini);
+		IniOpt->setValueInt("messageform_height", Height + 10, save_to_ini);
 	}
 
 	//set message window display font attributes
-	TheMessage->Font = OptionsForm->MessageFont->Font;
+	//TheMessage->Font = OptionsForm->MessageFont->Font;
+
+	TheMessage->Font->Name = IniOpt->getValue("messagefont_name").c_str();
+	TheMessage->Font->Size = IniOpt->getValueInt("messagefont_size", 8);
+	TheMessage->Font->Color = IniOpt->getValueInt("messagefont_color", clBlack);
+	if (IniOpt->getValueInt("messagefont_bold", 0))
+		TheMessage->Font->Style << fsBold;
+	else
+		TheMessage->Font->Style >> fsBold;
+	if (IniOpt->getValueInt("messagefont_italic", 0))
+		TheMessage->Font->Style << fsItalic;
+	else
+		TheMessage->Font->Style >> fsItalic;
 
 	//set multi-select mode
-	UserList->ExtendedSelect = OptionsForm->SelectMode->Checked;
+	UserList->ExtendedSelect = (IniOpt->getValue("multiselect_mode") == "1");
 
 	history_on = false;
 
@@ -68,10 +85,10 @@ void __fastcall TMessageActionForm::FormShow(TObject *Sender)
 	//when form is created, if there's a message from
 	//corresponding user, show it immediately:
 
-	multimap<String, Message>::iterator it;
-	it = MainForm->MessageBuffer.find(user);	//locate a message from user
+	multimap<string, Message>::iterator it;
+	it = MainForm->pMessageBuffer->find(user.c_str());	//locate a message from user
 
-	if (it != MainForm->MessageBuffer.end())	//if there's one,
+	if (it != MainForm->pMessageBuffer->end())	//if there's one,
 		GetMessgClick(GetMessg);				//simulate pressing Read button
 
 	manageMessageButtons(0);					//default for form create
@@ -85,10 +102,11 @@ void __fastcall TMessageActionForm::FormClose(TObject *Sender,
 	TheMessage->Clear();
 
 	//save current size and position of Message form (last one to close overwrites)
-	MainForm->ini_settings->Values["messageform_left"] = Left;
-	MainForm->ini_settings->Values["messageform_top"] = Top;
-	MainForm->ini_settings->Values["messageform_width"] = Width;
-	MainForm->ini_settings->Values["messageform_height"] = Height;
+	bool save_to_ini = true;
+	IniOpt->setValueInt("messageform_left", Left, save_to_ini);
+	IniOpt->setValueInt("messageform_top", Top, save_to_ini);
+	IniOpt->setValueInt("messageform_width", Width, save_to_ini);
+	IniOpt->setValueInt("messageform_height", Height, save_to_ini);
 
 	if (MainForm->Contacts->Items->Count > 0)		//Repaint
 		MainForm->Contacts->Items->Strings[0] = MainForm->Contacts->Items->Strings[0];
@@ -220,14 +238,14 @@ void TMessageActionForm::manageMessageButtons(int state)
 			ReplyLED->Visible = false;
 			SendMessg->Enabled = false;
 			BroadcastMessg->Enabled = false;
-			if (OptionsForm->CloseOnSend->Checked) this->Close();
+			if (IniOpt->getValue("close_on_send") == "1") this->Close();
 			break;
 		case 2:							//after Read
 			{
-			multimap<String, Message>::iterator it;
-			it = MainForm->MessageBuffer.find(user);	//locate message from user
+			multimap<string, Message>::iterator it;
+			it = MainForm->pMessageBuffer->find(user.c_str());	//locate message from user
 			//enable ReadNext button if there's still another message from this user:
-			GetMessg->Enabled = (it != MainForm->MessageBuffer.end());
+			GetMessg->Enabled = (it != MainForm->pMessageBuffer->end());
 			}
 			break;
 		case 3:							//disable all except history
@@ -330,18 +348,17 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 	//selects which messages to view
 
 	TheMessage->Clear();
-							
-	//TStringList* temp_history1 = new TStringList();	//old way
-	TStringList* temp_history1; 						//now is just a pointer
+
+	vector<string>* temp_history1 = &(MessagePump->hist_buffer);
+	//TStringList* temp_history1; 						//now is just a pointer
 	TStringList* temp_history2 = new TStringList();		//selected, formatted
 
-	//temp_history1->LoadFromFile(MainForm->hist_filename);		//old way
-	temp_history1 = MainForm->hist_buffer;		//new way, so it displays faster
+	//temp_history1 = MainForm->hist_buffer;		//new way, so it displays faster
 
 	String last_thread;		//needs to persist from one for-iteration to next
-	for (int i = temp_history1->Count - 1; i >= 0 ; i--)	//read messgs in reverse order
+	for (int i = temp_history1->size() - 1; i >= 0 ; i--)	//read messgs in reverse order
 	{
-		Message mess(temp_history1->Strings[i]);			//next message
+		Message mess((*temp_history1)[i].c_str());			//next message
 
 		if (UserList->Items->IndexOf(mess.from) == -1 ||
 			!UserList->Selected[UserList->Items->IndexOf(mess.from)])
@@ -407,7 +424,7 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 		if (FilterKw->Text != "" && !mess.message_text.Pos(FilterKw->Text))
 			continue;
 		//by Thread
-		if (i == temp_history1->Count - 1)	//keep first message (last in history)
+		if (i == temp_history1->size() - 1)	//keep first message (last in history)
 		{									//and it serves as the starting seed
 			last_thread = curr_thread;
 		}
@@ -426,13 +443,12 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 			temp_history2->Add(String("Subject:  ") + subject);
 		temp_history2->Add("");
 		temp_history2->Add(mess.message_text);
-		temp_history2->Add(OptionsForm->HistoryDivider->Text);
+		temp_history2->Add(IniOpt->getValue("hist_message_divider").c_str());
 
 	}
 
 	TheMessage->Lines = temp_history2;		//copy from double-buffer
 
-	//delete temp_history1;
 	delete temp_history2;
 	ActiveControl = TheMessage;
 	TheMessage->SelStart = 0;
@@ -478,10 +494,8 @@ void __fastcall TMessageActionForm::ShowHistoryClick(TObject *Sender)
 
 	if (history_on)				//we're now in history view mode
 	{
-		//UserList->Items->Add(OptionsForm->UserName->Text);	//add me
-                                                                //already there in curr version
 		//select me and my current correspondent (default for history)
-		UserList->Selected[UserList->Items->IndexOf(OptionsForm->UserName->Text)] = true;
+		UserList->Selected[UserList->Items->IndexOf(IniOpt->getValue("user_name").c_str())] = true;
 		UserList->Selected[UserList->Items->IndexOf(user)] = true;
 
 		temp_message = TheMessage->Text;	//hold on to display so we can restore
@@ -505,7 +519,7 @@ void __fastcall TMessageActionForm::ShowHistoryClick(TObject *Sender)
 		//UserList->Items->Delete(UserList->Items->Count - 1);		//delete me
 
 		//select only my correspondent (default for Send)
-		UserList->Selected[UserList->Items->IndexOf(OptionsForm->UserName->Text)] = false;
+		UserList->Selected[UserList->Items->IndexOf(IniOpt->getValue("user_name").c_str())] = false;
 		UserList->Selected[UserList->Items->IndexOf(user)] = true;
 
 		TheMessage->Clear();

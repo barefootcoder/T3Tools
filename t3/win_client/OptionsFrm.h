@@ -10,6 +10,12 @@
 #include <Buttons.hpp>
 #include <Dialogs.hpp>
 #include <ExtCtrls.hpp>
+
+//---------------------------------------------------------------------------
+
+const String HOME = "HOME";		//holds name of env var w/ user path name
+const String SOUNDSFOLDER = "sounds";
+
 //---------------------------------------------------------------------------
 class TOptionsForm : public TForm
 {
@@ -47,6 +53,28 @@ __published:	// IDE-managed Components
 	TLabel *Label11;
 	TCheckBox *SoundOff;
 	TComboBox *MessageSound;
+	TLabel *Label12;
+	TEdit *CommTimeout;
+	TLabel *Label13;
+	TLabel *Label14;
+	TEdit *UserLocation;
+	TTabSheet *TabSheet1;
+	TLabel *Label15;
+	TEdit *ResendAfterNoRCVD;
+	TUpDown *ResendAfterNoRCVDChange;
+	TLabel *Label16;
+	TLabel *Label17;
+	TEdit *ResendAfterNoDLVD;
+	TUpDown *ResendAfterNoDLVDChange;
+	TLabel *Label18;
+	TLabel *Label19;
+	TEdit *ResendAfterNoREAD;
+	TUpDown *ResendAfterNoREADChange;
+	TLabel *Label20;
+	TLabel *Label21;
+	TEdit *UnconfsRefresh;
+	TUpDown *UnconfsRefreshChange;
+	TLabel *Label22;
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall SetMessageFontClick(TObject *Sender);
 	void __fastcall FormShow(TObject *Sender);
