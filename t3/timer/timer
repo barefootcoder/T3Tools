@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.12  2000/01/03 04:44:00  buddy
+# changed so that any ending time between midnight and 6am counts on the prev day
+# fixed -r function
+#
 # Revision 1.11  1999/12/03 22:41:05  buddy
 # added grand totals to -t option
 #
@@ -50,33 +54,33 @@ use Env qw(TIMERDIR HOME USER);
 use Getopt::Std;
 
 use Barefoot::date;
+use Barefoot::range;
 use Barefoot::timerdata;
+
 
 #################################
 # CONSTANTS
 #################################
 
-*timefile = \'timer.$$$';
-*histfile = \'timer.history';
+use constant TIMEFILE => 'timer.$$$';
+use constant HISTFILE => 'timer.history';
 
-*sambagrp = \'guestpc';
+use constant SAMBAGRP => 'guestpc';
 
-# constants for round()
-*UP		= \1;
-*OFF	= \2;
-*DOWN	= \3;
+use constant FALLBACK_TIMER => 'default';
+
 
 #################################
 # FORMATS
 #################################
 
-*Elapsed =
-	\'@<< @<<<<<<<<<<<<<<<<<  for @<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<<<<<<<<';
-*Totals =
-	\'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  total: @##.## hours';
+use constant Elapsed =>
+	'@<< @<<<<<<<<<<<<<<<<<  for @<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<<<<<<<<';
+use constant Totals =>
+	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  total: @##.## hours';
 
-*Log =
-	\'
+use constant Log =>
+	'
     Employee:  @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         Date:
     Client:    @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         @<<<<<<<<<
     Project:   @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         Hours:
@@ -85,8 +89,9 @@ use Barefoot::timerdata;
           Client Project ID: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     Comments:';
-*Log_Comments =
-	\'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+use constant Log_Comments =>
+	'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+
 
 #################################';
 # OPTIONS AND ENVIRONMENT VARS
@@ -102,14 +107,13 @@ if (@ARGV == 0)
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
 		"       -c:   cancel a timer\n",
-		"       -n:   new name for a timer\n",
+		"       -n:   new name/client for a timer\n",
 		"       -e:   show elapsed time for all timers\n",
 		"       -r:   run the time logger directly\n",
 		"       -b:   break down a timer's portions\n",
 		"       -t:   total for all timers this week (by client)\n",
 		"       -f:   force (ignore all confirmations)\n",
 		"       -h:   half-time timing (while watching movies, etc)\n",
-		#"       -l:   leave existing timer running (when starting new one)\n",
 		"       -u:   user name to use (default is current user)\n",
 		"       -C:   client number to use (default is user-specific)\n",
 		"    user must have an I:\\ drive directory\n",
@@ -122,10 +126,9 @@ if (@ARGV == 0)
 my $timerinfo = {};
 
 my $opt = {};
-getopts('sedrcpnbtfhlu:C:$:', $opt);
+getopts('sedrcpnbtfhu:C:$:', $opt);
 $timerinfo->{force} = defined($opt->{f});
 $timerinfo->{halftime} = defined($opt->{h});
-$timerinfo->{leavecurrent} = defined($opt->{l});
 $timerinfo->{user} = $opt->{u};
 $timerinfo->{client} = $opt->{C};
 
@@ -138,10 +141,10 @@ elsif ($timerinfo->{user} ne $::USER)
 {
 	$timerinfo->{tdir} =~ s/$::USER/$timerinfo->{user}/;
 }
-$timerinfo->{tfile} = "$timerinfo->{tdir}/$::timefile";
-$timerinfo->{hfile} = "$timerinfo->{tdir}/$::histfile";
+$timerinfo->{tfile} = "$timerinfo->{tdir}/" . TIMEFILE;
+$timerinfo->{hfile} = "$timerinfo->{tdir}/" . HISTFILE;
 $timerinfo->{hfile} =~ s/$timerinfo->{user}/misc/;
-$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : "default";
+$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : FALLBACK_TIMER;
 $timerinfo->{newname} = $ARGV[1];
 $timerinfo->{timers} = {};
 my $func = "";
@@ -151,6 +154,7 @@ foreach $fopt ( ('s','e','d','r','c','p','n','b','t') )
 	$func .= $fopt if $opt->{$fopt};
 }
 
+
 #################################
 # CHECK FOR ERRORS
 #################################
@@ -159,10 +163,13 @@ if (!$timerinfo->{tdir})
 {
 	error(2, "don't have a directory for timer files\n");
 }
+
 if (! -d $timerinfo->{tdir} or ! -w $timerinfo->{tdir})
 {
-	error(2, "no writeable directory $timerinfo->{tdir} for user $timerinfo->{user}\n");
+	error(2, "no writeable directory $timerinfo->{tdir} for user " .
+			"$timerinfo->{user}\n");
 }
+
 if (!$timerinfo->{user})
 {
 	error(2, "can't figure out which user to timer for\n");
@@ -186,6 +193,22 @@ if ($timerinfo->{halftime} and $func != 's')
 
 readfile($timerinfo);
 
+# try to find a more reasonable default timer
+if ($timerinfo->{giventimer} eq FALLBACK_TIMER)
+{
+	if (exists $timerinfo->{curtimer})
+	{
+		# if there's a current timer, use that
+		$timerinfo->{giventimer} = $timerinfo->{curtimer};
+	}
+	elsif (keys(%{$timerinfo->{timers}}) == 1)
+	{
+		# if there's only 1 timer, use that
+		$timerinfo->{giventimer} = (keys(%{$timerinfo->{timers}}))[0];
+	}
+	# if none of those work, you're stuck with FALLBACK_TIMER
+}
+
 if ($func eq 'e')					# show elapsed time
 {
 	if ($timerinfo->{curtimer} eq 0)
@@ -207,8 +230,9 @@ if ($func eq 's')					# start a timer
 	{
 		error(1, "already timing for $timerinfo->{curtimer}\n");
 	}
+
 	$timerinfo->{timers}->{$timerinfo->{curtimer}}->{time} .= time . ','
-			if $timerinfo->{curtimer} and not $timerinfo->{leavecurrent};
+			if $timerinfo->{curtimer};
 	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time} .=
 			($timerinfo->{halftime} ? "2/" : "") . time . '-';
 	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{client}
@@ -329,8 +353,7 @@ if ($func eq 'b')					# break down a timer
 
 	my @parts = split(/,/,
 			$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time});
-	my $part;
-	foreach $part (@parts)
+	foreach my $part (@parts)
 	{
 		my $mins = calc_time($part);
 
@@ -363,10 +386,11 @@ if ($func eq 't')					# total timers by client
 {
 	# for this function, we'll need a client hash
 	# it will look like this:
-	#	%clients								main hash
-	#	$clients{001}							client info for client 001
-	#	$clients{001}->{rounding}				rounding method for this client
-	#	$clients{001}->{total}					total time for this client
+	#	%clients							main hash
+	#	$clients{001}						client info for client 001
+	#	$clients{001}->{rounding}			rounding method for this client
+	#	$clients{001}->{to_nearest}			what to round to for this client
+	#	$clients{001}->{total}				total time for this client
 	my %clients;
 
 	# first total up existing unlogged timers
@@ -378,24 +402,26 @@ if ($func eq 't')					# total timers by client
 		if (not exists $clients{$client})
 		{
 			$clients{$client} = {};
-			$clients{$client}->{rounding} = timerdata::client_rounding($client);
+			($clients{$client}->{rounding}, $clients{$client}->{to_nearest})
+					= timerdata::client_rounding($client);
 			$clients{$client}->{total} = 0;
 		}
 		my $time = calc_time($timer->{time});	# get total minutes
 		$time /= 60;							# convert to hours
 												# now round appropriately
-		$time = round($time, $clients{$client}->{rounding}, .25);
+		$time = range::round($time, $clients{$client}->{rounding},
+				$clients{$client}->{to_nearest});
 		$clients{$client}->{total} += $time;	# and tot it up
 	}
 
-	# now get log entries from the TIMER database
+	# now get log entries from the timer database
 	my $monday = date::MondayDate();
 	my $query = "
-		select l.client, sum(l.hours)
-		from log l, employee e
-		where l.emp = e.emp
+		select tl.client, sum(l.hours)
+		from time_log tl, employee e
+		where tl.emp = e.emp
 		and e.login = '$timerinfo->{user}'
-		and l.date between '$monday' and dateadd(day, 6, '$monday')
+		and tl.date between '$monday' and dateadd(day, 6, '$monday')
 		group by l.client
 	";
 	my $results = timerdata::query_results($query);
@@ -408,14 +434,14 @@ if ($func eq 't')					# total timers by client
 	my $grand_total = 0;
 	foreach my $client (keys %clients)
 	{
-		writeln($::Totals, $client, timerdata::client_name($client),
+		writeln(Totals, $client, timerdata::client_name($client),
 				$clients{$client}->{total});
 		$grand_total += $clients{$client}->{total};
 	}
 
 	# print total totals
-	print "=" x length($::Totals), "\n";
-	writeln($::Totals, "", "Grand Total", $grand_total);
+	print "=" x length(Totals), "\n";
+	writeln(Totals, "", "Grand Total", $grand_total);
 }
 
 if ($func eq 'r')					# run the logger portion
@@ -438,7 +464,7 @@ if ($func eq 'd')					# done with a timer
 
 	my $thistimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	my $minutes = calc_time($thistimer->{time});
-	my $hours = round($minutes / 60, $::DOWN),
+	my $hours = range::round($minutes / 60, range::ROUND_DOWN),
 	my $date = calc_date($thistimer->{time});
 	my $client = $thistimer->{client};
 	print "\ntotal time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
@@ -450,7 +476,7 @@ if ($func eq 'd')					# done with a timer
 		<STDIN>;
 	}
 
-	log_to_sybase($timerinfo);
+	log_to_sybase($timerinfo, $timerinfo->{giventimer});
 
 	save_history($timerinfo, "done");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
@@ -472,7 +498,7 @@ sub error
 {
 	my ($exitcode, @messages) = @_;
 	my $progname = $0;
-	$progname =~ s?.*/??;
+	$progname =~ s@.*/@@;
 	print STDERR "$progname: ", @messages;
 	exit $exitcode;
 }
@@ -484,7 +510,8 @@ sub readfile
 	open(TFILE, $timerinfo->{tfile}) or return 0;
 	while ( <TFILE> )
 	{
-		my ($key, $time, $client) = split;
+		chomp;
+		my ($key, $time, $client) = split(/\t/);
 		my $curtimer = {};
 		$curtimer->{time} = $time;
 		$curtimer->{client} = $client;
@@ -510,7 +537,7 @@ sub writefile
 
 	# if these don't work, no big deal, but if running under Linux, they
 	# should reset the file to be accessible from 4DOS/Win95
-	eval { chown -1, scalar(getgrnam($::sambagrp)), $timerinfo->{tfile} };
+	eval { chown -1, scalar(getgrnam(SAMBAGRP)), $timerinfo->{tfile} };
 	eval { chmod 0660, $timerinfo->{tfile} };
 }
 
@@ -628,11 +655,11 @@ sub print_elapsed
 	foreach $timer (keys %{$timerinfo->{timers}})
 	{
 		my $minutes = calc_time($timerinfo->{timers}->{$timer}->{time});
-		my $hours = round($minutes / 60, $::DOWN);
+		my $hours = range::round($minutes / 60, range::ROUND_DOWN);
 		$minutes = $minutes - $hours * 60;
 		my $date = calc_date($timerinfo->{timers}->{$timer}->{time});
 
-		writeln($::Elapsed, $timerinfo->{curtimer} eq $timer ? "==>" : "",
+		writeln(Elapsed, $timerinfo->{curtimer} eq $timer ? "==>" : "",
 				$timer, $timerinfo->{timers}->{$timer}->{client},
 				$hours, $minutes, $date,
 				$timerinfo->{timers}->{$timer}->{time} =~ m{/\d+-$}
@@ -651,8 +678,7 @@ sub calc_time
 	my $total_time = 0;
 
 	my $current_time = 0;
-	my $time;
-	foreach $time (@times)
+	foreach my $time (@times)
 	{
 		if ($time =~ /^([+-]\d+)$/)
 		{
@@ -670,7 +696,7 @@ sub calc_time
 		}
 		$total_time += ($to - $from) / ($divisor ? $divisor : 1);
 	}
-	return round($total_time / 60, $::UP);
+	return range::round($total_time / 60, range::ROUND_UP);
 }
 
 sub calc_date
@@ -698,23 +724,22 @@ sub calc_date
 
 sub log_to_sybase
 {
-	my ($timerinfo) = @_;
+	my ($timerinfo, $log_timer) = @_;
 	# a shortcut
-	my $timer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	my $timer = $timerinfo->{timers}->{$log_timer};
 
-	my ($emp, $client, $rounding, $date, $hours, $proj, $phase,
+	my ($emp, $client, $rounding, $to_nearest, $date, $hours, $proj, $phase,
 			$cliproj, $comments);
 	
 	# please note that the order you ask for the data elements in is
 	# *very* important ... the following things are true:
 	#	you have to do employee before you do client
+	#	you have to do employee before you do project
 	#	you have to do date before you do client
 	#	you have to do date before you do project
 	# 	you have to do client before you do hours
 	#	you have to do client before you do project
-	#	you have to do client before you do phase
 	#	you have to do client before you do cliproj
-	#	you have to do client before you do comments
 	#	you have to do project before you do phase
 	#	you have to do project before you do cliproj
 	#	you have to do project before you do comments
@@ -724,8 +749,22 @@ sub log_to_sybase
 	# a bunch of anonymous blocks for purposes of redo
 	# (well, they're called "anonymous" even tho they're named ... go figure)
 	EMP: {
-		$emp = input("Employee number:",
+		my $valid_employees = timerdata::query_results("
+				select e.emp, e.fname, e.lname
+				from employee e
+				order by e.emp
+			");
+		$emp = input("Employee number or ? for list:",
 				timerdata::emp_number($timerinfo->{user}));
+		if ($emp eq "?")
+		{
+			foreach my $row (@$valid_employees)
+			{
+				print "  {", $row->[0], " - ",
+						$row->[1], " ", $row->[2], "}\n";
+			}
+			redo EMP;
+		}
 		my $fullname = timerdata::emp_fullname($emp);
 		print "  {Invalid employee!}\n" and redo EMP unless $fullname;
 		print "  {Employee is $fullname}\n";
@@ -733,17 +772,21 @@ sub log_to_sybase
 
 	DATE: {
 		$date = input("Date:", calc_date($timer->{time}));
-		my ($mon, $day, $year) = split(?/|-?, $date);
 		print "  {Invalid date!}\n" and redo DATE unless date::isValid($date);
 	}
 
 	CLIENT: {
 		my $valid_clients = timerdata::query_results("
 				select c.client, c.name
-				from client c, client_employee ce
-				where ce.emp = '$emp'
-				and ce.client = c.client
-				and '$date' between ce.start_date and ce.end_date
+				from client c
+				where exists
+				(
+					select 1
+					from client_employee ce
+					where ce.emp = '$emp'
+					and ce.client = c.client
+					and '$date' between ce.start_date and ce.end_date
+				)
 			");
 		$client = input("Client number or ? for list:", $timer->{client});
 		if ($client eq "?")
@@ -754,13 +797,13 @@ sub log_to_sybase
 			}
 			redo CLIENT;
 		}
-		# check for valid project
+		# check for valid client
 		foreach my $row (@$valid_clients)
 		{
 			if ($client eq $row->[0])
 			{
 				print "  {Client is ", $row->[1], "}\n";
-				$rounding = timerdata::client_rounding($client);
+				($rounding, $to_nearest) = timerdata::client_rounding($client);
 				last CLIENT;
 			}
 		}
@@ -770,9 +813,11 @@ sub log_to_sybase
 
 	HOURS: {
 		$hours = input("Hours:",
-				round(calc_time($timer->{time}) / 60, $rounding, .25));
-		print "  {Hours must divisible by .25}\n" and redo HOURS
-				unless $hours == round($hours, $::OFF, .25);
+				range::round(calc_time($timer->{time}) / 60,
+						$rounding, $to_nearest));
+		print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
+				unless $hours == range::round($hours,
+					range::ROUND_OFF, $to_nearest);
 		print "  {Hours must be greater than zero}\n" and redo HOURS
 				unless $hours > 0;
 	}
@@ -780,9 +825,18 @@ sub log_to_sybase
 	PROJECT: {
 		my $valid_projs = timerdata::query_results("
 				select proj, name
-				from project
+				from project p
 				where client = '$client'
 				and '$date' between start_date and end_date
+				and exists
+				(
+					select 1
+					from client_employee ce
+					where ce.emp = '$emp'
+					and ce.client = p.client
+					and isnull(ce.proj, p.proj) = p.proj
+					and '$date' between ce.start_date and ce.end_date
+				)
 			");
 		$proj = input("Project or ? for list:");
 		if ($proj eq "?")
@@ -825,7 +879,7 @@ sub log_to_sybase
 		}
 		# uppercase it for 'em
 		$phase = string::upper($phase);
-		# check for valid project
+		# check for valid phase
 		foreach my $row (@$valid_phases)
 		{
 			print "  {Phase is ", $row->[1], "}\n" and last PHASE
@@ -839,7 +893,7 @@ sub log_to_sybase
 		last CLIPROJ unless $cliproj_needed;
 		my $valid_cliprojs = timerdata::query_results("
 				select project_id, name
-				from cliproj
+				from client_project
 				where client = '$client'
 			");
 		$cliproj = input("Client Project ID or ? for list:");
@@ -856,7 +910,8 @@ sub log_to_sybase
 		# check for valid project
 		foreach my $row (@$valid_cliprojs)
 		{
-			last CLIPROJ if $cliproj eq $row->[0];
+			print "  {Client project is ", $row->[1], "}\n" and last CLIPROJ
+					if $cliproj eq $row->[0];
 		}
 		print "  {Invalid client project ID!}\n";
 		redo CLIPROJ;
@@ -884,12 +939,12 @@ sub log_to_sybase
 	print "working.....\n";
 
 	# show everything and double check:
-	writeln($::Log, $emp, timerdata::emp_fullname($emp),
+	writeln(Log, $emp, timerdata::emp_fullname($emp),
 			$client, timerdata::client_name($client), $date,
 			$proj, timerdata::proj_name($client, $proj),
 			$phase, timerdata::phase_name($phase), $hours,
 			$cliproj, timerdata::cliproj_name($client, $cliproj));
-	writeln($::Log_Comments, $comments);
+	writeln(Log_Comments, $comments);
 
 	print "\n\nis everything okay? (y/N)  ";
 	print "\n  {Try to log this timer out again later.}\n" and exit
@@ -908,25 +963,6 @@ sub log_to_sybase
 	{
 		print "\ntime has been logged to Sybase\n\n";
 	}
-}
-
-# rounding function ... note that if $whichway is not specified, it will
-# be interpreted as OFF, but if you give an illegal value for $whichway,
-# you get DOWN (probably this should be fixed) ...
-sub round
-{
-	my ($what, $whichway, $towhat) = @_;
-	$whichway = $::OFF if !$whichway;
-	$towhat = 1 if !$towhat;
-
-	$what /= $towhat;
-	if ($what =~ /\.(\d)/)
-	{
-		$what = int $what;
-		++$what if $whichway == $::UP;
-		++$what if $whichway == $::OFF && $1 >= 5;
-	}
-	return $what * $towhat;
 }
 
 sub input
