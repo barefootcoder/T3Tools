@@ -34,15 +34,23 @@ use constant M_ERROR =>
 
 # functions:
 sub qualifyString;
+sub getAttrs;
+sub buildMessage;
 
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # main()
 
+#file::append_lock("/tmp/t3.debug", "Starting server.\n");
+
 my $cgi = new CGI;			#  for CGI operations
 
 my $pquery = $cgi->param('DATA');
+
+#file::append_lock("/tmp/t3.debug", "raw message:\n");
+#file::append_lock("/tmp/t3.debug", $cgi->param('DATA'));
+#file::append_lock("/tmp/t3.debug", "\n");
 
 if (!$pquery)
 {
@@ -53,6 +61,10 @@ if (!$pquery)
 }
 
 my $message = qualifyString($pquery);	# Decodes string and pre-tests if valid
+
+#file::append_lock("/tmp/t3.debug", "\nqualified message:\n");
+#file::append_lock("/tmp/t3.debug", $message->{_FULL_});
+#file::append_lock("/tmp/t3.debug", "\n");
 
 my $reply;
 
@@ -77,10 +89,14 @@ if (!UPDATE)
 else
 {
 	# Server down for update message
-	my $result = Barefoot::T3Timer::ack($message->{command},
+	$reply = Barefoot::T3Timer::ack($message->{command},
 		$message->{name},
 		"FAIL:Server down for updates, shut down T3 and wait till later.");
 }
+
+#file::append_lock("/tmp/t3.debug", "\nreply:\n");
+#file::append_lock("/tmp/t3.debug", $reply);
+#file::append_lock("/tmp/t3.debug", "\nCompleted execution.\n");
 
 # now send string to the browser:
 print $cgi->header(), $reply;
