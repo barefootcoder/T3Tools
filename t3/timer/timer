@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  1999/04/19 20:18:53  buddy
+# added tracking of client number
+# changed "newtimer" var to "giventimer"
+#
 # Revision 1.1  1999/02/23 22:50:00  buddy
 # Initial revision
 #
@@ -14,6 +18,7 @@ use strict;
 use Env qw(TIMERDIR HOME USER);
 use Getopt::Std;
 
+use Barefoot::date;
 use Barefoot::timerdata;
 
 #################################
@@ -27,8 +32,8 @@ use Barefoot::timerdata;
 *sambagrp = \'guestpc';
 
 # constants for round()
-*OFF	= \1;
-*UP		= \2;
+*UP		= \1;
+*OFF	= \2;
 *DOWN	= \3;
 
 #################################
@@ -37,6 +42,8 @@ use Barefoot::timerdata;
 
 *Elapsed =
 	\'@<< @<<<<<<<<<<<<<<<<<  for @<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<<<<<<<<';
+*Totals =
+	\'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  total: @##.## hours';
 
 #################################
 # OPTIONS AND ENVIRONMENT VARS
@@ -46,7 +53,7 @@ if (@ARGV == 0)
 {
 	error(0,
 		"incorrect usage; usage is:\n",
-		"    timer -{s|p|d|c|e|r|b} [-fh] [-u user] [-C clientnum] ",
+		"    timer -{s|p|d|c|e|r|b|t} [-fh] [-u user] [-C clientnum] ",
 						"[timername] [newtimername]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
@@ -56,6 +63,7 @@ if (@ARGV == 0)
 		"       -e:   show elapsed time for all timers\n",
 		"       -r:   run the FoxPro TIMELOG program\n",
 		"       -b:   break down a timer's portions\n",
+		"       -t:   total for all timers this week (by client)\n",
 		"       -f:   force (ignore all confirmations)\n",
 		"       -h:   half-time timing (while watching movies, etc)\n",
 		#"       -l:   leave existing timer running (when starting new one)\n",
@@ -71,7 +79,7 @@ if (@ARGV == 0)
 my $timerinfo = {};
 
 my $opt = {};
-getopts('sedrcpnbfhlu:C:$:', $opt);
+getopts('sedrcpnbtfhlu:C:$:', $opt);
 $timerinfo->{force} = defined($opt->{f});
 $timerinfo->{halftime} = defined($opt->{h});
 $timerinfo->{leavecurrent} = defined($opt->{l});
@@ -94,7 +102,7 @@ $timerinfo->{newname} = $ARGV[1];
 $timerinfo->{timers} = {};
 my $func = "";
 my $fopt;
-foreach $fopt ( ('s','e','d','r','c','p','n','b') )
+foreach $fopt ( ('s','e','d','r','c','p','n','b','t') )
 {
 	$func .= $fopt if $opt->{$fopt};
 }
@@ -306,6 +314,59 @@ if ($func eq 'b')
 	}
 }
 
+if ($func eq 't')					# total timers by client
+{
+	# for this function, we'll need a client hash
+	# it will look like this:
+	#	%clients								main hash
+	#	$clients{001}							client info for client 001
+	#	$clients{001}->{rounding}				rounding method for this client
+	#	$clients{001}->{total}					total time for this client
+	my %clients;
+
+	# first total up existing unlogged timers
+	foreach my $timer (values %{$timerinfo->{timers}})
+	{
+		# just a shortcut here
+		my $client = $timer->{client};
+
+		if (not exists $clients{$client})
+		{
+			$clients{$client} = {};
+			$clients{$client}->{rounding} = timerdata::client_rounding($client);
+			$clients{$client}->{total} = 0;
+		}
+		my $time = calc_time($timer->{time});	# get total minutes
+		$time /= 60;							# convert to hours
+												# now round appropriately
+		$time = round($time, $clients{$client}->{rounding}, .25);
+		$clients{$client}->{total} += $time;	# and tot it up
+	}
+
+	# now get log entries from the TIMER database
+	my $monday = date::MondayDate();
+	my $query = "
+		select l.client, sum(l.hours)
+		from log l, employee e
+		where l.emp = e.emp
+		and e.login = '$timerinfo->{user}'
+		and l.date between '$monday' and dateadd(day, 6, '$monday')
+		group by l.client
+	";
+	my $results = timerdata::query_results($query);
+	foreach my $row (@$results)
+	{
+		my ($client, $hours) = @$row;
+		$clients{$client}->{total} += $hours;
+	}
+
+	foreach my $client (keys %clients)
+	{
+		writeln($::Totals, $client, timerdata::client_name($client),
+				$clients{$client}->{total});
+	}
+}
+
 if ($func eq 'r')					# run the FoxPro program (TIMELOG)
 {
 	if (! -x $::timelog)
@@ -339,7 +400,7 @@ if ($func eq 'd')					# done with a timer; run TIMELOG
 	my $thistimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	my $minutes = calc_time($thistimer->{time});
 	my $hours = round($minutes / 60, $::DOWN),
-	my $date = calc_date($thistimer);
+	my $date = calc_date($thistimer->{time});
 	my $client = $thistimer->{client};
 	print "total time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
 		" mins) on $date for $client\n";
@@ -584,6 +645,9 @@ sub calc_date
 	return ++$mon . "/" . $day . "/" . ($year + 1900);
 }
 
+# rounding function ... note that if $whichway is not specified, it will
+# be interpreted as OFF, but if you give an illegal value for $whichway,
+# you get DOWN (probably this should be fixed) ...
 sub round
 {
 	my ($what, $whichway, $towhat) = @_;
