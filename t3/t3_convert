@@ -9,11 +9,6 @@ use CGI;
 use constant HIST_FILE => 'Timer.his';
 use constant BAK_FILE => 'Timer.bak';
 
-T3::initialize($::ENV{HOME});
-
-print STDERR "$0: no user name defined in ini file\n" and exit(1)
-        unless defined($T3::username);
-
 my $bak_filename = $ARGV[0] . "/" . BAK_FILE;
 my $hist_filename = $ARGV[0] . "/" . HIST_FILE;
 
