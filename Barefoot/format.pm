@@ -53,7 +53,8 @@ sub swrite
 sub writeln
 {
 	my ($format, @vars) = @_;
-	$format .= $\ ? $\ : "\n";
+	my $terminator = $\ ? $\ : "\n";
+	$format .= $terminator unless $format =~ /$terminator\Z/;
 	$^A = "";
 	formline($format, @vars);
 	print $^A;
