@@ -1,17 +1,51 @@
 -- SORT GROUP: Historical Reports
 -- TITLE: Complete Project History (by Client)
 
-print ""
-select "History for " + c.name
+set nocount on
+go
+
+select "<H3>History for " + c.name + "</H3>"
 from client c
 where c.client = "[client]"
-print ""
+go
+
+-- need a temp table for checking to see if logs are billed yet
+-- only put in the logs that are *not* billed yet ... this way, anything
+-- not in the temp table *has* been billed ... this helps deal with the
+-- "no profit till end" logs, which have been all lumped together and wouldn't
+-- appear in the temp table anyway ... happily, we *know* they've been billed,
+-- otherwise we wouldn't be dealing with them (because it wouldn't be "the
+-- end" yet), so the not exists query will work for them too ...
+select log_source, convert(numeric(6,0), log_id) "log_id"
+into #unbilled
+from time_log
+where invoice_id is NULL
+and client = '[client]'
+go
+insert #unbilled
+select log_source, log_id
+from materials_log
+where invoice_id is NULL
+and client = '[client]'
+go
+insert #unbilled
+select log_source, log_id
+from class_log
+where invoice_id is NULL
+and client = '[client]'
+go
+create unique index log
+on #unbilled (log_source, log_id)
 go
 
 $(build_profit_item "
 	log.client = '[client]'
 ")
 exec calc_profit
+go
+
+-- gotta turn this off again ... the build_* functions turn it back on
+set nocount on
 go
 
 -- for debugging
@@ -28,9 +62,58 @@ order by emp, client, proj, date
 */
 go
 
-select p.name "Project",
+print "<H4>Total Actually Billed Thus Far</H4>"
+go
+select isnull(p.name, "NO PROJECT SPECIFIED") "Project",
 		-- convert(char(10), p.start_date, 101) "starting",
 		convert(numeric(6,2), sum(pi.units)) "total hours",
+		convert(char(13), sum(pi.total_price), 1) "total billed",
+		convert(char(13), sum(pi.total_cost), 1) "paid to staff",
+		convert(char(13), sum(pi.sales_commission)
+				+ sum(pi.ref_commission)
+				+ sum(pi.emp_commission), 1) "commissions",
+		convert(char(13), sum(pi.simple_profit), 1) "profit",
+		convert(numeric(5,2), 100.0 * (sum(pi.simple_profit))
+				/ (sum(pi.total_price) + 1)) "margin"
+from profit_item pi, project p
+where pi.client *= p.client
+and pi.proj *= p.proj
+and not exists
+(
+	select 1
+	from #unbilled unb
+	where pi.log_source = unb.log_source
+	and pi.log_id = unb.log_id
+)
+group by p.name, p.start_date
+order by p.start_date, p.name
+go
+
+print "<H4>Total Unbilled At This Time</H4>"
+go
+select isnull(p.name, "NO PROJECT SPECIFIED") "Project",
+		-- convert(char(10), p.start_date, 101) "starting",
+		convert(numeric(6,2), sum(pi.units)) "total hours",
+		convert(char(13), sum(pi.total_price), 1) "total billed",
+		convert(char(13), sum(pi.total_cost), 1) "paid to staff",
+		convert(char(13), sum(pi.sales_commission)
+				+ sum(pi.ref_commission)
+				+ sum(pi.emp_commission), 1) "commissions",
+		convert(char(13), sum(pi.simple_profit), 1) "profit",
+		convert(numeric(5,2), 100.0 * (sum(pi.simple_profit))
+				/ (sum(pi.total_price) + 1)) "margin"
+from profit_item pi, project p, #unbilled unb
+where pi.client *= p.client
+and pi.proj *= p.proj
+and pi.log_source = unb.log_source
+and pi.log_id = unb.log_id
+group by p.name, p.start_date
+order by p.start_date, p.name
+go
+
+print "<H4>Grand Totals (Billed):</H4>"
+go
+select	convert(numeric(6,2), sum(pi.units)) "total hours",
 		convert(char(13), sum(pi.total_price), 1) "total billed",
 		convert(char(13), sum(pi.total_cost), 1) "paid to staff",
 		convert(char(13), sum(pi.sales_commission)
@@ -42,17 +125,17 @@ select p.name "Project",
 		convert(char(13), sum(pi.simple_profit), 1) "profit",
 		convert(numeric(5,2), 100.0 * (sum(pi.simple_profit))
 				/ (sum(pi.total_price) + 1)) "margin"
-from profit_item pi, project p
-where pi.client = p.client
-and pi.proj = p.proj
-group by p.name, p.start_date
-order by p.start_date, p.name
--- compute sum(sum(pi.units)), sum(sum(pi.total_price))
---	by p.start_date, p.name
+from profit_item pi
+where not exists
+(
+	select 1
+	from #unbilled unb
+	where pi.log_source = unb.log_source
+	and pi.log_id = unb.log_id
+)
 go
 
-print ""
-print "Grand Totals:"
+print "<H4>Grand Totals (All Time):</H4>"
 go
 select	convert(numeric(6,2), sum(pi.units)) "total hours",
 		convert(char(13), sum(pi.total_price), 1) "total billed",
