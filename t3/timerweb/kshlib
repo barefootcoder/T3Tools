@@ -2,6 +2,13 @@
 
 #	$Header$
 #	$Log$
+#	Revision 1.2  2000/02/06 01:39:04  buddy
+#	removed daterange_is_current
+#	added drop_procedure
+#	fixed employee_name to understand new employee table columns
+#	changed build_emp_comm to build_profit_item (whole new function)
+#	added parentheses around return from period_num
+#
 #	Revision 1.6  1998/07/30 02:21:47  bburden
 #	commented most constants
 #	added many constants (TERMINATED_STATUS, rate types for rims_contracts_rates,
@@ -35,30 +42,24 @@
 #	Initial revision
 #
 
-#<TITLE>
-# kshlib
-#</TITLE>
-
-#<AUTHOR>
-# Buddy Burden
-#</AUTHOR>
-
-#<DATE>
+# This file originally begun
 # July 18, 1997
-#</DATE>
+# (long time ago, eh?)
+# by Buddy Burden
 
-#<OVERVIEW>
-#</OVERVIEW>
+# this is a library of ksh functions and constants designed to be
+# called from ksh scripts by "dotting" in this script
+# (i.e., . /usr/local/bin/kshlib at the top of your script)
 
 
 # constants
 
 	# general stuff
-	readonly me=${0##*/}
+	readonly me=${0##*/}							# slightly prettier than $0
 
 	# date stuff
 	readonly BEGINNING_OF_TIME="'1/1/1753'"			# according to Sybase docs
-	readonly END_OF_TIME="'12/31/9999'"
+	readonly END_OF_TIME="'12/31/9999'"				# ditto
 		# these are for the "smalldatetime" type
 	readonly SMALL_BEGINNING_OF_TIME="'1/1/1900'"
 	readonly SMALL_END_OF_TIME="'12/6/2079'"
@@ -100,7 +101,7 @@ function remove_sp_returns
 	# SQL output so it takes forever to see what's going on
 	perl -ne '
 		BEGIN	{ $| = 1; }			# causes perl to autoflush
-		print if not /^\(return status = 0\)$/;
+		print unless /^\(return status = 0\)$/;
 	'
 }
 
@@ -111,7 +112,7 @@ function remove_bcp_rows
 	# bcp output so it takes forever to see what's going on
 	perl -ne '
 		BEGIN	{ $| = 1; }			# causes perl to autoflush
-		print if not /^1000 rows successfully bulk-copied to host-file\.$/;
+		print unless /^1000 rows successfully bulk-copied to host-file\.$/;
 	'
 }
 
@@ -214,6 +215,8 @@ function round
 	column=$1				# what you want to round
 	round_to=$2				# arbitrary number to round to (e.g., .25)
 	direction=$3			# "U" for up, "D" for down, "O" for off
+	# note that unlike most arguments to these SQL functions, direction
+	# must be a literal (i.e., can't be a column containg 'U' or whatever)
 
 	case $direction in
 		U)	echo "ceiling(($column) / convert(real, $round_to)) * $round_to"
@@ -240,7 +243,7 @@ function overwrite_table
 
 	cat <<-END
 
-		if object_id('$table') is not null drop table $table
+		if object_id('$table') is not NULL drop table $table
 		go
 		create table $table ($fields)
 		go
@@ -288,7 +291,7 @@ function copy_structure
 
 	cat <<-END
 
-		if object_id('$to_table') is not null drop table $to_table
+		if object_id('$to_table') is not NULL drop table $to_table
 		go
 		set nocount on
 		select *
@@ -309,7 +312,6 @@ function copy_structure
 ############################################################################
 
 # gives the employee first name, with last initial if show_last is turned on
-
 function employee_name
 {
 	table_alias=$1		# most commonly, "e"
@@ -318,6 +320,48 @@ function employee_name
 	echo "substring($table_alias.lname, $table_alias.show_last, 1)"
 }
 
+# builds the table that calc_pay_amount uses
+# (this is called by build_profit_item)
+function build_pay_amount
+{
+	where_clause=$1
+
+	if [ -z "$where_clause" ]
+	then
+		# do everything
+		where_clause="1 = 1"
+	fi
+
+	cat <<-END
+
+		set nocount on
+		go
+
+		-- clear out old stuff
+		delete pay_amount
+
+		-- put in the new
+		insert pay_amount
+			(log_source, log_id, emp, client, proj, date, hours,
+					requires_payment)
+		select log.log_source, log.log_id, log.emp, log.client, log.proj,
+				log.date, log.hours, pt.requires_payment
+		from time_log log, project p, project_type pt
+		where $where_clause
+		and log.client = p.client
+		and log.proj = p.proj
+		and log.date between p.start_date and p.end_date
+		and p.proj_type = pt.proj_type
+
+		go
+
+		set nocount off
+		go
+
+	END
+}
+
+# builds the tables that calc_profit and its cousins use
 function build_profit_item
 {
 	# in the where clause, you should use "log" as the alias to refer
@@ -330,13 +374,16 @@ function build_profit_item
 		where_clause="1 = 1"
 	fi
 
+	# have to call build_pay_amount too
+	build_pay_amount "$where_clause"
+
 	# in order to handle projects which demand profit calculated at
 	# the end of the project, we'll have to substitute the project end
 	# date for any requests on the log date
 	# (if no requests on the log date were made, that's okay too)
-	end_profit_where_clause=$(echo $where_clause | perl -pe '
+	end_profit_where_clause="$(echo "$where_clause" | perl -pe '
 			s/\blog\.date\b/p.end_date/g;
-	')
+	')"
 
 	# note that we use the same alias (log) for all three of the log tables
 	# this enables our clients to refer to the columns no matter which
@@ -538,4 +585,14 @@ function period_name		# a string that describes the period
 	echo "convert(char(10), $(period_start "$period_num" $period_len), 101) \c"
 	echo "+ ' to ' + \c"
 	echo "convert(char(10), $(period_end "$period_num" $period_len), 101)"
+}
+
+function in_period_range
+{
+	date="$1"				# date to check
+	period_num="$2"			# the period number (probably from period_num)
+	period_len=$3			# how many days a period is
+
+	echo "$date between $(period_start "$period_num" $period_len) \c"
+	echo "and $(period_end "$period_num" $period_len)"
 }
