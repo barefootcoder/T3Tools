@@ -24,8 +24,9 @@ use constant SUB_HEADER2 =>
 use constant CLIENT_HOURS =>
 	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   @##.##       @##.##      @##.##';
 
-$ENV{USER} = "misc";
-$ENV{PATH} = "$ENV{PATH}:/opt/sybase/bin:/usr/local/sybutils";
+$ENV{SYBASE} = "/opt/sybase";
+$ENV{PATH} = "/usr/bin:/usr/local/bin:/bin:/opt/sybase/bin:/usr/sbin:/usr/local/t3/bin:/usr/local/sybutils";
+
 
 # pseudo-constant for the beginning of the week
 my $MONDAY = get_monday_time();
