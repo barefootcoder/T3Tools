@@ -218,8 +218,12 @@ our $t3;									# DataStore for singleton
 
 sub t3
 {
-	$t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER})
-			unless defined $t3;
+	unless (defined $t3)
+	{
+		my $dstore = DEBUG ? "t3test" : "T3";
+		print STDERR "opening datastore $dstore\n" if DEBUG >= 2;
+		$t3 = DataStore->open($dstore, $ENV{USER})
+	}
 	return $t3;
 }
 
