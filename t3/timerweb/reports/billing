@@ -32,6 +32,17 @@ order by tpl.emp, pi.client, pi.proj, pi.end_date
 */
 go
 
+print "<H1>ERROR! These entries have no billing rates:</H1>"
+print ""
+select tlp.emp "E", $(employee_name e) "Employee", tlp.client "C",
+		c.name "Client", tlp.proj, convert(char(10), tlp.date, 101) "date",
+		tlp.hours
+from time_log_profit tlp, employee e, client c
+where tlp.bill_rate is NULL
+and tlp.emp = e.emp
+and tlp.client = c.client
+go
+
 print ""
 print ""
 set nocount on
