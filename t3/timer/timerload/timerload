@@ -3,6 +3,18 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.4  1999/01/14 19:51:53  buddy
+# client types now moved to project_types
+# bproj now combined with project (for easier joins)
+# added hardcoded project_type fixups
+# added hardcoded project date fixups
+# changed log "time" field to "hours", changed "payroll_paid" to "payroll_date",
+#     removed extraneous bit fields (now in project_type), added id to create
+#     (instead of having separate alter table)
+# removed "test" queries
+# hardcoded division / 1.5 for Tim's corp sec entries (now patched in bill_rate)
+# hardcoded payroll dates for 1998 (so can figure gross profit)
+#
 # Revision 1.3  1999/01/08 04:46:32  buddy
 # now bringing over date invoices and payroll paid
 # removed rate table (now in make_rates script)
@@ -347,6 +359,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		update log
 		set payroll_date = dateadd(day, 15, @payroll_end)
 		where date between @payroll_start and @payroll_end
+		and payroll_date = $BEGINNING_OF_TIME
 		
 		select @payroll_start = dateadd(day, 1, @payroll_end)
 		select @payroll_end = dateadd(day, 13, @payroll_start)
