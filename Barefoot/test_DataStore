@@ -5,39 +5,42 @@ use strict;
 use Barefoot::debug;					# comment out for production use
 
 use Carp;
-use POSIX;
+use POSIX qw<strftime>;
 
 use Barefoot::base;
 use Barefoot::DataStore;
 use Barefoot::exception;
 
+sub test_error(&@);
+
+
+# alert to testing user
+my $server = "SYBASE_1";
+print "\nNOTICE: This script requires a certain amount of setup.\n";
+print "Make sure the following things are true if you have problems:\n";
+print "    1) The server $server is up and running.\n";
+print "    2) You have the sa password in your .dbpasswd file.\n";
+print "    3) The database 'testdb' exists.\n";
+print "    4) The user 'buddy' a valid user in testdb.\n";
+print "    5) The user 'guest' is a valid user in testdb.\n\n";
 
 # test failure to find data store
-my $caught = false;
-try
+test_error
 {
 	my $dsfail = DataStore->open("bogus");
 }
-catch
-{
-	# print STDERR "catching $_ from $__LINE__ of $__FILE__\n";
-	$caught = true if /data store bogus not found/;
-};
-die("bogus data store didn't throw not found error") unless $caught;
+catch { /data store bogus not found/ }
+or die("bogus data store didn't throw not found error");
 
 # test weird I/O errors by faking a data store file
-try
+test_error
 {
 	open(DS, ">fake.dstore") and close(DS);
 	my $dsfail = DataStore->open("fake");
 }
-catch
-{
-	unlink("fake.dstore");
-	# print STDERR "catching $_\n";
-	die("fake data store didn't cause weird I/O error")
-			unless /read error opening data store/;
-};
+catch { /read error opening data store/ }
+or die("fake data store didn't cause weird I/O error");
+unlink("fake.dstore");
 
 
 # test creating a new data store
@@ -50,16 +53,12 @@ undef $newds;
 die("didn't create data store file upon destruction") unless -e "new.dstore";
 
 # test to make sure open() requires a user
-$caught = false;
-try
+test_error
 {
 	$newds = DataStore->open("new");
 }
-catch
-{
-	$caught = true if /must specify user/;
-};
-die("open didn't require user") unless $caught;
+catch { /must specify user/ }
+or die("open didn't require user");
 
 $newds = DataStore->open("new", "nobody");
 die("couldn't retrieve newly created data store") unless $newds;
@@ -75,63 +74,47 @@ die("saved data store spec w/o being modified") if -e "new.dstore";
 
 
 # check to make sure create() catches bogus attributes
-$caught = false;
-try
+test_error
 {
 	my $bogusds = DataStore->create("bogus_attrib", bogus => "bogus");
 }
-catch
-{
-	# print STDERR "catching $_\n";
-	$caught = true
-			if /can't create data store with unknown attribute bogus/;
-};
-die("create didn't notice bogus attribute") unless $caught;
+catch { /can't create data store with unknown attribute bogus/ }
+or die("create didn't notice bogus attribute");
 die("created file with bogus attribute") if -e "bogus_attrib.dstore";
 
 
 # make sure a bogus user bombs
-$caught = false;
-try
+test_error
 {
 	my $testds = DataStore->create("test",
-		connect_string		=>	"dbi:Sybase:server=SYBASE_1",
-		server				=>	"SYBASE_1",
+		connect_string		=>	"dbi:Sybase:server=$server",
+		server				=>	$server,
 		user				=>	"bogus",
 	);
 }
-catch
-{
-	# print STDERR "catching $_\n";
-	$caught = true if /can't get db password/;
-};
-die("didn't detect bogus user") unless $caught;
+catch { /can't get db password/ }
+or die("didn't detect bogus user");
 
 
 # make sure a bogus database bombs
-$caught = false;
-try
+test_error
 {
 	print STDERR "BOGUS ERROR => ";
 	my $testds = DataStore->create("test",
-		connect_string		=>	"dbi:Sybase:server=SYBASE_1;database=bogus",
-		server				=>	"SYBASE_1",
+		connect_string		=>	"dbi:Sybase:server=$server;database=bogus",
+		server				=>	$server,
 		user				=>	"sa",
 	);
 }
-catch
-{
-	# print STDERR "catching $_\n";
-	$caught = true if /can't connect to data store as user/;
-};
-die("didn't detect bogus database") unless $caught;
+catch { /can't connect to data store as user/ }
+or die("didn't detect bogus database");
 
 
 # now let's create a datastore we can play with
 use constant TEST_DS_FILE => "test.dstore";
 my $testds = DataStore->create("test",
-		connect_string		=>	"dbi:Sybase:server=SYBASE_1;database=model",
-		server				=>	"SYBASE_1",
+		connect_string		=>	"dbi:Sybase:server=$server;database=testdb",
+		server				=>	$server,
 		user				=>	"sa",
 		translation_type	=>	"Sybase",
 );
@@ -156,6 +139,14 @@ die("incorrect number of columns") unless $results->num_cols() == 2;
 die("results are not correct")
 		unless $results->col("name") eq "sysobjects"
 		and $results->col("crdate") eq "Jan  1 1900 12:00AM";
+
+# what happens if you ask for an invalid column?
+test_error
+{
+	my $x = $results->col("bogus");
+}
+catch { /unknown column name bogus/ }
+or die("didn't catch illegal column name");
 
 # can we get more than one row?
 $sysobjquery = "
@@ -207,10 +198,13 @@ while ($results->next_row())
 {
 	++$count;
 	die("column 0 bad for row $count") unless $results->col(0) eq 'xxx';
+	die("bad name for column 0") unless $results->colname(0) eq 'a';
 	# print STDERR $results->col(1), "\n";
 	die("column 1 bad for row $count")
 			unless $results->col(1) eq 'Jan  1 2002 12:00AM';
+	die("bad name for column 1") unless $results->colname(1) eq 'b';
 	die("column 2 bad for row $count") unless $results->col(2) == 48.35;
+	die("bad name for column 2") unless $results->colname(2) eq 'c';
 }
 die("didn't get proper number of rows back")
 		unless $count == NUM_TEST_ROWS * 2;
@@ -222,30 +216,44 @@ test_misc_functions();
 test_user_types();
 test_schema_trans();
 test_execute();
+test_vars();
 
 # make sure we can reopen our data store
 undef $testds;
-# print STDERR "about to reopen test data store\n";
+print STDERR "about to reopen test data store\n" if DEBUG >= 5;
 $testds = DataStore->open("test", "buddy");
-# print STDERR "modified state is $testds->{modified}\n";
+print STDERR "modified state is $testds->{modified}\n" if DEBUG >= 4;
 
 # quick output check
-test_output("select * from {%dbo}.test1 where a = 'xxx'",
+test_output("select * from {~dbo}.test1 where a = 'xxx'",
 		"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
 		"can't get good data on reopen");
+
+# for following tests, we need some permissions
+$testds = DataStore->open("test", "sa");
+
+test_load_append_replace();
+test_show_queries();
+test_transactions();
 
 # clean up our test stuff
 $testds = DataStore->open("test", "sa");	# have to be sa for this to work
 db_assert($testds->do("drop table test1"), "can't drop test table");
-db_assert($testds->do("drop table test2"), "can't drop test table");
-db_assert($testds->do("drop table {%buddy}.test1"), "can't drop test table");
-db_assert($testds->do("drop table {%guest}.test1"), "can't drop test table");
-db_assert($testds->do("dump tran model with no_log"), "can't dump tran");
+db_assert($testds->do("drop table {~buddy}.test1"), "can't drop test table");
+db_assert($testds->do("drop table {~guest}.test1"), "can't drop test table");
+# if we don't do the below, running the test script enough times will
+# eventually fill up the transaction log and then we're hosed
+db_assert($testds->do("dump tran testdb with no_log"), "can't dump tran");
 unlink(TEST_DS_FILE);
 
 # looks okay
 unlink "new.dstore";
 print "ALL TESTS PASSED\n";
+
+
+#
+# Subroutines:
+#
 
 
 sub db_assert
@@ -254,6 +262,28 @@ sub db_assert
 
 	die("$die_msg: " . $testds->last_error()) unless $condition;
 }
+
+
+sub test_error (&@)
+{
+	my ($try, $catch) = @_;
+
+	# print STDERR "in test_error block\n";
+	eval { &$try };
+	if ($@)
+	{
+		# print "in try: $@";
+		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/;
+		die("incorrect 'die' format: $@") unless $3;
+		local $_ = $1;
+		print STDERR "actually caught $_\n" if DEBUG >= 2;
+		$__FILE__ = $2;
+		$__LINE__ = $3;
+		return true if &$catch;
+	}
+	return false;
+}
+
 
 sub test_output
 {
@@ -266,16 +296,17 @@ sub test_output
 	my $output = "";
 	$output .= join(':', $res->all_cols()) . "\n" while $res->next_row();
 	# print STDERR "got output $output\n";
-	die($die_msg) unless $output eq $expected_output;
+	croak($die_msg) unless $output eq $expected_output;
 }
+
 
 sub test_constants
 {
 	db_assert($testds->do("insert test1 "
-			. "values ('con', {BEGINNING_OF_TIME}, 0)"),
+			. "values ('con', '{BEGINNING_OF_TIME}', 0)"),
 			"beginning of time insert failed");
 	db_assert($testds->do("insert test1 "
-			. "values ('con', {END_OF_TIME}, 0)"),
+			. "values ('con', '{END_OF_TIME}', 0)"),
 			"end of time insert failed");
 	test_output("select * from test1 where a = 'con'",
 			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
@@ -284,17 +315,12 @@ sub test_constants
 
 sub test_bogus_function
 {
-	$caught = false;
-	try
+	test_error
 	{
 		$testds->do("{&bogus}");
 	}
-	catch
-	{
-		# print STDERR "catching $_\n";
-		$caught = true if /unknown translation function: bogus/;
-	};
-	die("didn't detect bogus function") unless $caught;
+	catch { /unknown translation function: bogus/ }
+	or die("didn't detect bogus function");
 }
 
 sub test_user_types
@@ -303,18 +329,12 @@ sub test_user_types
 	$testds->configure_type('logical', 'boolean');
 
 	# while we're here, make sure we can't call do() with config's pending
-	$caught = false;
-	try
+	test_error
 	{
 		$testds->do("something");
 	}
-	catch
-	{
-		my $error_msg = "can't execute query with config's pending; "
-				. "run commit_configs()";
-		$caught = true if /$error_msg/;
-	};
-	die("didn't refuse query with pending config's") unless $caught;
+	catch { /can't execute query with config's pending; run commit_configs()/ }
+	or die("didn't refuse query with pending config's");
 
 	# now make sure our defined type works
 	$testds->commit_configs();
@@ -347,7 +367,7 @@ sub test_misc_functions
 	# date to fail to match.  just run it again.
 	die("can't get current date")
 			unless substr($res->col(0), 0, 11)
-					eq POSIX::strftime("%b %e %Y", localtime(time()));
+					eq strftime("%b %e %Y", localtime(time()));
 
 	# ifnull function
 	db_assert($testds->do("
@@ -365,9 +385,10 @@ sub test_schema_trans
 	# define a schema translation
 	$testds->configure_schema_translation('return "$_[0].";');
 	$testds->commit_configs();
-	$testds->overwrite_table('{%guest}.test1', [['a', 'int', 'null']]);
+	$testds->overwrite_table('{~guest}.test1', [['a', 'int', 'null']])
+			or die("can't create initial table for schema testing");
 	db_assert(
-			$testds->overwrite_table('{%buddy}.test1', [['a', 'int', 'null']]),
+			$testds->overwrite_table('{~buddy}.test1', [['a', 'int', 'null']]),
 			"can't create same table in different schema: "
 	);
 }
@@ -430,4 +451,128 @@ sub test_execute
 	);
 	die("execute select report wasn't correct: ". $report)
 			unless $report eq "(4 rows affected)\n(2 rows affected)\n";
+
+	db_assert(
+			$report = $testds->execute("
+				insert test2
+				values ('ccc', 0)
+				;
+				select * from test2
+				where a like 'a%'
+				;
+				drop table test2
+				;
+			", report => "%R rows\n"),
+			"execute with mixed insert/select/drop and report failed"
+	);
+	die("execute mixed report wasn't correct: ". $report)
+			unless $report eq "1 rows\n2 rows\n";
+
+	print STDERR "about to check for test2 existence\n" if DEBUG >= 5;
+	die("test2 table still exists after drop: ", $testds->last_error())
+			# this ought to fail because the table should have been dropped
+			if defined $testds->do("select * from test2");
+}
+
+sub test_vars
+{
+	$testds->define_var("a_val", "con");
+	test_output("select * from test1 where a = '{a_val}'",
+			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
+			"variable set to 'con' didn't work");
+	$testds->define_var("a_val", "xxx");
+	test_output("select * from test1 where a = '{a_val}'",
+			"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
+			"variable set to 'xxx' didn't work");
+}
+
+sub test_conditionals
+{
+	$testds->define_var("a_val", "con");
+	test_output("
+				select * from test1
+				where a = '{a_val}'				{?a_val}
+			", 
+			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
+			"positive conditional didn't work");
+	test_output("
+				select * from test1
+				where a = '{a_val}'
+				and b = {BEGINNING_OF_TIME}		{!a_val}
+			", 
+			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
+			"negative conditional didn't work");
+}
+
+sub test_load_append_replace
+{
+	my $contents = $testds->load_table("
+			select * from {~dbo}.test1
+			where a = 'con'
+			order by b
+	");
+	die("load_table returned undefined results") unless $contents;
+	die("contents aren't correct")
+			unless $contents->[0]->{a} eq 'con'
+			and $contents->[1]->{a} eq 'con'
+			and $contents->[0]->{b} eq 'Jan  1 1753 12:00AM'
+			and $contents->[1]->{b} eq 'Dec 31 9999 12:00AM'
+			and $contents->[0]->{c} == 0
+			and $contents->[1]->{c} == 0;
+
+	print STDERR "contents has ", scalar(@$contents), " rows\n" if DEBUG >= 3;
+	$_->{c} = 1 foreach @$contents;
+	print STDERR "finished changing contents\n" if DEBUG >= 5;
+	die("call to append table failed")
+			unless $testds->append_table("{~dbo}.test1", $contents);
+	test_output("
+				select * from {~dbo}.test1
+				where a = 'con'
+				order by c, b
+			", 
+			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n"
+				. "con:Jan  1 1753 12:00AM:1\ncon:Dec 31 9999 12:00AM:1\n",
+			"append table didn't work");
+
+	die("call to replace table failed")
+			unless $testds->replace_table("{~dbo}.test1", $contents);
+	test_output("select * from {~dbo}.test1 order by b",
+			"con:Jan  1 1753 12:00AM:1\ncon:Dec 31 9999 12:00AM:1\n",
+			"append table didn't work");
+}
+
+sub test_show_queries
+{
+	my $query = "select * from test1";
+	my $testfile = "test.query";
+	$testds->show_queries();
+	open(QRY, ">$testfile") or die("can't open output file for test query");
+	select QRY;
+	$testds->do($query);
+	close(QRY);
+	die("show queries didn't work")
+			unless `cat $testfile` eq "DataStore current query:\n$query\n";
+	$testds->show_queries(false);
+	unlink($testfile);
+	$testds->do($query);
+	die("show queries didn't turn off") if -e $testfile;
+	select STDOUT;
+}
+
+sub test_transactions
+{
+	$testds->begin_tran() or die("begin tran failed");
+	$testds->do("insert into test1 values ('trn', '1/1/01', 0)")
+			or die("insert for transaction failed");
+	$testds->rollback() or die("rollback tran failed");
+	test_output("select * from test1 where a = 'trn'",
+			"", "rollback didn't work");
+
+	$testds->begin_tran() or die("begin tran failed");
+	$testds->do("insert into test1 values ('trn', '1/1/01', 0)")
+			or die("insert for transaction failed");
+	$testds->commit() or die("commit tran failed");
+	test_output("select * from test1 where a = 'trn'",
+			"trn:Jan  1 2001 12:00AM:0\n",
+			"commit didn't work");
 }
