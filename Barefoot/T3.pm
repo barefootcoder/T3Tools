@@ -30,6 +30,10 @@ use strict;
 use Carp;
 
 use Barefoot::html_menu;
+use Barefoot::config_file;
+
+use constant CONFIG_FILE => '/etc/t3.conf';
+use constant DEFAULT_WORKGROUP => 'Barefoot';
 
 use constant INI_FILE => 'timer.ini';
 
@@ -44,12 +48,24 @@ use constant BUSY_MESSAGE => 'IMBUSY';
 use constant TALKER_MESSAGE => 'NORMAL';
 use constant ERROR_MESSAGE => 'ERROR';
 
+
+my $cfg_file = config_file->read(CONFIG_FILE);
+my $workgroup = defined($::ENV{T3_WORKGROUP})
+		? $::ENV{T3_WORKGROUP} : DEFAULT_WORKGROUP;
+
 1;
 
 
 #
 # Subroutines:
 #
+
+sub set_workgroup
+{
+	my ($new_wg) = @_;
+
+	$workgroup = $new_wg;
+}
 
 sub initialize
 {
@@ -79,6 +95,13 @@ sub initialize
 		}
 	}
 	close(INI);
+}
+
+sub config_param
+{
+	my ($directive) = @_;
+
+	return $cfg_file->lookup($workgroup, $directive);
 }
 
 sub build_message
