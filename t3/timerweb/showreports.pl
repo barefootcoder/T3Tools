@@ -2,6 +2,9 @@
 
 # $Header$
 # $Log$
+# Revision 1.1  1998/12/31 20:02:13  buddy
+# Initial revision
+#
 # Revision 1.1  1998/12/31 20:00:43  buddy
 # Initial revision
 #
@@ -11,34 +14,39 @@ use CGI;
 $cgi = new CGI;
 $cookie_array = [];
 $debug_string = "";
+$vars = {
+	user		=>	"",
+	client		=>	"",
+	start_date	=>	"",
+	end_date	=>	"",
+};
+
+$title = 'TIMER Reports';
+$basepath = "/home/httpd/sybase/timer_reports";
 
 							debug("env has cookies $ENV{HTTP_COOKIE}");
-$user = $cgi->cookie('USER');
-							debug("user is $user from cookie");
-$start_date = $cgi->cookie('START_DATE');
-							debug("start_date is $start_date from cookie");
-$end_date = $cgi->cookie('END_DATE');
-							debug("end_date is $end_date from cookie");
+foreach $var (keys %$vars)
+{
+	$vars->{$var} = $cgi->cookie($var);
+							debug("$var is $var->{$var} from cookie");
+}
 
 if ($cgi->request_method() eq 'POST')
 {
-	param_to_cookie('USER', \$user);
-	param_to_cookie('START_DATE', \$start_date);
-	param_to_cookie('END_DATE', \$end_date);
+	foreach $var (keys %$vars)
+	{
+		param_to_cookie($var);
+	}
 }
 			debug("cookie array has " . scalar(@$cookie_array) . " elements");
-
-$title = 'TIMER Reports';
-$basepath = "/usr/local/WWW/apache1.2/sybase/timer_reports/";
 
 print $cgi->header(-cookie=>$cookie_array);
 print $cgi->start_html($title);
 print $cgi->center($cgi->h1($title)), "\n";
-text_form('User', 20, $user);
-text_form('Start Date', 20, $start_date);
-text_form('End Date', 20, $end_date);
+text_form();
 print "<HR>\n";
 
+debug($cgi->a({-href=>"test.cgi"}, "test"));
 for $file ( < $basepath/* > )
 {
 	$basefile = $file;
@@ -49,6 +57,7 @@ for $file ( < $basepath/* > )
 	{
 		if ( /--\s*TITLE:\s*(.*)\s*/ )
 		{
+										debug("report is $1");
 			print $cgi->a({-href=>"/cgi-bin/sqlcgi.pl?$basefile"}, $1),
 					"<BR>\n";
 			last;
@@ -61,7 +70,7 @@ print $cgi->end_html();
 
 sub param_to_cookie
 {
-	my ($name, $var_to_set) = @_;
+	my ($name) = @_;
 
 	$value = $cgi->param($name);
 	if (defined $value)
@@ -73,28 +82,29 @@ sub param_to_cookie
 				-path=>"/cgi-bin/",
 				-domain=>".barefoot.net",
 			);
-		$$var_to_set = $value;
+		$vars->{$name} = $value;
 	}
-	return $value;
 }
 
 sub text_form
 {
-	my ($name, $size, $value) = @_;
-
-	print $cgi->startform();
-	print "<P>$name:";
-	html_spaces(2);
-	$name =~ s/ /_/g;
-	$name = uc($name);
-	print $cgi->textfield(
-			-name=>$name,
-			-default=>$value,
-			-size=>$size,
-			-maxlength=>$size
-	);
-	html_spaces(5);
-	print "\n", $cgi->submit('Set');
+	print $cgi->startform(), "<P>\n";
+	foreach $var (keys %$vars)
+	{
+		$name = $var;
+		$size = 30;
+		print "$name:";
+		html_spaces(2);
+		print $cgi->textfield(
+				-name=>$var,
+				-default=>$vars->{$var},
+				-size=>$size,
+				-maxlength=>$size
+		);
+		html_spaces(5);
+		print "\n";
+	}
+	print "\n<BR>", $cgi->submit('Set Variables');
 	print "</P>\n";
 	print $cgi->endform(), "\n";
 }
