@@ -52,7 +52,7 @@ die("illegal date") unless date::isValid($check_date);
 my $insert_query = "
 	insert payroll
 		(period_start, period_end, check_date, create_user, create_date)
-	values ('$min_date', '$max_date', '$check_date', '$::ENV{USER}', getdate())
+	values ('$from_date', '$to_date', '$check_date', '$::ENV{USER}', getdate())
 	go
 
 	update time_log
