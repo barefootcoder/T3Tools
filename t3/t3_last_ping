@@ -15,6 +15,7 @@ use Time::localtime;
 use Barefoot::date;
 use Barefoot::input qw(input);
 use Barefoot::T3;
+use File::Basename;
 
 # where message box files are found
 use constant TALKERPATH => T3::config_param('TalkerDir');
@@ -26,23 +27,17 @@ my $older_than = $opt->{o};
 my $newer_than = $opt->{n};
 
 my %users;
-my $users_roll_filename = TALKERPATH . "/users.roll";
-open(ROLL, $users_roll_filename) or die("can't open user list");
-while ( <ROLL> )
+foreach my $active_file (glob(TALKERPATH . "/*.active"))
 {
-	my ($from) = /from="(.*?)"/;
-	my $user_touch_file = TALKERPATH . "/" . $from . ".active";
+	my $days = -M $active_file;
+	my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size,
+		$atime, $mtime, $ctime, $blksize, $blocks) 
+			= stat (_);
 
-	if (-e $user_touch_file)
-	{
-		my $days = -M $user_touch_file;
-		my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size,
-			$atime, $mtime, $ctime, $blksize, $blocks) 
-				= stat (_);
+	my $minutes = $days * 24 * 60;
 
-		my $minutes = $days * 24 * 60;
-		$users{$from} = "$minutes##" . ctime($mtime);
-	}
+	my $user = basename($active_file, ".active");
+	$users{$user} = "$minutes##" . ctime($mtime);
 }
 close(ROLL);
 
