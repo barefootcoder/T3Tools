@@ -24,7 +24,8 @@
 <H3>For Time Period Ending:  {end_date}</H3>
 ;
 
-	select tlp.log_date as "Date:", sum(tlp.hours) "Hours:"
+	select tlp.log_date, sum(tlp.hours) as "hours",
+			{*running = $total_hrs += %hours}
 	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
 			{~timer}.employee e, {~t3}.workgroup_user wu
 	where pi.log_source = tlp.log_source
@@ -36,6 +37,12 @@
 	order by tlp.log_date
 	# compute sum(sum(tlp.hours)) by $(period_num tlp.log_date 7)
 ->format
-	H=>%default
+	H=>Date:                 Hours:
+	H=>--------------------  ------
 	B->@<<<<<<<<<<<<<<<<<<<  @##.##
+;
+
+&print
+                      ======
+                      {total_hrs}
 ;
