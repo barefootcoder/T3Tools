@@ -51,7 +51,10 @@ use constant	INT		=>		1;
 sub _compare
 {
 	my ($lhs, $rhs, $type) = @_;
-	$type = ($lhs + 0 eq $lhs) ? INT : STRING unless defined($type);
+	{
+		no warnings qw<numeric>;
+		$type = ($lhs + 0 eq $lhs) ? INT : STRING unless defined($type);
+	}
 
 	if ($type eq STRING)
 	{
