@@ -31,9 +31,6 @@ use Barefoot::config_file;
 use Barefoot::T3::base;
 
 
-use constant TEST_MODULES_DIR => './test_modules';
-
-
 our %modules;
 
 
