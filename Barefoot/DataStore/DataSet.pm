@@ -22,25 +22,57 @@
 #
 ###########################################################################
 
-package DataStore;
+package DataStore::DataSet;
 
 ### Private ###############################################################
 
 use strict;
 
+use Carp;
 
-1;
+use Barefoot::base;
+use Barefoot::DataStore::DataRow;
 
 
-#
+###########################
 # Subroutines:
-#
+###########################
+
+
+sub new
+{
+	my ($class, $sth) = @_;
+
+	# need copies of these, since some of our methods might modify them
+	# if we don't make copies, we'd modify the statement parameters
+	# (and that would be bad)
+	my @fields = @{ $sth->{NAME} };
+	my %index = %{ $sth->{NAME_hash} };
+
+	my $data = [];
+	while (my $row = $sth->fetchrow_arrayref())
+	{
+		print STDERR "row in DataSet: ", join(':', @$row), "\n" if DEBUG >= 3;
+		# *must* make a copy of $row because fetchrow_arrayref() returns
+		# the same reference every time (see DBI manpage)
+		push @$data, DataStore::DataRow->new(\@fields, \%index, [ @$row ]);
+	}
+
+	# check for error
+	return undef if $sth->err();
+
+	dump_set($data, *STDERR) if DEBUG >= 3;
+
+	bless $data, $class;
+}
 
 
 # for debugging purposes
 sub dump_set
 {
-	my ($data) = @_;
+	my ($data, $fh) = @_;
+	my $oldfh;
+	$oldfh = select($fh) if ($fh);
 
 	foreach my $x (0..$#$data)
 	{
@@ -48,6 +80,8 @@ sub dump_set
 		print "$_ => $data->[$x]->{$_}; " foreach sort keys %{$data->[$x]};
 		print "\n";
 	}
+
+	select $oldfh if $fh;
 }
 
 
@@ -137,15 +171,65 @@ sub group
 }
 
 
+sub add_column
+{
+	my ($data, $colname, $adder_sub) = @_;
+	croak("must specify column to remove") unless $colname;
+	croak("must specify a subroutine to calculate new values")
+			unless $adder_sub;
+
+	# got to go into the DataRow's and twiddle the field list by hand
+	# Note 1) we have to do this in two places: the array of fields, and
+	#	the hash which links a field name to its index in the value array
+	# Note 2) we only have to do this for one DataRow; since all rows in
+	#	the set are linked to the same field list and index hash, updating
+	#	one updates them all
+	my $first_row = $data->[0];
+	my $field_list = $$first_row->{impl}->[DataStore::DataRow::KEYS];
+	# tack new column name onto end
+	push @$field_list, $colname;
+	# now update index hash
+	$$first_row->{impl}->[DataStore::DataRow::INDEX]->{$colname}
+			= $#$field_list;
+
+	# now we can use the sub to calculate the new values
+	# row should be $_ so sub can refer to that if it wants
+	foreach (@$data)
+	{
+		$_->{$colname} = &$adder_sub;
+	}
+
+	return $data;
+}
+
+
 sub remove_column
 {
 	my ($data, $colname) = @_;
 	croak("must specify column to remove") unless $colname;
 
+	# got to go into the DataRow's and twiddle the field list by hand
+	# all comments under add_column (above) apply
+	my $first_row = $data->[0];
+	# remove column from index hash, saving array index
+	my $idx = delete
+			$$first_row->{impl}->[DataStore::DataRow::INDEX]->{$colname};
+	# remove column from field list
+	my $field_list = $$first_row->{impl}->[DataStore::DataRow::KEYS];
+	splice @$field_list, $idx, 1;
+
+	# now remove the data from each row
 	foreach my $row (@$data)
 	{
-		delete $row->{$colname};
+		splice @$row, $idx, 1;
 	}
 
 	return $data;
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
