@@ -1,16 +1,17 @@
--- SORT GROUP: Database Lists
--- TITLE: List of Invoices
+# SORT GROUP: Database Lists
+# TITLE: List of Invoices
 
-print "List starts with invoice [invoice]"
-go
+&print List starts with invoice {invoice}
 
-select i.invoice_number, c.name,
-		convert(char(10), i.invoice_billdate, 101) "Billed On",
-		convert(char(12), i.invoice_amount) "Amount",
-		convert(char(10), i.invoice_paydate, 101) "Paid On"
-from invoice i, client c
-where i.client = c.client
-and i.invoice_number >= '[invoice]'
-and i.client = '[client]'								??client
-order by i.invoice_number
-go
+	select i.invoice_number, c.name,
+			i.invoice_billdate "Billed On",
+			i.invoice_amount "Amount",
+			i.invoice_paydate "Paid On"
+	from {@invoice} i, {@client} c
+	where i.client_id = c.client_id
+	and i.invoice_number >= {invoice}
+{if client}
+	and i.client_id = {client}
+{endif}
+	order by i.invoice_number
+;

@@ -1,61 +1,49 @@
--- SORT GROUP: Historical Reports
--- TITLE: Invoice Already Billed
+# SORT GROUP: Historical Reports
+# TITLE: Invoice Already Billed
 
-select i.invoice_number "Number:", i.client "C", c.name "Client:",
-		convert(char(10), i.invoice_amount, 1) "Amount:",
-		convert(char(10), i.invoice_billdate, 101) "Billed on:",
-		isnull(convert(char(10), i.invoice_paydate, 101), "unpaid") "Paid on:"
-from invoice i, client c
-where i.invoice_number = '[invoice]'
-and i.client = c.client
-go
+	select i.invoice_number "Number:", i.client_id "C", c.name "Client:",
+			i.invoice_amount "Amount:", i.invoice_billdate "Billed on:",
+			i.invoice_paydate "Paid on:"
+	from {~timer}.invoice i, {~timer}.client c
+	where i.invoice_number = {invoice}
+	and i.client_id = c.client_id
+->format
+	H=>%default
+	B->@<x10 @|| @<x30 @######.## @<x11 @<x11
+;
 
-$(build_profit_item "
+&proc build_profit_item
+
 	exists
 	(
 		select 1
-		from invoice i
+		from {~timer}.invoice i
 		where log.invoice_id = i.invoice_id
-		and i.invoice_number = '[invoice]'
+		and i.invoice_number = {invoice}
 	)
-")
 
-calc_total_price
-go
+;
 
--- for debugging
-/*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
-	convert(numeric(6,2), payrate) "payrate", paytype "PayT",
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(6,2), amt_billed) "amt_billed",
-	convert(numeric(6,2), salescomm) "salescomm",
-	convert(numeric(6,2), refcomm) "refcomm",
-	convert(numeric(6,2), amt_paid) "amt_paid",
-	convert(numeric(6,2), diff) "diff",
-	convert(numeric(6,2), empcomm) "empcomm"
-from profit_item pi
-order by emp, client, proj, date
-*/
-go
+&print
 
-print ""
-print ""
-go
 
-select p.name "project", -- tlp.emp,
-		convert(char(10), min(pi.start_date), 101) "from",
-		convert(char(10), max(pi.end_date), 101) "to",
-		convert(numeric(6,2), sum(pi.units)) "units",
-		convert(numeric(6,2), pi.price_per_unit) "price/unit",
-		sum(pi.total_price) "total price"
-from profit_item pi, time_log_profit tlp, project p
-where pi.log_source = tlp.log_source
-and pi.log_id = tlp.log_id
-and tlp.client = p.client
-and tlp.proj = p.proj
-and tlp.date between p.start_date and p.end_date
-group by p.name, pi.price_per_unit
-order by p.name
-compute sum(sum(pi.total_price))
-go
+;
+
+	select p.name "project", -- tlp.emp,
+			min(pi.start_date) "from", max(pi.end_date) "to",
+			sum(pi.units) "units", pi.price_per_unit "$/unit",
+			sum(pi.total_price) "total price"
+	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
+		{~timer}.project p
+	where pi.log_source = tlp.log_source
+	and pi.log_id = tlp.log_id
+	and tlp.client_id = p.client_id
+	and tlp.proj_id = p.proj_id
+	and tlp.log_date between p.start_date and p.end_date
+	group by p.name, pi.price_per_unit
+	order by p.name
+	-- compute sum(sum(pi.total_price))
+->format
+	H=>%default
+	B->@<x30 @<x11 @<x11 @##.## @##.## @#######.##
+;
