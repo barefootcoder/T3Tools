@@ -11,6 +11,10 @@ use strict;
 *Client_Hours =
 	\'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   @##.##       @##.##      @##.##';
 
+$ENV{USER} = "misc";
+$ENV{TIMERDIR} = "/export/usr/misc";
+$ENV{PATH} = "$ENV{PATH}:/opt/sybase/bin:/usr/local/sybutils";
+
 
 my $today = (localtime(time))[6] - 1;	# - 1 assumes running after midnight
 my $days_so_far = $today > 0 ? $today : $today + 7;
