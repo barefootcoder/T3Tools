@@ -1,0 +1,74 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Sales and Effort (by Client)
+
+print "Period from [start_date] to [end_date]"
+print ""
+print ""
+go
+
+$(build_profit_item "
+	date between '[start_date]' and '[end_date]'
+")
+exec calc_profit
+go
+
+-- for debugging
+/*
+select emp, client, proj, convert(char(10), date, 101) "date", hours,
+	convert(numeric(6,2), billrate) "billrate",
+	convert(numeric(6,2), salescomm) "salescomm",
+	convert(numeric(6,2), refcomm) "refcomm",
+	convert(numeric(7,2), amt_billed) "amt billed"
+from #emp_comm
+order by emp, client, proj, date
+*/
+go
+
+-- save totals for calculating percentages
+select sum(pi.total_price) "all_sales", sum(tlp.hours) "all_hours",
+		sum(pi.simple_profit) "all_sprofit"
+into #grand_totals
+from profit_item pi, time_log_profit tlp
+where pi.log_source *= tlp.log_source
+and pi.log_id *= tlp.log_id
+go
+
+-- gross sales
+select c.client "C", c.name "client",
+		sum(pi.total_price) "gross sales",
+		convert(numeric(5,2),
+				100.0 * sum(pi.total_price) / gt.all_sales) "% Tot"
+from profit_item pi, client c, #grand_totals gt
+where pi.client = c.client
+group by c.client, c.name, gt.all_sales
+order by c.client
+compute sum(sum(pi.total_price))
+go
+
+-- billable hours
+select c.client "C", c.name "client",
+		sum(tlp.hours) "total hours",
+		convert(numeric(5,2),
+				100.0 * sum(tlp.hours) / gt.all_hours) "% Tot"
+from profit_item pi, time_log_profit tlp, client c, #grand_totals gt
+where pi.log_source = tlp.log_source
+and pi.log_id = tlp.log_id
+and pi.client = c.client
+group by c.client, c.name, gt.all_hours
+order by c.client
+compute sum(sum(tlp.hours))
+go
+
+-- simple profit
+select c.client "C", c.name "client",
+		sum(pi.simple_profit) "simple profit",
+		convert(numeric(4,2), 100.0 * sum(pi.simple_profit)
+				/ sum(pi.total_price)) "margin",
+		convert(numeric(5,2),
+				100.0 * sum(pi.simple_profit) / gt.all_sprofit) "% Tot"
+from profit_item pi, client c, #grand_totals gt
+where pi.client = c.client
+group by c.client, c.name, gt.all_sprofit
+order by c.client
+compute sum(sum(pi.simple_profit))
+go
