@@ -20,9 +20,12 @@ my $t3 = DataStore->open("t3test", "buddy") or die("can't open data store");
 my $data = $t3->load_table("select * from {~timer}.category")
 		or die("can't get an initial data set from load_table");
 
+die("not blessed ref (DataSet)") unless $data->isa("DataStore::DataSet");
+
 
 # test all functions
 test_foreach_row();
+test_add_column();
 test_remove_column();
 test_group();
 
@@ -44,6 +47,7 @@ sub test_error (&@)
 		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/;
 		die("incorrect 'die' format: $@") unless $3;
 		local $_ = $1;
+		print STDERR "actually caught $_\n" if DEBUG >= 2;
 		$__FILE__ = $2;
 		$__LINE__ = $3;
 		return true if &$catch;
@@ -54,11 +58,29 @@ sub test_error (&@)
 
 sub test_foreach_row
 {
-	DataStore::foreach_row($data, sub
+	my @hold;
+	$data->foreach_row(sub
 			{
-				$_->{new_col} = substr($_->{name}, 0, 5);
+				push @hold, substr($_->{name}, 0, 5);
 			}
 	) or die("foreach_row call failed");
+
+	my $i = 0;
+	foreach (@$data)
+	{
+		die("foreach_row didn't work")
+				unless $hold[$i++] eq substr($_->{name}, 0, 5);
+	}
+}
+
+
+sub test_add_column
+{
+	$data->add_column( new_col => sub
+			{
+				substr($_->{name}, 0, 5);
+			}
+	) or die("add_column call failed");
 
 	foreach (@$data)
 	{
@@ -67,14 +89,14 @@ sub test_foreach_row
 	}
 }
 
+
 sub test_remove_column
 {
-	test_error { DataStore::remove_column($data); }
+	test_error { $data->remove_column(); }
 	catch { /must specify column to remove/ }
 	or die("remove_column didn't demand column name");
 
-	DataStore::remove_column($data, 'new_col')
-			or die("remove_column call failed");
+	$data->remove_column('new_col') or die("remove_column call failed");
 
 	foreach (@$data)
 	{
@@ -86,7 +108,7 @@ sub test_remove_column
 sub test_group
 {
 	# make sure the mechanics are working
-	my $newdata = DataStore::group($data,
+	my $newdata = $data->group(
 			group_by	=>	[ qw<category name> ],
 			calculate	=>	sub
 							{
@@ -121,15 +143,16 @@ sub test_group
 	}
 
 	# try a simple grouping
-	DataStore::foreach_row($data, sub
+	$data->add_column( num_words => sub
 			{
 				my @words;
-				$_->{num_words} = scalar(@words = split(' ', $_->{name}));
+				my $num_words = scalar(@words = split(' ', $_->{name}));
 				print "setting $_->{name} to $_->{num_words} words\n"
 						if DEBUG >= 3;
+				return $num_words;
 			}
 	);
-	my $group = DataStore::group($data,
+	my $group = $data->group(
 			group_by	=>	[ qw<num_words> ],
 			calculate	=>	sub
 							{
@@ -165,7 +188,7 @@ sub test_group
 	}
 
 	# make sure constant columns fail if not constant
-	$group = DataStore::group($data,
+	$group = $data->group(
 			group_by	=>	[ qw<num_words> ],
 			constant	=>	[ qw<category> ],
 	);
@@ -182,7 +205,7 @@ sub test_group
 			and tl.log_date between p.start_date and p.end_date
 			and tl.log_date between '1/1/1999' and '12/31/1999'
 	") or die("can't load for extended test");
-	my $ds_group = DataStore::group($data,
+	my $ds_group = $data->group(
 			group_by	=>	[ qw<emp_id client_id proj_id phase_id> ],
 			constant	=>	[ qw<client_name proj_name> ],
 			calculate	=>	sub
