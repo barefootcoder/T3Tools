@@ -48,8 +48,12 @@ print "\nInvoice for client $client_id: "
 exit 1 unless get_yn("Is this right?");
 
 my $inv_num = input("\nInvoice number:");
-my $bill_date = input("Billing date:");
-die("illegal date") unless date::isValid($bill_date);
+my $bill_date = input("Billing date:", date::today(),
+	{
+		VALID		=>	\&date::isValid,
+		VALID_ERR	=>	"illegal date!",
+	}
+);
 
 &t3->begin_tran();
 update_timer("wrong number of rows returned");
