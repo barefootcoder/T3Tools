@@ -1,0 +1,65 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;
+
+use Barefoot::base;
+use Barefoot::date;
+
+
+# test valid date formats
+die("failed valid test") unless date::isValid("12/31/01");
+die("failed valid test") unless date::isValid("12/31/2001");
+die("failed valid test") unless date::isValid("31/Dec/01");
+die("failed valid test") unless date::isValid("31/Dec/2001");
+die("failed valid test") unless date::isValid("12-31-01");
+die("failed valid test") unless date::isValid("12-31-2001");
+die("failed valid test") unless date::isValid("31-Dec-01");
+die("failed valid test") unless date::isValid("31-Dec-2001");
+die("failed valid test") unless date::isValid("20011231");
+die("failed valid test") unless date::isValid("Dec 31 2001 12:00AM");
+
+# test invalid ones
+die("failed invalid test") if date::isValid("bmoogle");
+die("failed invalid test") if date::isValid("14/1/01");
+die("failed invalid test") if date::isValid("1/42/01");
+
+
+# test today function
+my $date_cmd = `date +"%-m/%-d/%Y"`;
+chomp $date_cmd;
+print "date returned $date_cmd\n" if DEBUG >= 3;
+die("today's date is wrong") unless date::today() eq $date_cmd;
+
+
+# other tests
+test_period_funcs();
+
+
+# everything looks good
+print "ALL TESTS PASSED\n";
+
+
+sub test_period_funcs
+{
+	die("period_num gave wrong answer")
+			unless date::period_num('1/1/01', 7) == 1095;
+	die("period_num gave wrong answer")
+			unless date::period_num('1/1/01', 7, '1/31/1994') == 361;
+	die("period_num gave wrong answer")
+			unless date::period_num('1/1/01', 14, '1/31/1994') == 180;
+	# let's be tricky ... can we specify a default epoch?
+	my $output = `
+
+			perl -e '
+
+				use Barefoot::debug;
+				use Barefoot::date epoch => "1/31/1994";
+
+				print date::period_num("1/1/01", 7);
+			'
+	`;
+	print STDERR "output was $output\n" if DEBUG >= 2;
+	die("setting default option for epoch failed") unless $output == 361;
+}
