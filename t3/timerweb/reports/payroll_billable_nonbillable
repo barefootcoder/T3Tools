@@ -44,11 +44,8 @@ set nocount on
 -- update for non-billable stuff
 select $(period_num pa.date 7) "period", sum(pa.total_pay) "total"
 into #non_billable
-from pay_amount pa, project p, project_type pt
-where pa.client = p.client
-and pa.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_billing = 0
+from pay_amount pa
+where pa.requires_billing = 0
 and isnull(pa.pay_rate_type, '') != 'S'
 group by $(period_num pa.date 7)
 go
@@ -62,11 +59,8 @@ go
 -- now update for billable stuff
 select $(period_num pa.date 7) "period", sum(pa.total_pay) "total"
 into #billable
-from pay_amount pa, project p, project_type pt
-where pa.client = p.client
-and pa.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_billing = 1
+from pay_amount pa
+where pa.requires_billing = 1
 and isnull(pa.pay_rate_type, '') != 'S'
 group by $(period_num pa.date 7)
 go
@@ -113,13 +107,14 @@ from #payroll_percent pp, #fin_ovhd fin
 where pp.period = fin.period
 and fin.fin_type = "PAY"
 go
-go
 
 -- now for the sub-contractor stuff
+-- note that this is only the billable subcon stuff
 select $(period_num pa.date 7) "period", sum(pa.total_pay) "total"
 into #subcon
 from pay_amount pa
-where isnull(pa.pay_rate_type, '') = 'S'
+where pa.requires_billing = 1
+and isnull(pa.pay_rate_type, '') = 'S'
 group by $(period_num pa.date 7)
 go
 
@@ -131,15 +126,25 @@ go
 
 -- the actual report
 select $(period_name pp.period 7) "week",
-		isnull  (convert(char(9), pp.non_billable, 1), '     None') "non-billable",
-		isnull  (convert(char(8), convert(money, pp.non_billable * pp.overhead_percent), 1), '    None') "non-bill OH",
+		isnull  (convert(char(9), pp.non_billable, 1),
+				'     None') "non-billable",
+		isnull  (convert(char(8),
+				convert(money, pp.non_billable * pp.overhead_percent), 1),
+				'    None') "non-bill OH",
 		isnull  (convert(char(9), pp.billable, 1), '     None') "billable",
-		isnull  (convert(char(8), convert(money, pp.billable * pp.overhead_percent), 1), '    None') "bill OH",
+		isnull  (convert(char(8),
+				convert(money, pp.billable * pp.overhead_percent), 1),
+				'    None') "bill OH",
 		isnull  (convert(char(9), pp.inv_overhead, 1), '     None') "INV ovhd",
-		isnull  (convert(char(8), convert(money, pp.inv_overhead * pp.overhead_percent), 1), '    None') "INV oh OH",
-		isnull ( convert(char(9), pp.pay_overhead, 1), '     None') "PAY ovhd",
-		isnull  (convert(char(8), convert(money, pp.pay_overhead * pp.overhead_percent), 1), '    None') "PAY oh OH",
-		isnull  (convert(char(9), pp.subcontractor, 1), '     None') "subcontractor"
+		isnull  (convert(char(8),
+				convert(money, pp.inv_overhead * pp.overhead_percent), 1),
+				'    None') "INV oh OH",
+		isnull (convert(char(9), pp.pay_overhead, 1), '     None') "PAY ovhd",
+		isnull (convert(char(8),
+				convert(money, pp.pay_overhead * pp.overhead_percent), 1),
+				'    None') "PAY oh OH",
+		isnull  (convert(char(9), pp.subcontractor, 1),
+				'     None') "subcontractor"
 from #payroll_percent pp
 order by $(period_name pp.period 7) 
 go
