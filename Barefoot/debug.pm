@@ -52,7 +52,7 @@ use strict;
 
 use Carp;
 
-use Barefoot::cvs;
+use Barefoot::cvsdir;
 
 # if you want to test scripts with the -T switch, you're going to have issues.
 # the problem is that cvs::WORKING_DIR is based on an environment variable
@@ -96,8 +96,10 @@ sub import
 	# that this is changing the debug value for a module or other sub-script
 	# after it has already been set in the main script.  this is perfectly
 	# acceptable (and in fact desireable sometimes), so check for it first.
+	my $master_debug = eval "Barefoot::DEBUG();";
+	# print STDERR "eval returns $master_debug and eval err is $@\n";
 	eval "sub Barefoot::DEBUG () { return $debug_value; }"
-			unless defined eval "Barefoot::DEBUG();";
+			unless defined $master_debug;
 }
 
 
