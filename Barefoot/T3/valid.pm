@@ -115,6 +115,11 @@ sub get_parameter
 						"value ignored. \n";
 				last TRY;
 			}
+			elsif ($opts->{SAVE_IN_OBJECT} and exists $objinfo->{$parmname})
+			{
+				# if saving in object, allow object parameter to take priority
+				# therefore, do nothing
+			}
 			else
 			{
 				$parm = $parminfo->{$parmname};
@@ -207,7 +212,7 @@ sub valid_employees
 			(
 				select 1
 				from {~timer}.client_employee ce
-				where e.emp_id = ce.emp_id
+				where e.emp_id = {&ifnull ce.emp_id, e.emp_id}
 				and {&curdate} between ce.start_date and ce.end_date
 			)
 	");
@@ -235,7 +240,7 @@ sub valid_clients
 				select 1
 				from {~timer}.employee e, {~timer}.client_employee ce
 				where e.emp_id = '$emp'
-				and e.emp_id = ce.emp_id
+				and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
 				and c.client_id = ce.client_id
 				and $date between ce.start_date and ce.end_date
 			)
@@ -267,7 +272,7 @@ sub valid_projects
 				select 1
 				from {~timer}.employee e, {~timer}.client_employee ce
 				where e.emp_id = '$emp'
-				and e.emp_id = ce.emp_id
+				and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
 				and p.client_id = ce.client_id
 				and
 				(
