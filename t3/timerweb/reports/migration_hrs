@@ -1,0 +1,50 @@
+-- SORT GROUP: Management Reports
+-- TITLE: Lumenos Migration Hours per Week 
+
+set nocount on
+go
+
+print '<H4>Hours per week</H4>'
+print ''
+print ''
+go
+
+$(build_profit_item "
+    log.client = '513'
+    and log.invoice_id is NOT NULL       
+
+")
+exec calc_total_price
+go
+set nocount on
+go
+select
+		$(period_num tlp.date 7) "period_num",
+		sum(pa.units) "hours"
+into #hrs_by_week
+from profit_item pa, time_log_profit tlp
+where 1=1
+and pa.log_id = tlp.log_id
+and exists ( select 1 
+			from time_log tl 
+			where tl.cliproj = 'MIGRA'
+			and tl.log_id = tlp.log_id )
+group by $(period_num tlp.date 7) 
+go
+while (select count(*) from #hrs_by_week ) != 
+      (select 1 + max (period_num) - min (period_num) from #hrs_by_week )
+begin
+	insert #hrs_by_week
+	select period_num + 1, 0
+	from #hrs_by_week
+	where period_num + 1 not in ( select period_num from #hrs_by_week )
+	and period_num + 1 <= ( select max (period_num ) from #hrs_by_week )
+end
+
+select $(period_name period_num 7)  "week",
+		sum(hours) "hours"
+from #hrs_by_week
+group by $(period_name period_num 7) 
+order by period_num 
+compute sum(sum(hours))
+go
