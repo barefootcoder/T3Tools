@@ -211,12 +211,18 @@ sub remove_column
 	# got to go into the DataRow's and twiddle the field list by hand
 	# all comments under add_column (above) apply
 	my $first_row = $data->[0];
-	# remove column from index hash, saving array index
-	my $idx = delete
-			$$first_row->{impl}->[DataStore::DataRow::INDEX]->{$colname};
-	# remove column from field list
+	# and make some shortcuts
 	my $field_list = $$first_row->{impl}->[DataStore::DataRow::KEYS];
+	my $index_hash = $$first_row->{impl}->[DataStore::DataRow::INDEX];
+
+	# get array index for column from index hash
+	my $idx = $index_hash->{$colname};
+	# remove column from field list
 	splice @$field_list, $idx, 1;
+
+	# now rebuild index hash
+	%$index_hash = ();
+	$index_hash->{$field_list->[$_]} = $_ foreach 0..$#$field_list;
 
 	# now remove the data from each row
 	foreach my $row (@$data)
