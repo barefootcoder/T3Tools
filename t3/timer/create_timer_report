@@ -3,6 +3,7 @@
 use strict;
 
 use CGI;
+use POSIX;
 use FileHandle;
 use Time::Local;
 
@@ -55,11 +56,13 @@ my $curuser = "";
 my $curtimer = {};
 	$curtimer->{name} = "";
 my $cur_udata = {};
+initialize_inout_times($cur_udata);
 
 open(TMP, TMPFILE) or die("can't open tmp file");
 while ( <TMP> )
 {
 	chomp;
+	# example of format from timer -$ output
 	# wayne:busDev_Phaedo:001:183:956603628:956614568
 	my ($user, $timer, $client, $mins, $start_time, $end_time) = split(':');
 
@@ -92,10 +95,11 @@ while ( <TMP> )
 			$timerdata{$curuser} = $cur_udata if $curuser;
 			$curuser = $user;
 			$cur_udata = {};
+			initialize_inout_times($cur_udata);
 		}
 
 		# check for currently timing ... this only applies to the latest
-		# (first) timer, so we do it here
+		# (first) time chunk, so we do it here
 		if ($start_time and not $end_time)	# means timer is running right now
 		{
 			push @{$cur_udata->{warnings}},
@@ -108,6 +112,8 @@ while ( <TMP> )
 	$curtimer->{last_time} = $start_time
 			if $start_time > $curtimer->{last_time};
 	$cur_udata->{clients}->{$client} += $mins;
+
+	check_inout_times($cur_udata, $start_time, $end_time);
 }
 # get the last user
 $timerdata{$curuser} = $cur_udata if $curuser;
@@ -149,6 +155,22 @@ foreach my $user (sort keys %timerdata)
 		# print "      $client: $hours hours, $mins minutes";
 		print PAGE "for client $client: $hours hours, $mins minutes<BR>";
 	}
+
+	foreach my $day (0..6)
+	{
+		my $in = $data->{in_time}->[$day];
+		my $out = $data->{out_time}->[$day];
+		next if $out == 0;						# no times for this day
+
+		my ($in_mins, $in_hrs)
+				= (localtime($in))[date::PART_MIN..date::PART_HR];
+		my $in_time = POSIX::strftime("%I:%M%p", localtime($in));
+		my ($out_mins, $out_hrs)
+				= (localtime($out))[date::PART_MIN..date::PART_HR];
+		my $out_time = POSIX::strftime("%I:%M%p", localtime($out));
+		print PAGE "$date::DAY_NAME[$day]: in at $in_time, "
+				. "out at $out_time<BR>";
+	}
 }
 
 
@@ -187,4 +209,36 @@ sub get_monday_time
 	# since timer considers anything before 6am to be "yesterday",
 	# we'll advance this time by 6 hours
 	return $monday_midnight + 6 * 60 * 60;
+}
+
+sub get_day
+{
+	my ($time) = @_;
+
+	my $day = (localtime($time))[date::PART_DOW];
+	my $hour = (localtime($time))[date::PART_HR];
+	--$day and $day %= 7 if $hour < 6;
+	return $day;
+}
+
+sub initialize_inout_times
+{
+	my ($udata) = @_;
+
+	foreach my $day (0..6)
+	{
+		$udata->{in_time}->[$day] = time;
+		$udata->{out_time}->[$day] = 0;
+	}
+}
+
+sub check_inout_times
+{
+	my ($udata, $start, $end) = @_;
+
+	return if $start < $MONDAY;				# has to be this week
+	my $day = get_day($start);
+
+	$udata->{in_time}->[$day] = $start if $start < $udata->{in_time}->[$day];
+	$udata->{out_time}->[$day] = $end if $end > $udata->{out_time}->[$day];
 }
