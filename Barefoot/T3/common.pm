@@ -35,6 +35,8 @@ use constant DEFAULT_WORKGROUP => 'Barefoot';
 use constant REQUEST_FILE => 't3.request';
 use constant OUTPUT_FILE => 't3.output.';
 
+use constant TEST_MODULES_DIR => './test_modules';
+
 
 our $cfg_file = config_file->read(CONFIG_FILE);
 our $workgroup = defined($ENV{T3_WORKGROUP})
@@ -66,7 +68,7 @@ sub debug
 			($msg) = @_;
 		}
 
-		print STDERR "$0: $msg at ", scalar(localtime(time())), "\n"
+		print STDERR "$0 ($$): $msg at ", scalar(localtime(time())), "\n"
 				if main::DEBUG >= $level;
 	}
 }
@@ -89,6 +91,8 @@ sub config_param
 
 sub register_module
 {
+	die("attempt to register module which is already registered [$_[0]]")
+			if exists $modules{$_[0]};
 	$modules{$_[0]} = $_[1];
 }
 
@@ -99,5 +103,5 @@ sub exists_module
 
 sub execute_module
 {
-	$modules{$_[0]}->();
+	$modules{$_[0]}->(@_[1..$#_]);
 }
