@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.5  2000/03/16 17:03:11  buddy
+# updated to work with new timer db
+#
 # Revision 1.4  2000/01/26 05:18:13  buddy
 # some changes for training rates to work
 #
@@ -109,6 +112,27 @@ run_query -S$server -U$user -D$destdb <<-END
 	grant delete on profit_item to public
 	go
 
+	-- a slightly more compact version of the profit_item table (w/ margin)
+	$(overwrite_table profit_client "
+		client				internal_id		NOT NULL,
+		proj				internal_id		NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL,
+		units				numeric(6,2)	NOT NULL,
+		total_price			money			NOT NULL,
+		total_cost			money			NOT NULL,
+		sales_commission	money			NOT NULL,
+		ref_commission		money			NOT NULL,
+		emp_commission		money			NOT NULL,
+		simple_profit		money			NOT NULL,
+		margin				percentage		NULL,
+	")
+
+	grant insert on profit_client to public
+	grant update on profit_client to public
+	grant delete on profit_client to public
+	go
+
 	$(overwrite_table time_log_profit "
 		log_source			table_name		NOT NULL,
 		log_id				unique_id		NOT NULL,
@@ -172,7 +196,11 @@ run_query -S$server -U$user -D$destdb <<-END
 	-- and this one is (surprise, surprise) for employee commissions
 	$(overwrite_table employee_comm_amount "
 		profit_id			unique_id		NOT NULL,
-		emp					internal_id		NOT NULL,
+		pay_type			char(1)
+				default 'E'					NOT NULL
+				check (pay_type = 'E'),
+		pay_to				internal_id		NOT NULL,
+		name				description		NULL,
 		date				datetime		NOT NULL,
 		pay_to_employee		money			NOT NULL,
 		total_pay			money			NOT NULL,
@@ -185,6 +213,25 @@ run_query -S$server -U$user -D$destdb <<-END
 	grant insert on employee_comm_amount to public
 	grant update on employee_comm_amount to public
 	grant delete on employee_comm_amount to public
+	go
+
+	-- you have to figure out what this is for on your own
+	$(overwrite_table admin_comm_amount "
+		profit_id			unique_id		NULL,
+		admin_comm			internal_id		NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		pay_to				internal_id		NOT NULL,
+		name				description		NULL,
+		comm_start_date		datetime		NOT NULL,
+		comm_end_date		datetime		NOT NULL,
+		commission_percent	percentage		NOT NULL,
+		simple_profit		money			NOT NULL,
+		amount				money			NULL,
+	")
+
+	grant insert on admin_comm_amount to public
+	grant update on admin_comm_amount to public
+	grant delete on admin_comm_amount to public
 	go
 
 
@@ -354,7 +401,8 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- now figure the amounts of the commissions (not too tough)
 		update sales_comm_amount
-		set amount = pi.total_price * sca.commission_percent / 100.0
+		set amount = $(round "pi.total_price * sca.commission_percent
+				/ 100.0" .01 O)
 		from sales_comm_amount sca, profit_item pi
 		where sca.profit_id = pi.profit_id
 
@@ -428,7 +476,7 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- now get the actual amount
 		update referral_comm_amount
-		set amount = hours * commission
+		set amount = $(round "hours * commission" .01 O)
 
 		-- build our temp table we need for updating profit_item
 		select profit_id, sum(amount) "total_ref_comm"
@@ -575,7 +623,7 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- get the "one on one" time logs
 		insert employee_comm_amount
-			(profit_id, emp, date, pay_to_employee, total_pay)
+			(profit_id, pay_to, date, pay_to_employee, total_pay)
 		select pi.profit_id, tlp.emp, tlp.date, tlp.total_pay, pi.total_cost
 		from profit_item pi, time_log_profit tlp
 		where pi.log_source = tlp.log_source
@@ -585,7 +633,7 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- now the other time logs
 		insert employee_comm_amount
-			(profit_id, emp, date, pay_to_employee, total_pay)
+			(profit_id, pay_to, date, pay_to_employee, total_pay)
 		select pi.profit_id, tlp.emp, tlp.date,
 				sum(tlp.total_pay), pi.total_cost
 		from profit_item pi, time_log_profit tlp
@@ -597,6 +645,12 @@ run_query -S$server -U$user -D$destdb <<-END
 		and tlp.requires_payment = 1
 		and tlp.pay_rate_type != 'S'
 		group by pi.profit_id, tlp.emp, tlp.date, pi.total_cost
+
+		-- get the name of the commission payee (it's always an employee)
+		update employee_comm_amount
+		set name = $(employee_name e)
+		from employee_comm_amount eca, employee e
+		where eca.pay_to = e.emp
 
 		-- now figure the percent of total pay that applies to this employee
 		-- (note that for the "one to one" logs, this will always be 100%)
@@ -625,13 +679,17 @@ run_query -S$server -U$user -D$destdb <<-END
 		select @breakeven_factor = 3.0
 		select @flare_factor = 20.0
 		update employee_comm_amount
-		set amount = convert(money, 
+		set amount = convert(money,
 		 		diff * diff / (
 					(gross / @rate_factor) -
 							(diff - gross / @breakeven_factor) / @flare_factor
 				) / 100.0
 			)
 		where date >= '9/7/98'
+
+		-- round to avoid silly summing mismatches
+		update employee_comm_amount
+		set amount = $(round amount .01 O)
 
 		-- once again, make our temp table
 		select profit_id, sum(amount) "total_emp_comm"
@@ -652,6 +710,7 @@ run_query -S$server -U$user -D$destdb <<-END
 
 
 	-- this last one calls all the others and does a few little extra things
+	-- (okay, it's the next to last one; see below)
 
 	$(drop_procedure calc_profit)
 
@@ -683,9 +742,86 @@ run_query -S$server -U$user -D$destdb <<-END
 		set simple_profit = total_price - total_cost - sales_commission
 				- ref_commission - emp_commission
 
+		-- clear this out
+		delete profit_client
+
+		-- fill up profit_client for some helpful reporting stuff
+		insert profit_client
+			(client, proj, start_date, end_date, units, total_price,
+					total_cost, sales_commission, ref_commission,
+					emp_commission, simple_profit)
+		select pi.client, pi.proj, min(pi.start_date), max(pi.end_date),
+				sum(pi.units), sum(pi.total_price), sum(pi.total_cost),
+				sum(pi.sales_commission), sum(pi.ref_commission),
+				sum(pi.emp_commission), sum(pi.simple_profit)
+		from profit_item pi
+		group by pi.client, pi.proj
+
+		-- margin calculation is pretty basic
+		-- (make sure you don't divide by zero or get negative margins
+		-- or magins over 100%)
+		update profit_client
+		set margin = $(round "100.0 * simple_profit / total_price" .01 O)
+		where total_price > 0
+		and simple_profit > 0
+		and total_price > simple_profit
+
 	go
 
 	grant execute on calc_profit to public
+	go
+
+	-- you have to call calc_profit before calling this one
+	-- (or you could call each of the sub-proceduress individually, if you
+	-- happened to be masochistic or something)
+
+	$(drop_procedure calc_admin_commission)
+
+	create procedure calc_admin_commission
+	as
+
+		-- clear out old values
+		delete admin_comm_amount
+
+		-- for admin_commission, *everything* in the profit_item table is
+		-- applicable, so we don't track the profit_id ...  this is also
+		-- important to insure that admin commissions (which are often
+		-- pretty small) don't lose anything from overenthusiastic
+		-- rounding ... if you need to know which profit_id's apply (e.g.,
+		-- for mark_commission script), the answer is easy: all of them
+		insert admin_comm_amount
+			(admin_comm, pay_type, pay_to, comm_start_date,
+					comm_end_date, commission_percent, simple_profit)
+		select ac.admin_comm, ac.pay_type, ac.pay_to,
+				ac.start_date, ac.end_date, ac.commission_percent,
+				sum(pi.simple_profit)
+		from profit_item pi, admin_commission ac
+		where pi.end_date between ac.start_date and ac.end_date
+		group by ac.admin_comm, ac.pay_type, ac.pay_to, ac.start_date,
+				ac.end_date, ac.commission_percent
+
+		-- get name if a salesman
+		update admin_comm_amount
+		set name = s.name
+		from admin_comm_amount aca, salesman s
+		where aca.pay_type = 'S'
+		and aca.pay_to = s.salesman
+
+		-- get name if an employee
+		update admin_comm_amount
+		set name = $(employee_name e)
+		from admin_comm_amount aca, employee e
+		where aca.pay_type = 'E'
+		and aca.pay_to = e.emp
+
+		-- calculate commission amount
+		update admin_comm_amount
+		set amount = $(round "simple_profit * commission_percent / 100" .01 O)
+		go
+
+	go
+
+	grant execute on calc_admin_commission to public
 	go
 
 END
