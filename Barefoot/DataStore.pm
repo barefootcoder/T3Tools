@@ -83,7 +83,7 @@ our $funcs =
 {
 		Sybase		=>	{
 							curdate			=>	sub {
-													"dateadd(hour, 1, 
+													"dateadd(hour, 1,
 															getdate())"
 													},
 							ifnull			=>	sub { "isnull($_[0], $_[1])" },
@@ -628,10 +628,8 @@ sub rollback
 # NOTE: load_table is an alias for load_data
 sub load_data
 {
-	my $this = shift;
-	my ($query) = @_;
-
-	my $res = $this->do($query);
+	# just pass all parameters straight through to do
+	my $res = &do;
 	return undef unless $res;
 
 	return DataStore::DataSet->new($res->{sth});
