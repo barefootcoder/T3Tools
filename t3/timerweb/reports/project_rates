@@ -1,9 +1,6 @@
 -- SORT GROUP: Database Lists
 -- TITLE: Billing Rate History (all clients)
 
-use TIMER
-go
-
 select p.client "C", c.name "client", p.proj "P", p.name "project",
 		convert(numeric(6,2), br.rate) "rate",
 		convert(numeric(4,0), fixed_price_days) "days(FP)",

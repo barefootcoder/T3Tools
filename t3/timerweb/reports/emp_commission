@@ -1,57 +1,69 @@
 -- SORT GROUP: Commission Reports
 -- TITLE: Employee Commission
 
-use TIMER
-go
-
 print "Period from [start_date] to [end_date]"
 print ""
 print ""
 go
 
-$(build_emp_comm "
-	date between '[start_date]' and '[end_date]'
-	and emp_comm_paydate is NULL
-" "1 = 0" "
-	exists
+$(build_profit_item "
+	log.date <= '[end_date]'
+	and not exists
 	(
 		select 1
-		from project p
-		where tc.client = p.client
-		and tc.proj = p.proj
-		and tc.start_time between p.start_date and p.end_date
-		and p.end_date between '[start_date]' and '[end_date]'
+		from commission com
+		where log.log_source = com.log_source
+		and log.log_id = com.log_id
+		and com.comm_type = 'E'
 	)
 ")
-exec emp_commission
+go
+
+calc_total_price
+go
+calc_sales_commission
+go
+calc_referral_commission
+go
+calc_total_cost
+go
+calc_employee_commission
 go
 
 -- for debugging
-/*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(7,2), amt_billed) "amt billed",
-	convert(numeric(6,2), payrate) "payrate",
-	convert(numeric(7,2), amt_paid) "amt paid",
-	convert(numeric(7,2), diff) "diff",
-	convert(numeric(7,2), empcomm) "empcomm"
-from #emp_comm
+--/*
+select eca.emp, pi.client, pi.proj,
+		convert(char(10), end_date, 101) "date",
+		convert(numeric(6,2), price_per_unit) "billrate",
+		convert(numeric(7,2), total_price) "amt billed",
+		-- convert(numeric(6,2), payrate) "payrate",
+		convert(numeric(7,2), pay_to_employee) "amt paid",
+		convert(numeric(7,2), diff) "diff",
+		convert(numeric(7,2), amount) "empcomm"
+from profit_item pi, employee_comm_amount eca
+where pi.profit_id = eca.profit_id
 order by emp, client, proj, date
-*/
+--*/
 go
 
 -- now for the actual report
-select ec.emp "E", $(employee_name e) "employee",
-		ec.client "C", c.name "client",
-		convert(numeric(5,2), sum(ec.hours)) "ttl hrs",
-		convert(numeric(8,2), sum(ec.amt_billed)) "total amount",
-		sum(ec.empcomm) "total emp comm"
-from #emp_comm ec, employee e, client c
-where ec.emp = e.emp
-and ec.client = c.client
-and ec.paytype != 'S'
-group by ec.emp, $(employee_name e), ec.client, c.name
-order by ec.emp, ec.client
-compute sum(sum(ec.empcomm)) by ec.emp
-compute sum(sum(ec.empcomm))
+select eca.emp "E", convert(char(15), $(employee_name e)) "employee",
+		pi.client "C", convert(char(25), c.name) "client",
+		convert(numeric(6,2), sum(tlp.hours)) "ttl hrs",
+		convert(numeric(8,2),
+				sum(pi.total_price * eca.employee_percent)) "total price",
+		convert(numeric(8,2), sum(eca.gross)) "total gross",
+		convert(numeric(8,2), sum(eca.pay_to_employee)) "total cost",
+		sum(eca.amount) "total emp comm"
+from profit_item pi, employee_comm_amount eca, time_log_profit tlp,
+		employee e, client c
+where pi.profit_id = eca.profit_id
+and pi.log_source *= tlp.log_source
+and pi.log_id *= tlp.log_id
+and eca.emp = e.emp
+and pi.client = c.client
+group by eca.emp, $(employee_name e), pi.client, c.name
+order by eca.emp, pi.client
+compute sum(sum(eca.amount)) by eca.emp
+compute sum(sum(eca.amount))
 go

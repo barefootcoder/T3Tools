@@ -1,89 +1,64 @@
 -- SORT GROUP: Commission Reports
 -- TITLE: Sales Commission
 
-use TIMER
-go
-
 print "Period from [start_date] to [end_date]"
 print ""
 print ""
 go
 
-$(build_emp_comm "
-	invoice_paydate between '[start_date]' and '[end_date]'
-	and sales_comm_paydate is NULL
+$(build_profit_item "
+	exists
+	(
+		select 1
+		from sales_commission sc
+		where log.client = sc.client
+	)
+	and exists
+	(
+		select 1
+		from invoice i
+		where log.invoice_id = i.invoice_id
+		and i.invoice_paydate < '[end_date]'
+	)
+	and not exists
+	(
+		select 1
+		from commission com
+		where log.log_source = com.log_source
+		and log.log_id = com.log_id
+		and com.comm_type = 'S'
+	)
 ")
-exec billing_amounts
-go
 
-/*
-insert #emp_comm
-	(emp, client, proj, date, hours)
-select l.emp, l.client, l.proj, l.date, l.hours
-from log l, project p, project_type pt, sales_commission sc
-where l.client = p.client
-and l.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_billing = 1
-and l.client = sc.client
-and l.proj = isnull(sc.proj, l.proj)
-and l.invoice_paydate between "[start_date]" and "[end_date]"
-and l.sales_comm_paydate is NULL
-*/
+calc_total_price
+go
+calc_sales_commission
+go
 
 -- for debugging
 /*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(6,2), salescomm) "salescomm",
-	convert(numeric(6,2), refcomm) "refcomm",
-	convert(numeric(7,2), amt_billed) "amt billed"
-from #emp_comm
-order by emp, client, proj, date
-select client, sum(amt_billed), sum(salescomm)
-from #emp_comm
-group by client
+select pi.client, pi.proj, convert(char(10), start_date, 101) "start date",
+		convert(char(10), end_date, 101) "end date", units,
+		convert(numeric(6,2), price_per_unit) "cost/unit",
+		convert(numeric(7,2), total_price) "total price",
+		convert(numeric(6,2), sca.amount) "total sales comm",
+		pi.log_source, pi.log_id
+from profit_item pi, sales_comm_amount sca
+where pi.profit_id = sca.profit_id
+order by client, proj, start_date
 */
 go
 
--- first get the general client sales comms
-select ec.client, ec.proj, ec.date, ec.amt_billed,
-		sc.salesman, sc.commission_pct
-into #sales_comms
-from #emp_comm ec, sales_commission sc
-where ec.client = sc.client
-and sc.proj is NULL
-and ec.date between sc.start_date and sc.end_date
-go
-
--- get rid of any that will be superseded by project specific sales comms
-delete #sales_comms
-from #sales_comms scs, sales_commission sc
-where scs.client = sc.client
-and scs.proj = sc.proj
-and scs.date between sc.start_date and sc.end_date
-go
-
--- now put in those project specific sales comms
-insert #sales_comms
-select ec.client, ec.proj, ec.date, ec.amt_billed,
-		sc.salesman, sc.commission_pct
-from #emp_comm ec, sales_commission sc
-where ec.client = sc.client
-and ec.proj = sc.proj
-and ec.date between sc.start_date and sc.end_date
-go
-
 -- now for the actual report
-select s.name "salesman", scs.client "C", c.name "client", scs.proj,
-		convert(numeric(8,2), sum(scs.amt_billed)) "total amount",
-		sum(convert(money, scs.amt_billed * scs.commission_pct / 100))
-				"total sales comm"
-from #sales_comms scs, salesman s, client c
-where scs.salesman = s.salesman
-and scs.client = c.client
-group by s.name, scs.client, c.name, scs.proj
-order by s.name, scs.client, scs.proj
-compute sum(sum(convert(money, scs.amt_billed * scs.commission_pct / 100)))
-	by s.name
+select sca.name "salesman", sca.client "C", c.name "client", sca.proj,
+		convert(numeric(8,2), sum(pi.total_price)) "total amount",
+		sum(sca.amount) "total sales comm"
+from sales_comm_amount sca, profit_item pi, client c
+where sca.profit_id = pi.profit_id
+and sca.client = c.client
+group by sca.name, sca.client, c.name, sca.proj
+order by sca.name, sca.client, sca.proj
+compute sum(sum(sca.amount))
+	by sca.name
+compute sum(sum(sca.amount))
 go

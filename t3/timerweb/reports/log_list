@@ -1,33 +1,51 @@
 -- SORT GROUP: Employee Reports
--- TITLE: Log Entry Listing
+-- TITLE: Time Log Listing
 
-use TIMER
-go
-
-select l.id, l.emp, e.name "employee", l.client "CLI", l.proj "PRJ",
-		l.phase "PHASE", convert(char(10), l.date, 101) "date", l.hours,
-		l.comments
-from log l, employee e, client c
-where l.emp = e.emp
+select tl.log_id, tl.emp, $(employee_name e) "employee", tl.client "CLI",
+		tl.proj "PRJ", tl.phase "PHASE",
+		convert(char(10), tl.date, 101) "date", tl.hours, tl.comments
+from time_log tl, employee e, client c
+where tl.emp = e.emp
 and e.login = "[user]"										??user
-and l.client = c.client
+and tl.client = c.client
 and c.client = "[client]"									??client
-and l.proj = "[proj]"										??proj
-and l.date between "[start_date]" and "[end_date]"
-order by convert(char(8), l.date, 112)
+and tl.proj = "[proj]"										??proj
+and tl.date between "[start_date]" and "[end_date]"
+order by convert(char(8), tl.date, 112)
 -- compute sum(l.hours)
 go
 
-select l.emp, e.name "employee", l.client "cli", c.name "client",
-		l.proj, l.phase, sum(l.hours)
-from log l, employee e, client c
-where l.emp = e.emp
+print ""
+print ""
+print "Totals by Client/Project"
+select tl.emp, $(employee_name e) "employee", tl.client "cli", c.name "client",
+		tl.proj, tl.phase, sum(tl.hours)
+from time_log tl, employee e, client c
+where tl.emp = e.emp
 and e.login = "[user]"										??user
-and l.client = c.client
+and tl.client = c.client
 and c.client = "[client]"									??client
-and l.proj = "[proj]"										??proj
-and l.date between "[start_date]" and "[end_date]"
-group by l.emp, e.name, l.client, c.name, l.proj, l.phase
-order by l.client, l.proj
-compute sum(sum(l.hours)) by l.client, l.proj
+and tl.proj = "[proj]"										??proj
+and tl.date between "[start_date]" and "[end_date]"
+group by tl.emp, $(employee_name e), tl.client, c.name, tl.proj, tl.phase
+order by tl.client, tl.proj
+compute sum(sum(tl.hours)) by tl.client, tl.proj
+go
+
+print ""													?!user
+print ""													?!user
+print "Totals by Employee"									?!user
+select tl.emp, $(employee_name e) "employee",				?!user
+		tl.client "cli", c.name "client",					?!user
+		tl.proj, sum(tl.hours)								?!user
+from time_log tl, employee e, client c						?!user
+where tl.emp = e.emp										?!user
+and tl.client = c.client									?!user
+and c.client = "[client]"									?!user	??client
+and tl.proj = "[proj]"										?!user	??proj
+and tl.date between "[start_date]" and "[end_date]"			?!user
+group by tl.emp, $(employee_name e), tl.client,				?!user
+		c.name, tl.proj										?!user
+order by tl.emp, tl.client, tl.proj							?!user
+compute sum(sum(tl.hours)) by tl.emp						?!user
 go

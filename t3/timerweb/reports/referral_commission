@@ -1,46 +1,57 @@
 -- SORT GROUP: Commission Reports
 -- TITLE: Referral Commission
 
-use TIMER
-go
-
 print "Period from [start_date] to [end_date]"
 print ""
 print ""
 go
 
-$(build_emp_comm "
-	invoice_paydate between '[start_date]' and '[end_date]'
-	and ref_comm_paydate is NULL
-" "1 = 0" "1 = 0")
--- now get all commissions (including referral) for these
-exec emp_commission
+$(build_profit_item "
+	exists
+	(
+		select 1
+		from invoice i
+		where log.invoice_id = i.invoice_id
+		and i.invoice_paydate < '[end_date]'
+	)
+	and not exists
+	(
+		select 1
+		from commission com
+		where log.log_source = com.log_source
+		and log.log_id = com.log_id
+		and com.comm_type = 'R'
+	)
+")
+go
+
+calc_total_price
+go
+calc_referral_commission
 go
 
 -- for debugging
 /*
-select emp, client, proj, convert(char(10), date, 101) "date", hours,
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(6,2), salescomm) "salescomm",
-	convert(numeric(6,2), refcomm) "refcomm",
-	convert(numeric(7,2), amt_paid) "amt paid"
-from #emp_comm
+select emp, client, proj, convert(char(10), end_date, 101) "date", units,
+		rca.hours, convert(numeric(6,2), price_per_unit) "price / unit",
+		convert(numeric(6,2), rca.amount) "ref comm"
+from profit_item pi, referral_comm_amount rca
+where pi.profit_id = rca.profit_id
 order by emp, client, proj, date
 */
 go
 
 -- now for the actual report
-select s.name "salesman", $(employee_name e) "employee", c.name "client",
-		convert(numeric(5,2), sum(ec.hours)) "total hrs",
-		sum(ec.refcomm) "total referral comm"
-from #emp_comm ec, salesman s, referral_commission rc, employee e, client c
-where ec.emp = rc.emp
-and ec.date between rc.start_date and rc.end_date
-and rc.salesman = s.salesman
-and ec.emp = e.emp
-and ec.client = c.client
-group by s.name, $(employee_name e), c.name
-order by s.name, $(employee_name e), c.name
-compute sum(sum(ec.refcomm))
-	by s.name
+select rca.name "pay to", $(employee_name e) "employee", c.name "client",
+		convert(numeric(5,2), sum(rca.hours)) "hours",
+		sum(rca.amount) "total referral comm"
+from profit_item pi, referral_comm_amount rca, employee e, client c
+where pi.profit_id = rca.profit_id
+and rca.emp = e.emp
+and pi.client = c.client
+group by rca.name, $(employee_name e), c.name
+order by rca.name, $(employee_name e), c.name
+compute sum(sum(rca.amount))
+	by rca.name
+compute sum(sum(rca.amount))
 go
