@@ -59,7 +59,7 @@ END
 
 sub _request_to_pipe
 {
-	my $reqfile = t3_config(T3::REQUESTDIR_DIRECTIVE) . "/" . T3::REQUEST_FILE;
+	my $reqfile = t3_pipename(T3::REQUEST_FILE);
 
 	T3::debug(3, "about to open pipe $reqfile");
 	open(PIPE, ">$reqfile") or croak("can't open request pipe for writing");
@@ -97,8 +97,17 @@ sub send_request
 	$request_string .= " lines=" . scalar(@_) if @_;
 	T3::debug(2, "request string is $request_string\n");
 
+	# now create the pipe that the server will write to
+	my $pipefile = t3_create_pipe(T3::OUTPUT_FILE . $output_id);
+	die("can't create pipe for output") unless ($pipefile);
+
+	# make sure this pipe will get cleaned up when we exit
+	# (hash key is the important thing; hash value isn't used)
+	$output_pipes{$pipefile} = "";
+
 	_request_to_pipe($request_string, @_);
 }
+
 
 sub request_shutdown
 {
@@ -110,8 +119,7 @@ sub retrieve_output
 {
 	my ($id) = @_;
 
-	my $pipe_file = t3_config(T3::REQUESTDIR_DIRECTIVE) . "/"
-			. T3::OUTPUT_FILE . $id;
+	my $pipe_file = t3_pipename(T3::OUTPUT_FILE . $id);
 	my $pipe_is_there = timeout
 	{
 		until (-p $pipe_file)
@@ -121,9 +129,6 @@ sub retrieve_output
 		}
 	} 20;
 	die("server never created output pipe $pipe_file") unless $pipe_is_there;
-
-	# make sure this pipe will get cleaned up when we exit
-	$output_pipes{$pipe_file} = "";		# value isn't used
 
 	my ($success, @output);
 	T3::debug(2, "began trying to get output");
