@@ -4,18 +4,18 @@
 set nocount on
 go
 
-print "Period from [start_date] to [end_date]"
+print "Period from {start_date} to {end_date}"
 print ""
 print ""
 go
 
 declare @start_period int
 select @start_period = (
-	select $(period_num "'[start_date]'" 7)
+	select $(period_num "'{start_date}'" 7)
 )
 declare @end_period int
 select @end_period = (
-	select $(period_num "'[end_date]'" 7)
+	select $(period_num "'{end_date}'" 7)
 )
 declare @weeks int
 select @weeks = @end_period - @start_period + 1
@@ -80,7 +80,7 @@ and tlp.bill_rate =* eww.bill_rate
 and pa.pay_rate = eww.pay_rate
 and tlp.billing_ratio =* eww.billing_ratio
 and pa.emp = e.emp
-and e.login = "[user]"										??user
+and e.login = "{user}"										{?user}
 and pa.client = c.client
 group by $(employee_name e), pa.client, c.name, tlp.bill_rate, pa.pay_rate,
 		tlp.billing_ratio, eww.num_periods
@@ -102,6 +102,6 @@ select $(employee_name e) "employee",
 from pay_amount pa, #parameters par, #eww_total ewwt, employee e
 where pa.emp = ewwt.emp
 and pa.emp = e.emp
-and e.login = "[user]"										??user
+and e.login = "{user}"										{?user}
 group by $(employee_name e), ewwt.num_periods
 go
