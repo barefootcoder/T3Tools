@@ -10,7 +10,8 @@ use Barefoot::T3;
 use Barefoot::input qw(input);
 
 
-T3::initialize($::ENV{HOME});
+T3::initialize("/export/usr/$::ENV{USER}");
+
 my $retval = 0;
 
 if ($ARGV[0])

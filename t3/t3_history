@@ -7,7 +7,7 @@ use Barefoot::T3;
 use Time::localtime;
 use CGI;
 
-T3::initialize($::ENV{HOME});
+T3::initialize("/export/usr/$::ENV{USER}");
 
 use constant MAX_MESSAGES => 200;
 
