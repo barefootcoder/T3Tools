@@ -13,7 +13,7 @@
 
 use strict;
 
-use Barefoot::debug;							# comment out for production
+#use Barefoot::debug;							# comment out for production
 
 use CGI;
 use Barefoot::file;
