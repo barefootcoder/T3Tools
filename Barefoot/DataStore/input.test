@@ -1,0 +1,87 @@
+
+	select *
+	from {%timer}.admin_commission_type
+	;
+
+	# comments should be ignored
+
+	# test error output
+	select *
+	from bogus
+	;
+
+	# try a "stored procedure"
+	&proc build_pay_amount
+
+		log.client_id in ('513','011','001')
+		and log.log_date between '11/1/00' and '11/6/00'
+
+	;
+
+	select distinct emp_id "EMP", client_id "CLI", proj_id "PRJ",
+			phase_id "PH", pay_rate, pay_rate_type,
+			requires_payment "PAY", requires_billing "BIL"
+	from {%reporting}.pay_amount
+	order by emp_id
+	;
+
+	select hours, pay_rate, total_pay
+	from {%reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+	;
+
+	&ignore
+		all this stuff should be ignored
+		this can be useful for skipping code without deleting it
+	;
+
+	&print Single line print
+
+	&print
+
+		Multiple line print
+
+	;
+
+	&print
+		Test printing DataStore variables: {%timer}.time_log {END_OF_TIME}
+	;
+
+	{if bogusvar}
+		this stuff is inside a bogus if
+		it should be discarded
+	{endif}
+	;
+
+	{if END_OF_TIME}
+		select 'The END_OF_TIME variable is set properly' "TEST"
+	{endif}
+	;
+
+
+	select hours, pay_rate, total_pay
+	from {%reporting}.pay_amount
+	where emp_id = '148'
+	order by client_id, pay_date
+->format
+H-> @||||||  @>>>>>>>>>>  @<<<<<<<<<<
+H-> -------  -----------  ===========
+B->  @##.##      @##.##       @###.##
+F=>
+F=>(%R rows)
+	;
+
+
+	# this should produce header and footer with no body
+	select hours
+	from {%reporting}.pay_amount
+	where 1 = 0
+	;
+
+	# this should produce no output whatsoever
+	select hours
+	from {%reporting}.pay_amount
+	where 1 = 0
+->suppress_empty
+	;

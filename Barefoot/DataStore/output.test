@@ -1,0 +1,101 @@
+admin_comm name                       sort_order
+---------- -------------------------- ----------
+ACC        Bookkeeper Commission      1         
+CEO        Executive Commission       6         
+CRD        Coordinator Commission     3         
+DSP        Dispatcher Commission      2         
+TEC        Technical Admin Commission 4         
+OMT        Office Maint Commission    5         
+(6 rows returned)
+
+Server message number=208 severity=16 state=1 line=1 text=bogus not found. Specify owner.objectname or use sp_help to check whether the object exists (sp_help may produce lots of output).
+Statement=	select *
+	from bogus
+
+EMP CLI PRJ PH  pay_rate pay_rate_type PAY BIL
+--- --- --- --- -------- ------------- --- ---
+101 011 EML     0        P             0   0  
+101 011 INT PRG 0        P             0   0  
+101 011 NET     0        P             0   0  
+101 011 PM      0        P             0   0  
+101 011 PR      0        P             0   0  
+101 011 SYM     0        P             0   0  
+101 513 PRF PM  45       P             1   1  
+101 513 PRF DES 45       P             1   1  
+112 011 LOG     0        P             0   0  
+125 001 INT PRG 19       P             1   0  
+125 001 SYM     19       P             1   0  
+125 513 PRF SYS 45       P             1   1  
+131 513 PRF QAT 65       S             1   1  
+132 001 CLN     10       P             1   0  
+132 001 WEB     25       P             1   0  
+134 001 INV     20       P             1   0  
+134 001 PM      25       P             1   0  
+134 001 PR      20       P             1   0  
+136 513 PRF PM  30       P             1   1  
+136 513 PRF ANA 30       P             1   1  
+136 513 PRF DAT 30       P             1   1  
+136 513 PRF DES 30       P             1   1  
+136 513 PRF LIB 30       P             1   1  
+136 513 PRF PRG 30       P             1   1  
+136 513 PRF QAT 30       P             1   1  
+139 001 PM      25       P             1   0  
+139 513 PRF PM  65       P             1   1  
+148 513 PRF PM  32.5     P             1   1  
+148 513 PRF ADM 20       P             1   1  
+148 513 PRF ANA 20       P             1   1  
+148 513 PRF DES 20       P             1   1  
+148 513 PRF PRG 20       P             1   1  
+150 001 INT PRG 35       P             1   0  
+150 011 LOG     0        P             0   0  
+150 011 PRF     0        P             0   0  
+150 513 PRF PM  75       P             1   1  
+150 513 PRF ANA 75       P             1   1  
+150 513 PRF DAT 75       P             1   1  
+150 513 PRF PRG 75       P             1   1  
+150 513 PRF SYS 75       P             1   1  
+151 513 PRF DAT 65       S             1   1  
+(41 rows returned)
+
+hours pay_rate total_pay
+----- -------- ---------
+0.50  20       10       
+0.75  20       15       
+0.75  32.5     24.38    
+1.00  20       20       
+2.00  20       40       
+1.00  20       20       
+2.00  20       40       
+5.25  20       105      
+13.75 20       275      
+(9 rows returned)
+
+Single line print
+
+		Multiple line print
+
+		Test printing DataStore variables: timer.time_log '12/31/9999'
+
+TEST                                    
+----------------------------------------
+The END_OF_TIME variable is set properly
+(1 rows returned)
+
+  hours      pay_rate  total_pay
+ -------  -----------  ===========
+    0.50       20.00         10.00
+    0.75       20.00         15.00
+    0.75       32.50         24.38
+    1.00       20.00         20.00
+    2.00       20.00         40.00
+    1.00       20.00         20.00
+    2.00       20.00         40.00
+    5.25       20.00        105.00
+   13.75       20.00        275.00
+
+(9 rows)
+
+hours
+-----
+(0 rows returned)
+
