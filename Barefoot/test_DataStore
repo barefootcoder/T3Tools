@@ -1,0 +1,433 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;					# comment out for production use
+
+use Carp;
+use POSIX;
+
+use Barefoot::base;
+use Barefoot::DataStore;
+use Barefoot::exception;
+
+
+# test failure to find data store
+my $caught = false;
+try
+{
+	my $dsfail = DataStore->open("bogus");
+}
+catch
+{
+	# print STDERR "catching $_ from $__LINE__ of $__FILE__\n";
+	$caught = true if /data store bogus not found/;
+};
+die("bogus data store didn't throw not found error") unless $caught;
+
+# test weird I/O errors by faking a data store file
+try
+{
+	open(DS, ">fake.dstore") and close(DS);
+	my $dsfail = DataStore->open("fake");
+}
+catch
+{
+	unlink("fake.dstore");
+	# print STDERR "catching $_\n";
+	die("fake data store didn't cause weird I/O error")
+			unless /read error opening data store/;
+};
+
+
+# test creating a new data store
+my $newds = DataStore->create("new", user => "nobody");
+die("didn't get a blank data store") unless $newds;
+die("not blessed ref (DataStore)") unless $newds->isa("DataStore");
+
+# print STDERR "calling dtor via undef\n";
+undef $newds;
+die("didn't create data store file upon destruction") unless -e "new.dstore";
+
+# test to make sure open() requires a user
+$caught = false;
+try
+{
+	$newds = DataStore->open("new");
+}
+catch
+{
+	$caught = true if /must specify user/;
+};
+die("open didn't require user") unless $caught;
+
+$newds = DataStore->open("new", "nobody");
+die("couldn't retrieve newly created data store") unless $newds;
+# print STDERR "newds is a ", ref $newds, "\n";
+die("not blessed ref (DataStore)") unless $newds->isa("DataStore");
+
+
+# make sure it doesn't save unless it's been modified
+unlink("new.dstore");
+# print STDERR "calling dtor via undef\n";
+undef $newds;
+die("saved data store spec w/o being modified") if -e "new.dstore";
+
+
+# check to make sure create() catches bogus attributes
+$caught = false;
+try
+{
+	my $bogusds = DataStore->create("bogus_attrib", bogus => "bogus");
+}
+catch
+{
+	# print STDERR "catching $_\n";
+	$caught = true
+			if /can't create data store with unknown attribute bogus/;
+};
+die("create didn't notice bogus attribute") unless $caught;
+die("created file with bogus attribute") if -e "bogus_attrib.dstore";
+
+
+# make sure a bogus user bombs
+$caught = false;
+try
+{
+	my $testds = DataStore->create("test",
+		connect_string		=>	"dbi:Sybase:server=SYBASE_1",
+		server				=>	"SYBASE_1",
+		user				=>	"bogus",
+	);
+}
+catch
+{
+	# print STDERR "catching $_\n";
+	$caught = true if /can't get db password/;
+};
+die("didn't detect bogus user") unless $caught;
+
+
+# make sure a bogus database bombs
+$caught = false;
+try
+{
+	print STDERR "BOGUS ERROR => ";
+	my $testds = DataStore->create("test",
+		connect_string		=>	"dbi:Sybase:server=SYBASE_1;database=bogus",
+		server				=>	"SYBASE_1",
+		user				=>	"sa",
+	);
+}
+catch
+{
+	# print STDERR "catching $_\n";
+	$caught = true if /can't connect to data store as user/;
+};
+die("didn't detect bogus database") unless $caught;
+
+
+# now let's create a datastore we can play with
+use constant TEST_DS_FILE => "test.dstore";
+my $testds = DataStore->create("test",
+		connect_string		=>	"dbi:Sybase:server=SYBASE_1;database=model",
+		server				=>	"SYBASE_1",
+		user				=>	"sa",
+		translation_type	=>	"Sybase",
+);
+
+# check file creation after committing config changes
+unlink(TEST_DS_FILE);
+$testds->commit_configs();
+die("didn't create data store after commit configs") unless -e TEST_DS_FILE;
+
+# can we get one row?
+my $sysobjquery = "
+		select name, crdate
+		from sysobjects
+		where name = 'sysobjects'
+";
+my $results = $testds->do($sysobjquery);
+die("got no results (query 1)") unless $results;
+die("results aren't blessed properly")
+		unless $results->isa("DataStore::results");
+$results->next_row();
+die("incorrect number of columns") unless $results->num_cols() == 2;
+die("results are not correct")
+		unless $results->col("name") eq "sysobjects"
+		and $results->col("crdate") eq "Jan  1 1900 12:00AM";
+
+# can we get more than one row?
+$sysobjquery = "
+		select name
+		from sysobjects
+		where name like 'sysc%'
+";
+$results = $testds->do($sysobjquery);
+die("got no results (query 2)") unless $results;
+die("incorrect number of columns") unless $results->num_cols() == 1;
+my @correct_results = qw<syscolumns syscomments sysconstraints>;
+my $count = 0;
+while ($results->next_row())
+{
+	# print STDERR "row ", $count + 1, " value :", $results->col(0), ":\n";
+	die("row " . ($count + 1) . " has incorrect value")
+			unless $results->col(0) eq $correct_results[$count];
+	++$count;
+}
+
+
+# make sure we can create tables
+die("didn't gracefully handle illegal table name")
+		if $testds->overwrite_table("%", [ ['a', 'char(1)', 'null'] ]);
+
+die("can't create table: " . $testds->last_error())
+		unless $testds->overwrite_table("test1", [
+				[ 'a', 'char(3)', 'not null' ],
+				[ 'b', 'date', 'null' ],
+				[ 'c', 'money', 'null' ],
+		]);
+
+# and put data in ...
+use constant NUM_TEST_ROWS => 15;
+my $insquery = "insert test1 values ('xxx', '1/1/2002', 48.35)\n";
+$insquery x= NUM_TEST_ROWS;
+$results = $testds->do($insquery);
+die("can't insert values properly: " . $testds->last_error()) unless $results;
+$results = $testds->do("insert test1 select * from test1");
+die("can't insert select properly: " . $testds->last_error()) unless $results;
+my $nrows = $results->rows_affected();
+die("didn't get proper number of rows (got $nrows)")
+		unless $nrows == NUM_TEST_ROWS;
+
+# ... and get data back out
+$results = $testds->do("select * from test1");
+$count = 0;
+while ($results->next_row())
+{
+	++$count;
+	die("column 0 bad for row $count") unless $results->col(0) eq 'xxx';
+	# print STDERR $results->col(1), "\n";
+	die("column 1 bad for row $count")
+			unless $results->col(1) eq 'Jan  1 2002 12:00AM';
+	die("column 2 bad for row $count") unless $results->col(2) == 48.35;
+}
+die("didn't get proper number of rows back")
+		unless $count == NUM_TEST_ROWS * 2;
+
+test_constants();
+test_bogus_function();
+test_indices();
+test_misc_functions();
+test_user_types();
+test_schema_trans();
+test_execute();
+
+# make sure we can reopen our data store
+undef $testds;
+# print STDERR "about to reopen test data store\n";
+$testds = DataStore->open("test", "buddy");
+# print STDERR "modified state is $testds->{modified}\n";
+
+# quick output check
+test_output("select * from {%dbo}.test1 where a = 'xxx'",
+		"xxx:Jan  1 2002 12:00AM:48.35\n" x (NUM_TEST_ROWS * 2),
+		"can't get good data on reopen");
+
+# clean up our test stuff
+$testds = DataStore->open("test", "sa");	# have to be sa for this to work
+db_assert($testds->do("drop table test1"), "can't drop test table");
+db_assert($testds->do("drop table test2"), "can't drop test table");
+db_assert($testds->do("drop table {%buddy}.test1"), "can't drop test table");
+db_assert($testds->do("drop table {%guest}.test1"), "can't drop test table");
+db_assert($testds->do("dump tran model with no_log"), "can't dump tran");
+unlink(TEST_DS_FILE);
+
+# looks okay
+unlink "new.dstore";
+print "ALL TESTS PASSED\n";
+
+
+sub db_assert
+{
+	my ($condition, $die_msg) = @_;
+
+	die("$die_msg: " . $testds->last_error()) unless $condition;
+}
+
+sub test_output
+{
+	my ($query, $expected_output, $die_msg) = @_;
+
+	# print STDERR "about to do $query\n";
+	my $res = $testds->do($query);
+	croak("test_output query failed: " . $testds->last_error())
+			unless defined $res;
+	my $output = "";
+	$output .= join(':', $res->all_cols()) . "\n" while $res->next_row();
+	# print STDERR "got output $output\n";
+	die($die_msg) unless $output eq $expected_output;
+}
+
+sub test_constants
+{
+	db_assert($testds->do("insert test1 "
+			. "values ('con', {BEGINNING_OF_TIME}, 0)"),
+			"beginning of time insert failed");
+	db_assert($testds->do("insert test1 "
+			. "values ('con', {END_OF_TIME}, 0)"),
+			"end of time insert failed");
+	test_output("select * from test1 where a = 'con'",
+			"con:Jan  1 1753 12:00AM:0\ncon:Dec 31 9999 12:00AM:0\n",
+			"incorrect data stored for constants");
+}
+
+sub test_bogus_function
+{
+	$caught = false;
+	try
+	{
+		$testds->do("{&bogus}");
+	}
+	catch
+	{
+		# print STDERR "catching $_\n";
+		$caught = true if /unknown translation function: bogus/;
+	};
+	die("didn't detect bogus function") unless $caught;
+}
+
+sub test_user_types
+{
+	# now make some user defined types
+	$testds->configure_type('logical', 'boolean');
+
+	# while we're here, make sure we can't call do() with config's pending
+	$caught = false;
+	try
+	{
+		$testds->do("something");
+	}
+	catch
+	{
+		my $error_msg = "can't execute query with config's pending; "
+				. "run commit_configs()";
+		$caught = true if /$error_msg/;
+	};
+	die("didn't refuse query with pending config's") unless $caught;
+
+	# now make sure our defined type works
+	$testds->commit_configs();
+	die("can't create table with user types: " . $testds->last_error())
+			unless $testds->overwrite_table("test2", [
+					[ 'a', 'char(3)', 'not null' ],
+					[ 'b', 'logical', 'null' ],
+			]);
+}
+
+sub test_indices
+{
+	# first try to make an index
+	db_assert($testds->do("create index t1 on test1 (a) {&place_on 'default'}"),
+			"can't create an index (function place_on)");
+
+	# now try to drop it
+	db_assert($testds->do("{&drop_index test1, t1}"),
+			"can't drop an index (function drop_index");
+}
+
+sub test_misc_functions
+{
+	# curdate function
+	my $res = $testds->do("select {&curdate}");
+	croak("curdate query failed:", $testds->last_error())
+			unless defined $res and $res->next_row();
+	# note: if you happen to be running this at the exact moment of midnight,
+	# I suppose it's technically possible for the Sybase date and the Unix
+	# date to fail to match.  just run it again.
+	die("can't get current date")
+			unless substr($res->col(0), 0, 11)
+					eq POSIX::strftime("%b %e %Y", localtime(time()));
+
+	# ifnull function
+	db_assert($testds->do("
+			insert test1 values ('nul', null, 123.45)
+			insert test1 values ('nul', null, null)
+			insert test1 values ('nul', null, 99.99)
+	"), "couldn't insert data to test ifnull func");
+	test_output("select {&ifnull c, 99.99} from test1 where a = 'nul' "
+			. "order by c", "99.99\n99.99\n123.45\n",
+			"test of ifnull func failed");
+}
+
+sub test_schema_trans
+{
+	# define a schema translation
+	$testds->configure_schema_translation('return "$_[0].";');
+	$testds->commit_configs();
+	$testds->overwrite_table('{%guest}.test1', [['a', 'int', 'null']]);
+	db_assert(
+			$testds->overwrite_table('{%buddy}.test1', [['a', 'int', 'null']]),
+			"can't create same table in different schema: "
+	);
+}
+
+sub test_execute
+{
+	db_assert(
+			$testds->execute("
+				insert test2
+				values ('xxx', 1)
+				;
+				insert test2
+				values ('xyz', 0)
+				;
+			"),
+			"basic execute failed"
+	);
+	test_output("select * from test2 where a like 'x%'", "xxx:1\nxyz:0\n",
+			"didn't get correct data back from execute");
+
+	db_assert(
+			$testds->execute("
+				insert test2
+				values ('abc', 1)
+				bmoogle		
+				insert test2
+				values ('aaa', 0)
+				bmoogle      
+			", delim => "bmoogle"),
+			"execute with alternate delimiter failed"
+	);
+	test_output("select * from test2 where a like 'a%'", "abc:1\naaa:0\n",
+			"didn't get correct data back from execute");
+
+	my $report;
+	db_assert(
+			$report = $testds->execute("
+				insert test2
+				values ('xxx', 1)
+				;
+				insert test2
+				values ('xyz', 0)
+				;
+			", report => "(%R rows affected)\n"),
+			"execute with report failed"
+	);
+	die("execute insert report wasn't correct: ". $report)
+			unless $report eq "(1 rows affected)\n" x 2;
+
+	db_assert(
+			$report = $testds->execute("
+				select * from test2
+				where a like 'x%'
+				;
+				select * from test2
+				where a like 'a%'
+				;
+			", report => "(%R rows affected)\n"),
+			"execute with select and report failed"
+	);
+	die("execute select report wasn't correct: ". $report)
+			unless $report eq "(4 rows affected)\n(2 rows affected)\n";
+}
