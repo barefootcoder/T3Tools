@@ -13,6 +13,10 @@ use Barefoot::exception;
 use Barefoot::T3::base;
 use Barefoot::T3::Server;
 
+
+# client doesn't have long to start reading the pipe they created
+use constant TIMEOUT_CLIENT_STARTREAD => 1;
+
 setup_modules();
 
 
@@ -65,8 +69,20 @@ while (1)
 			next;
 		}
 
-		T3::debug("pipe name is $req->{output}");
-		my $pipe = open_output_pipe($req->{output});
+		T3::debug(3, "pipe name is $req->{output}");
+		my $pipe;
+		unless (timeout
+				{
+					$pipe = open_output_pipe($req->{output})
+				}
+				TIMEOUT_CLIENT_STARTREAD
+		)
+		{
+			log_error("client didn't start reading in a timely fashion");
+			next;
+		}
+
+		T3::debug(5, "got pipe handle");
 		if ($pipe)
 		{
 			my $oldfh = select($pipe);
@@ -84,13 +100,21 @@ while (1)
 				}
 			}
 
-			T3::Server::execute_request($handler, $req, @input_lines);
+			try
+			{
+				T3::Server::execute_request($handler, $req, @input_lines);
+			}
+			catch
+			{
+				log_error("request handler $handler failed: $_");
+			};
+
 			select($oldfh);
 			$pipe->close() unless exists $req->{combine_next};
 		}
 		else
 		{
-			log_error("can't build output pipe [$req->{output}]");
+			log_error("can't open output pipe [$req->{output}]");
 		}
 	}
 }
@@ -185,7 +209,7 @@ sub open_output_pipe
 {
 	my ($id) = @_;
 
-	T3::debug("pipe id is $id");
+	T3::debug(4, "pipe id is $id");
 	if (not $id)
 	{
 		log_error("output pipe name invalid");
@@ -193,12 +217,13 @@ sub open_output_pipe
 	}
 
 	my $pipe_file = t3_pipename(T3::OUTPUT_FILE . $id);
-	unless (-w $pipe_file)
+	unless (-w $pipe_file and -p _)
 	{
 		log_error("client didn't create pipe for $id or wrong mode on pipe");
 		return undef;
 	}
 
+	T3::debug(5, "about to open output pipe");
 	return new FileHandle(">$pipe_file");
 }
 
