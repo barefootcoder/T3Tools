@@ -32,6 +32,7 @@ $(build_profit_item "
 		where log.date between $(period_start par.start_date 7)
 				and $(period_end par.end_date 7)
 	)
+	and log.client = '{client}'								{?client}
 ")
 exec calc_pay_amount
 exec calc_total_price
