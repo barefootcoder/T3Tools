@@ -2,6 +2,10 @@
 
 # $Header$
 # $Log$
+# Revision 1.2  1999/02/18 06:16:52  buddy
+# changed to handle cookies turned into environment variables
+# now builds ksh script so can use kshlib functions as well
+#
 # Revision 1.1  1998/12/30 06:24:55  buddy
 # Initial revision
 #
@@ -11,7 +15,7 @@ $| = 1;
 
 $cgi = new CGI;
 $script = "/tmp/sqlcgi$$.ksh";
-$basepath = "/usr/local/WWW/apache1.2/sybase/timer_reports/";
+$basepath = "/home/httpd/sybase/timer_reports/";
 $title = "";
 
 print $cgi->header();
@@ -78,7 +82,7 @@ END
 		}
 		while (/\[(.*?)\]/)
 		{
-			$var = uc($1);
+			$var = $1;
 			if (!$ENV{$var})
 			{
 				error("$var variable not set");
