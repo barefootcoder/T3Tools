@@ -21,7 +21,7 @@ use Barefoot::DataStore;
 
 my $user = "sa";
 my $dstore = "t3test";
-my $admin_users = "christy,wayne";
+my $admin_users = "christy,wayne,buddy";
 
 my $opt = {};
 getopts("s:U:h", $opt);
@@ -622,6 +622,16 @@ create_table("time_log",
 			cols	=>	"emp_id, client_id, proj_id",
 		},
 		{
+			type	=>	"index",
+			name	=>	"timelog_date",
+			cols	=>	"log_date",
+		},
+		{
+			type	=>	"index",
+			name	=>	"timelog_cliproj",
+			cols	=>	"client_id, proj_id, log_date",
+		},
+		{
 			type	=>	"grant insert",
 			users	=>	"public",
 		},
@@ -721,14 +731,6 @@ create_table("commission_modifier",
 			name	=>	"commod",
 			cols	=>	"pay_to",
 		},
-		{
-			type	=>	"grant insert",
-			users	=>	"$admin_users",
-		},
-		{
-			type	=>	"grant update",
-			users	=>	"$admin_users",
-		},
 	]
 );
 
@@ -824,10 +826,6 @@ create_table("salary_bank",
 			type	=>	"grant update",
 			users	=>	"$admin_users",
 		},
-		{
-			type	=>	"grant select",
-			users	=>	"public",
-		},
 	]
 );
 
@@ -849,18 +847,6 @@ create_table("salary_draw",
 			type	=>	"unique index",
 			name	=>	"salary_draw",
 			cols	=>	"emp_id, start_date",
-		},
-		{
-			type	=>	"grant insert",
-			users	=>	"$admin_users",
-		},
-		{
-			type	=>	"grant update",
-			users	=>	"$admin_users",
-		},
-		{
-			type	=>	"grant select",
-			users	=>	"public",
 		},
 	]
 );
@@ -886,10 +872,6 @@ create_table("insurance_rate",
  			type	=>	"unique index",
 			name	=>	"insrate",
 			cols	=>	"emp_id, start_date",
-		},
-		{
-			type	=>	"grant select",
-			users	=>	"public",
 		},
 	]
 );
