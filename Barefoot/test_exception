@@ -79,6 +79,7 @@ die("rethrow wasn't caught") unless $caught;
 # test timeout
 die("timeout didn't return false") if timeout { while (1) {} } 2;
 die("timeout didn't return true") unless timeout { while (0) {} } 2;
+sleep 2;		# this should bomb unless the previous timeout was cancelled
 $caught = 0;
 try
 {
