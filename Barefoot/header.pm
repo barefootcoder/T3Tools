@@ -17,7 +17,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000 Barefoot Software.
+# licensing agreement.  Copyright (c) 2002 Barefoot Software.
 #
 ###########################################################################
 
