@@ -87,6 +87,7 @@ if (-t STDOUT or @ARGV)
 	my $opt = {};
 	getopts('sedlcprbtfhu:C:P:H:@:', $opt);
 	$timerinfo->{force} = defined $opt->{f};
+	$timerinfo->{noconfirm} = defined $opt->{f};
 	$timerinfo->{halftime} = defined $opt->{h};
 	$timerinfo->{user} = $opt->{u};
 	$timerinfo->{client} = $opt->{C};
@@ -146,7 +147,6 @@ catch
 	error(3, $_);
 };
 
-
 if ($command eq 'START')					# start a timer
 {
 	unless ($timerinfo->{force})
@@ -157,19 +157,25 @@ if ($command eq 'START')					# start a timer
 
 	if (not exists $timerinfo->{timers}->{$timerinfo->{giventimer}})
 	{
-		# print STDERR "given timer doesn't exist, getting new values\n";
-		$timerinfo->{client} = get_client($command, $timerinfo);
-		$timerinfo->{project} = get_project($command, $timerinfo,
-				$timerinfo->{client});
+		if ($timerinfo->{connected})
+		{
+			# print STDERR "given timer doesn't exist, getting new values\n";
+			$timerinfo->{client} = get_client($command, $timerinfo);
+			$timerinfo->{project} = get_project($command, $timerinfo,
+					$timerinfo->{client});
 
-#print "client is $timerinfo->{client}\n";
-#print "project is $timerinfo->{project}\n";
+			my ($phase_needed) = proj_requirements($timerinfo->{client},
+					$timerinfo->{project}, calc_date(time));
 
-		my ($phase_needed) = proj_requirements($timerinfo->{client},
-				$timerinfo->{project}, calc_date(time));
-
-		$timerinfo->{phase} = get_phase($command, $timerinfo)
-				if $phase_needed;
+			$timerinfo->{phase} = get_phase($command, $timerinfo)
+					if $phase_needed;
+		}
+		else
+		{
+			$timerinfo->{client} = 0;
+			$timerinfo->{project} = 0;
+			$timerinfo->{phase} = 0;
+		}
 	}
 }
 
@@ -215,15 +221,18 @@ if ($command eq 'RENAME')					# new name for a timer
 		$timerinfo->{newname} = input("new name for this timer?", $defname);
 	}
 
-	$timerinfo->{client} = get_client($command, $timerinfo);
-	$timerinfo->{project} = get_project($command, $timerinfo,
-			$timerinfo->{client});
+	if ($timerinfo->{connected})
+	{
+		$timerinfo->{client} = get_client($command, $timerinfo);
+		$timerinfo->{project} = get_project($command, $timerinfo,
+				$timerinfo->{client});
 
-	my ($phase_needed, $tracking_needed, $comments_needed) = 
-			proj_requirements($timerinfo->{client}, $timerinfo->{project}, 
-			calc_date(time));
+		my ($phase_needed, $tracking_needed, $comments_needed) = 
+				proj_requirements($timerinfo->{client}, $timerinfo->{project}, 
+				calc_date(time));
 
-	$timerinfo->{phase} = get_phase($command, $timerinfo) if $phase_needed;
+		$timerinfo->{phase} = get_phase($command, $timerinfo) if $phase_needed;
+	}
 }
 
 if ($command eq 'BREAKDOWN')					# break down a timer
@@ -272,6 +281,12 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 
 if ($command eq 'TOTAL')					# total timers by client
 {
+	unless ($timerinfo->{connected})
+	{
+		print STDERR "The data store is not accessible. Action canceled.\n";
+		exit;
+	}
+
 	# get totals for this weeks timers
 	my ($totals, $bad_proj) = this_week_totals($timerinfo->{user});
 	error(4, "can't get totals out of database") unless defined $totals;
@@ -311,11 +326,23 @@ if ($command eq 'TOTAL')					# total timers by client
 
 if ($command eq 'LOG')					# log time directly to the DB
 {
+	unless ($timerinfo->{connected})
+	{
+		print STDERR "The data store is not accessible. Action canceled.\n";
+		exit;
+	}
+	
 	gather_log_info($timerinfo);
 }
 
 if ($command eq 'DONE')					# done with a timer
 {
+	unless ($timerinfo->{connected})
+	{
+		print STDERR "The data store is not accessible. Action canceled.\n";
+		exit;
+	}
+	
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
@@ -340,9 +367,6 @@ if ($command eq 'DONE')					# done with a timer
 		print "press return to continue ...\n";
 		<STDIN>;
 	}
-
-	# Sets force off so get_ routines don't skip their valid checks
-	my $force = true if $timerinfo->{force};
 
 	gather_log_info($timerinfo, $timerinfo->{giventimer});
 }
@@ -526,12 +550,12 @@ sub get_parameter
 	}
 
 	return $defvalue if $timerinfo->{force};
-
+	
 	my $parm;
 	# make a block so redo will work
 	PARM:
 	{
-		$parm = input("which $parmname is this for? (? for list)", $defvalue);
+		$parm = input("Which $parmname is this for? (? for list)", $defvalue);
 		$parm = string::upper($parm);				# codes are all UC
 		$parm = string::trim($parm);				# no spaces
 
@@ -549,13 +573,17 @@ sub get_parameter
 		{
 			if ($parm eq string::trim($id))
 			{
-				if (get_yn("\u$parmname is $parm: "
-						. "$valid_parms->{$id}; is this right?"))
+				if ($timerinfo->{noconfirm})
 				{
-					$parm = $id;
-					last PARM;
+					print "\u$parmname is $parm: $valid_parms->{$id}.\n";
 				}
-				redo PARM;
+				else 		# ask for confirmation
+				{
+					redo PARM unless get_yn("\u$parmname is $parm: "
+							. "$valid_parms->{$id}; is this right?");
+				}
+				$parm = $id;
+				last PARM;
 			}
 		}
 		print "Invalid \u$parmname! \n";
@@ -638,6 +666,11 @@ sub print_parsable
 sub gather_log_info
 {
 	my ($timerinfo, $log_timer) = @_;
+
+	# For logging timers, we MUST ask for codes; no 'force' allowed.  But
+	# the noconfirm option can still turn off the annoying confirmations.
+	$timerinfo->{force} = false;
+
 	# a shortcut
 	my $timer = defined $log_timer
 			? $timerinfo->{timers}->{$log_timer} : undef;
