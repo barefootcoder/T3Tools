@@ -3,6 +3,14 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  1999/12/10 04:23:23  buddy
+# major changes to the way training rates are calculated:
+#     no calculation until project completed
+#     zeroing out of log (payroll) rows for training classes (this keeps
+#          these rows from affecting profit calculations)
+#     have to insert bill_rate along with 'training work' rows (otherwise
+#          referall commission doesn't get calc'ed for some strange reason)
+#
 # Revision 1.2  1999/10/28 14:18:20  buddy
 # removed stuff relegated to make_rates
 # added handling for training rates
@@ -21,7 +29,6 @@
 
 server=SYBASE_1
 user=$USER
-srcdb=TIMERLOAD
 destdb=TIMER
 
 run_query -S$server -U$user -D$destdb <<-END
@@ -96,7 +103,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		-- while we're here, may as well zero out the log entries
 		-- attached to training projects
 		update #emp_comm
-		set billrate = 0, payrate = 0
+		set billrate = 0, amt_paid = 0, salescomm = 0 --, payrate = 0
 		from #emp_comm ec, project p, project_type pt
 		where ec.source_tbl not in ('training_class', 'training work')
 		and ec.client = p.client
@@ -383,18 +390,21 @@ run_query -S$server -U$user -D$destdb <<-END
 		update #emp_comm
 		set empcomm = 0
 		where billrate = 0
-
-		-- referral commissions aren't so tough
-		update #emp_comm
-		set refcomm = rc.commission * ec.hours
-		from #emp_comm ec, referral_commission rc
-		where ec.emp = rc.emp
-		and ec.date between rc.start_date and rc.end_date
 		 
 		-- figure amount paid (simple multiplication)
 		update #emp_comm
 		set amt_paid = payrate * hours
 		where payrate > 0
+		and amt_paid is null
+
+		-- referral commissions aren't so tough
+		-- (but things that don't get paid also don't get ref comm)
+		update #emp_comm
+		set refcomm = rc.commission * ec.hours
+		from #emp_comm ec, referral_commission rc
+		where ec.emp = rc.emp
+		and ec.date between rc.start_date and rc.end_date
+		and ec.amt_paid > 0
 
 		-- now get totals for any training projects
 		-- first, totals for paid out
