@@ -10,8 +10,8 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_timer_info do_timer_command calc_date calc_time
-		this_week_totals insert_time_log>;
+@EXPORT_OK = qw<get_timer_info do_timer_command readfile this_week_totals
+		insert_time_log>;
 
 
 use POSIX qw<strftime>;
@@ -27,6 +27,7 @@ use Barefoot::DataStore;
 use Barefoot::config_file;
 
 use Barefoot::T3::base;
+use Barefoot::T3::Timer qw<calc_date calc_time>;
 
 
 # Timer constants
@@ -184,7 +185,7 @@ sub start                   # start a timer
 
 		my $halftime = $timerinfo->{timers}->{$timerinfo->{curtimer}}->{time}
 				=~ m{ 2/ \d+ - $ }x;
-		my $givenhalftime = $timerinfo->{halftime};
+		my $givenhalftime = $timerinfo->{halftime} || 0;
 
 		die("Timer already started in that mode")
 				if ($halftime == $givenhalftime);
@@ -405,15 +406,11 @@ sub readfile
 	while ( <TFILE> )
 	{
 		chomp;
-		my ($key, $time, $client, $proj, $phase, $posted) = split(/\t/);
 		my $curtimer = {};
-		$curtimer->{time} = $time;
-		$curtimer->{client} = $client;
-		$curtimer->{project} = string::upper($proj);
-		$curtimer->{phase} = string::upper($phase);
-		$curtimer->{posted} = string::upper($posted);
-		$timerinfo->{timers}->{$key} = $curtimer;
-		$timerinfo->{curtimer} = $key if ($time =~ /-$/);
+		(timer_fields($curtimer)) = split("\t", $_, -1);
+		$timerinfo->{timers}->{$curtimer->{name}} = $curtimer;
+		$timerinfo->{curtimer} = $curtimer->{name}
+				if ($curtimer->{time} =~ /-$/);
 	}
 	close(TFILE);
 }
@@ -430,19 +427,14 @@ sub writefile
 	}
 	catch
 	{
-		return;
+		return;					# from catch block
 	};
 
 	open(TFILE, ">$timerinfo->{tfile}") or die("can't write to timer file");
-	foreach my $timername (keys %{$timerinfo->{timers}})
+	foreach my $timerstuff (values %{$timerinfo->{timers}})
 	{
-		my $timerstuff = $timerinfo->{timers}->{$timername};
-		my $phase = $timerstuff->{phase} ? $timerstuff->{phase} : "";
-		print TFILE join("\t",
-				$timername, $timerstuff->{time},
-				$timerstuff->{client}, $timerstuff->{project},
-				$phase, $timerstuff->{posted},
-			), "\n";
+		$timerstuff->{phase} ||= "";
+		print TFILE join("\t", timer_fields($timerstuff)), "\n";
 	}
 	close(TFILE);
 }
@@ -895,62 +887,4 @@ sub ping_response
 	}
 
 	return $lines;
-}
-
-
-# ------------------------------------------------------------
-# Calculation Procedures
-# ------------------------------------------------------------
-
-
-sub calc_time
-{
-	my ($line) = @_;
-	my @times = split(',', $line);
-	my $total_time = 0;
-
-	my $current_time = false;
-	foreach my $time (@times)
-	{
-		if ($time =~ /^([+-]\d+)$/)
-		{
-			$total_time += $1 * 60;
-			next;
-		}
-
-		my ($divisor, $from, $to) = $time =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
-		die("illegal format in time file") unless $from;
-		if (!$to)
-		{
-			die("more than one current time in time file") if $current_time;
-			$current_time = true;
-			$to = time;
-		}
-		$total_time += ($to - $from) / ($divisor ? $divisor : 1);
-	}
-	return range::round($total_time / 60, range::ROUND_UP);
-}
-
-
-sub calc_date
-{
-	my ($line) = @_;
-
-	my $seconds;
-	if ($line and $line =~ /(\d+),$/)	# ends in a comma, must be paused
-	{
-		$seconds = $1;
-	}
-	else								# current or no time given
-	{
-		$seconds = time;
-	}
-
-	# adjust for working after midnight ... if the time is before 6am,
-	# we'll just subtract a day
-	my ($hour) = (localtime $seconds)[2];
-	$seconds -= 24*60*60 if $hour < 6;
-
-	my ($day, $mon, $year) = (localtime $seconds)[3..5];
-	return ++$mon . "/" . $day . "/" . ($year + 1900);
 }
