@@ -33,7 +33,12 @@ $(build_pay_amount "
 		and pr.rate_type != 'S'									?!check_date
 	)															?!check_date
 ")
+
 exec calc_pay_amount
+go
+
+delete pay_amount
+where requires_payment = 0
 go
 
 -- for debugging
@@ -51,8 +56,7 @@ from pay_amount
 go
 
 if exists (select 1 from pay_amount where pay_rate_type is NULL)
-	or exists (select 1 from pay_amount
-			where requires_payment = 1 and total_pay = 0)
+	or exists (select 1 from pay_amount where total_pay = 0)
 begin
 	print ""
 	print ""
@@ -68,11 +72,7 @@ begin
 	and
 	(
 		pa.pay_rate_type is NULL		-- this should never happen
-		or
-		(
-			pa.requires_payment = 1		-- if this row requires payment
-			and pa.total_pay = 0		-- there better be some pay there
-		)
+		or pa.total_pay = 0				-- there better be some pay there
 	)
 	order by pa.emp, pa.client, pa.proj, pa.date
 end
@@ -94,7 +94,7 @@ begin															?!check_date
 			convert(char(10), pa.date, 101) "date", pa.hours,	?!check_date
 			convert(char(6), pa.pay_rate) "payrate",			?!check_date
 			pa.pay_rate_type "PT",								?!check_date
-			convert(char(12), pa.total_pay)						?!check_date
+			convert(char(12), pa.total_pay) "pay"				?!check_date
 	from pay_amount pa, employee e, client c					?!check_date
 	where pa.emp = e.emp										?!check_date
 	and pa.client = c.client									?!check_date
@@ -120,7 +120,6 @@ and pa.client = p.client
 and pa.proj = p.proj
 and pa.date between p.start_date and p.end_date
 and pa.pay_rate_type != 'S'
-and pa.requires_payment = 1
 group by pa.emp, $(employee_name e), c.name, p.name, pa.pay_rate
 go
 
@@ -136,7 +135,6 @@ select pa.emp, $(employee_name e) "employee",
 from pay_amount pa, employee e
 where pa.emp = e.emp
 and pa.pay_rate_type != 'S'
-and pa.requires_payment = 1
 group by pa.emp, $(employee_name e), pa.pay_rate
 order by pa.emp, pa.pay_rate
 compute sum(convert(numeric(6,2), sum(pa.hours))),
