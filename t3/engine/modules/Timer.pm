@@ -5,11 +5,18 @@ package TimerModule;
 use strict;
 
 use Barefoot::base;
+use Barefoot::exception;
+
 use Barefoot::T3::base;
 use Barefoot::T3::Server;
 use Barefoot::T3::Timer qw<calc_time calc_date>;
 
+use Barefoot::T3Timer qw<do_timer_command readfile>;
+
+
 T3::Server::register_request(TIMER_LIST => \&list_timers);
+T3::Server::register_request(START_TIMER => \&start_timer);
+T3::Server::register_request(PAUSE_TIMERS => \&pause_timers);
 
 
 ###########################
@@ -55,10 +62,57 @@ sub list_timers
 		{
 			T3::debug(3, "going to print: //"
 					. join("\t", $timer->{name}, $pretty_time). "//");
-			print join("\t", $timer->{name}, $timer->{time}), "\n";
+			print join("\t", $timer->{name}, $timer->{time}, $current), "\n";
 		}
 	}
 	close(TMR);
+}
+
+
+sub start_timer
+{
+	my $opts = shift;
+
+	my $timerinfo = {};
+	# don't care about history file name
+	($timerinfo->{tfile}, undef) = t3_filenames("timer", $opts->{user});
+
+	# get timers (they accumulate in $timerinfo->{timers})
+	readfile($timerinfo);
+
+	try
+	{
+		$timerinfo->{giventimer} = $opts->{timer};
+		do_timer_command('START', $timerinfo);
+		print "TIMER STARTED\n";
+	}
+	catch
+	{
+		print "ERROR:$_\n";
+	};
+}
+
+
+sub pause_timers
+{
+	my $opts = shift;
+
+	my $timerinfo = {};
+	# don't care about history file name
+	($timerinfo->{tfile}, undef) = t3_filenames("timer", $opts->{user});
+
+	# get timers (they accumulate in $timerinfo->{timers})
+	readfile($timerinfo);
+
+	try
+	{
+		do_timer_command('PAUSE', $timerinfo);
+		print "TIMERS PAUSED\n";
+	}
+	catch
+	{
+		print "ERROR:$_\n";
+	};
 }
 
 
