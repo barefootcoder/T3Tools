@@ -177,13 +177,14 @@ sub proj_name
 
 sub proj_requirements
 {
-	my ($client, $proj) = @_;
+	my ($client, $proj, $date) = @_;
 
 	my $row = _getsql("
 			select pt.requires_phase, pt.requires_cliproj, pt.requires_comments
 			from project p, project_type pt
 			where p.client = '$client'
 			and p.proj = '$proj'
+			and '$date' between p.start_date and p.end_date
 			and p.proj_type = pt.proj_type
 		");
 	return split(" ", $row);
