@@ -3,6 +3,8 @@
 use strict;
 
 use CGI;
+#use Barefoot::debug;		# comment out for production
+
 use Barefoot::input qw(input);
 use Barefoot::format;
 
@@ -241,10 +243,15 @@ sub decode_message
 {
 	my ($message) = @_;
 
+	# these decoding functions unnecessary with new CGI server
 	# decode CGI encoding
-	$message =~ s/%(..)/ chr(hex($1)) /eg;
+	#$message =~ s/%(..)/ chr(hex($1)) /eg;
 	# other talker client uses +'s for spaces
-	$message =~ s/\+/ /g;
+	#$message =~ s/\+/ /g;
+
+	# however, we do need to unescape the special HTML stuff
+	$message = CGI::unescapeHTML($message);
+
 	# split message into distinct lines
 
 	return wantarray ? split(/\r?\n/, $message) : $message;
