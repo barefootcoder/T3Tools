@@ -29,6 +29,24 @@ use Barefoot::string;
 #
 
 
+# this one just tests for a valid date and returns 1 or 0
+# it accepts the following forms:
+#	mm/dd/yy
+#	mm/dd/yyyy
+#	mm-dd-yy
+#	mm-dd-yyyy
+# month and day numbers may be only one digit
+sub isValid
+{
+	my ($date) = @_;
+
+	my ($mon, $day, $year) = split(?/|-?, $date);
+	--$mon;									# timelocal expects this
+	$year -= 1900 if $year >= 100;			# account for 2 or 4 digit years;
+	eval { timelocal(0,0,0,$day,$mon,$year) };
+	return $@ ? 0 : 1;
+}
+
 sub incDays
 {
 	my ($date, $inc) = @_;
