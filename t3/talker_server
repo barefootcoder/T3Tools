@@ -127,6 +127,9 @@ sub processMessage
 
 	my $message = $attr->{_FULL_};
 
+	# "from" user is active, touch their file.
+	touchActiveFile($attr->{from});
+
 	# save the received messages
 	if (($attr->{status} eq "NORMAL") || ($attr->{status} eq "NO_REPLY"))
 	{
@@ -187,6 +190,18 @@ sub buildMessage
 
 	$attr->{_DATA_} = $data;
 	$attr->{_FULL_} = $message;
+}
+# ---------------------------------------------------------------------------
+
+sub touchActiveFile
+{
+	my ($user) = @_;
+
+	# append only (automatically creates if does not exist)
+
+	my $path = TALKERPATH . $user . ".active";
+
+	file::store_lock($path, undef);
 }
 # ---------------------------------------------------------------------------
 
