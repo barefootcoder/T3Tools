@@ -1,195 +1,179 @@
--- SORT GROUP: Financial Reports
--- TITLE: Billing Report
+# SORT GROUP: Financial Reports
+# TITLE: Billing Report
 
-$(build_profit_item "
-	log.client = '{client}'
-	and log.proj = '{proj}'									{?proj}
+&proc build_profit_item
 
-	and exists												{?invoice}
-	(														{?invoice}
-		select 1											{?invoice}
-		from invoice i										{?invoice}
-		where log.invoice_id = i.invoice_id					{?invoice}
-		and i.invoice_number = '{invoice}'					{?invoice}
-	)														{?invoice}
+		log.client_id = '{client}'
+	{if proj}
+		and log.proj_id = '{proj}'
+	{endif}
 
-	and log.date <= '{end_date}'							{!invoice}
-	and log.invoice_id is NULL								{!invoice}
-")
-exec calc_total_price
-go
+	{if invoice}
+		and exists
+		(
+			select 1
+			from {~timer}.invoice i
+			where log.invoice_id = i.invoice_id
+			and i.invoice_number = '{invoice}'
+		)
+	{endif}
 
--- for debugging
-/*
-select pi.log_source, pi.log_id, tpl.emp, pi.client, pi.proj,
-		convert(char(10), pi.end_date, 101) "date", units,
-		convert(char(8), price_per_unit, 1) "price_per_unit",
-		convert(char(9), total_price, 1) "total_price"
-from profit_item pi, time_log_profit tpl
-where pi.log_source *= tpl.log_source
-and pi.log_id *= tpl.log_id
-order by tpl.emp, pi.client, pi.proj, pi.end_date
-*/
-go
+	{if !invoice}
+		and log.log_date <= '{end_date}'
+		and log.invoice_id is NULL
+	{endif}
 
-if exists
-(
-	select 1
-	from time_log_profit
-	where bill_rate is NULL
-)
-begin
-	print "<H1>ERROR! These entries have no billing rates:</H1>"
-	print ""
-	select tlp.emp "E", $(employee_name e) "Employee", tlp.client "C",
-			c.name "Client", tlp.proj, convert(char(10), tlp.date, 101) "date",
-			tlp.hours
-	from time_log_profit tlp, employee e, client c
+;
+
+	select tlp.emp_id as EMP, pe.first_name as Employee, tlp.client_id as CLI,
+			c.name as Client, tlp.proj_id as PRJ, tlp.log_date, tlp.hours
+	from {~reporting}.time_log_profit tlp, {~timer}.employee e,
+			{~t3}.person pe, {~timer}.client c
 	where tlp.bill_rate is NULL
-	and tlp.emp = e.emp
-	and tlp.client = c.client
-end
-go
+	and tlp.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and tlp.client_id = c.client_id
+->suppress_empty
+->format
+	H=>
+	H=><H1>ERROR! These entries have no billing rates:</H1>
+	H=>
+	H=>%default
+	B->@<< @<x20 @<< @<x30 @<< @<x11 @##.##
+	F=>(%R rows returned)
+;
 
-print ''
-print ''
-go
 
-print '<CENTER><H2>Client: {client}'
-print '</H2><H3>Project: {proj}'							{?proj}
-print '</H3>From {start_date} to {end_date}</CENTER>'
-print ''
-print ''
-go
+&print
 
-if exists
-(
-	select 1
-	from profit_item pi, time_log_profit tlp
+
+<CENTER><H2>Client: {client}
+{if proj}
+</H2><H3>Project: {proj}
+{endif}
+</H3>From {start_date} to {end_date}</CENTER>
+
+
+;
+
+	select p.name as project, pi.price_per_unit as rate,
+			sum(pi.units) as hours, sum(pi.total_price) as "total amount"
+	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
+			{~timer}.project p
 	where pi.log_source = tlp.log_source
 	and pi.log_id = tlp.log_id
 	and tlp.resource_billing = 0
 	and tlp.class_billing = 0
-)
-	select p.name "project",
-			convert(char(8), pi.price_per_unit, 1) "rate",
-			convert(numeric(6,2), sum(pi.units)) "hours",
-			sum(pi.total_price) "total amount"
-	from profit_item pi, time_log_profit tlp, project p
-	where pi.log_source = tlp.log_source
-	and pi.log_id = tlp.log_id
-	and tlp.resource_billing = 0
-	and tlp.class_billing = 0
-	and pi.client = p.client
-	and pi.proj = p.proj
+	and pi.client_id = p.client_id
+	and pi.proj_id = p.proj_id
 	and pi.end_date between p.start_date and p.end_date
 	group by p.name, pi.price_per_unit
 	order by p.name
-	compute sum(sum(pi.total_price))
-go
+	# compute sum(sum(pi.total_price))
 
-if exists
-(
-	select 1
-	from profit_item pi, time_log_profit tlp
+->suppress_empty
+->format
+
+	H-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @<<<<< @<<<<<<<<<<<
+	H-> ------------------------------ ------- ------ ============
+
+	B-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @###.## @##.##     @####.##
+;
+
+
+	select rr.resource_name as resource, pi.price_per_unit as rate,
+			sum(pi.units) as hours, sum(pi.total_price) as "total amount"
+	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
+			{~timer}.resource_rate rr, {~timer}.resource_employee re
 	where pi.log_source = tlp.log_source
 	and pi.log_id = tlp.log_id
 	and tlp.resource_billing = 1
 	and tlp.class_billing = 0
-)
-	select rr.resource_name "resource",
-			convert(char(8), pi.price_per_unit, 1) "rate",
-			convert(numeric(6,2), sum(pi.units)) "hours",
-			sum(pi.total_price) "total amount"
-	from profit_item pi, time_log_profit tlp,
-			resource_rate rr, resource_employee re
-	where pi.log_source = tlp.log_source
-	and pi.log_id = tlp.log_id
-	and tlp.resource_billing = 1
-	and tlp.class_billing = 0
-	and tlp.emp = re.emp
+	and tlp.emp_id = re.emp_id
 	and
 	(
-		tlp.phase = re.phase
+		tlp.phase_id = re.phase_id
 		or
 		(
-			re.phase is NULL
+			re.phase_id is NULL
 			and not exists
 			(
 				select 1
-				from resource_employee re2
-				where tlp.client = re2.client
-				and tlp.emp = re2.emp
-				and tlp.phase = re2.phase
-				and tlp.date between re2.start_date and re2.end_date
+				from {~timer}.resource_employee re2
+				where tlp.client_id = re2.client_id
+				and tlp.emp_id = re2.emp_id
+				and tlp.phase_id = re2.phase_id
+				and tlp.log_date between re2.start_date and re2.end_date
 			)
 		)
 	)
-	and tlp.client = re.client
-	and tlp.date between re.start_date and re.end_date
-	and re.resrc = rr.resrc
-	and re.client = rr.client
-	and tlp.date between rr.start_date and rr.end_date
+	and tlp.client_id = re.client_id
+	and tlp.log_date between re.start_date and re.end_date
+	and re.resource_id = rr.resource_id
+	and re.client_id = rr.client_id
+	and tlp.log_date between rr.start_date and rr.end_date
 	group by rr.resource_name, pi.price_per_unit
 	order by pi.price_per_unit desc, rr.resource_name
-	compute sum(sum(pi.total_price))
-go
+	# compute sum(sum(pi.total_price))
 
-if exists
-(
-	select 1
-	from profit_item pi
-	where not exists
-	(
-		select 1
-		from time_log_profit tlp
-		where pi.log_source = tlp.log_source
-		and pi.log_id = tlp.log_id
-		and tlp.class_billing = 0
-	)
-)
-	select isnull(p.name, "**No Project Assigned**") "project",
-			convert(char(10), pi.end_date, 101) "date",
-			convert(char(8), pi.price_per_unit, 1) "price/unit",
-			convert(numeric(6,2), pi.units) "units",
-			convert(char(10), pi.total_price, 1) "total amount"
-	from profit_item pi, project p
-	where pi.client = p.client
-	and pi.proj = p.proj
+->suppress_empty
+->format
+
+	H-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @<<<<< @<<<<<<<<<<<
+	H-> ------------------------------ ------- ------ ============
+
+	B-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @###.## @##.##     @####.##
+;
+
+
+	select {&ifnull p.name, '**No Project Assigned**'} as project,
+			pi.end_date as date, pi.price_per_unit as "price/unit",
+			pi.units as units, pi.total_price as "total amount"
+	from {~reporting}.profit_item pi, {~timer}.project p
+	where pi.client_id = p.client_id
+	and pi.proj_id = p.proj_id
 	and pi.end_date between p.start_date and p.end_date
 	and not exists
 	(
 		select 1
-		from time_log_profit tlp
+		from {~reporting}.time_log_profit tlp
 		where pi.log_source = tlp.log_source
 		and pi.log_id = tlp.log_id
 		and tlp.class_billing = 0
 	)
-go
 
-if exists
-(
-	select 1
-	from profit_item pi, time_log_profit tlp, time_log tl
+->suppress_empty
+->format
+
+	H-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @<<<<< @<<<<<<<<<<<
+	H-> ------------------------------ ------- ------ ============
+
+	B-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @###.## @##.##     @####.##
+;
+
+
+	select p.name as project, ct.name as "client's tracking code",
+			sum(tlp.hours) as hours, sum(pi.total_price) as "total amount"
+	from {~reporting}.profit_item pi, {~reporting}.time_log_profit tlp,
+			{~timer}.time_log tl, {~timer}.project p,
+			{~timer}.client_tracking ct
 	where pi.log_source = tlp.log_source
 	and pi.log_id = tlp.log_id
 	and tlp.log_id = tl.log_id
-	and tl.cliproj is not NULL
-)
-	select p.name "project", cp.name "client's tracking code",
-			convert(numeric(6,2), sum(tlp.hours)) "hours",
-			sum(pi.total_price) "total amount"
-	from profit_item pi, time_log_profit tlp, time_log tl,
-			project p, client_project cp
-	where pi.log_source = tlp.log_source
-	and pi.log_id = tlp.log_id
-	and tlp.log_id = tl.log_id
-	and tl.client = p.client
-	and tl.proj = p.proj
-	and tl.date between p.start_date and p.end_date
-	and tl.client = cp.client
-	and tl.cliproj = cp.project_id
-	group by p.name, cp.name
-	order by p.name, cp.name
-	compute sum(sum(pi.total_price)) by p.name
-go
+	and tl.client_id = p.client_id
+	and tl.proj_id = p.proj_id
+	and tl.log_date between p.start_date and p.end_date
+	and tl.client_id = ct.client_id
+	and tl.tracking_code = ct.tracking_code
+	group by p.name, ct.name
+	order by p.name, ct.name
+	# compute sum(sum(pi.total_price)) by p.name
+
+->suppress_empty
+->format
+
+	H-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<<< @<<<<< @<<<<<<<<<<<
+	H-> ------------------------------ ------- ------ ============
+
+	B-> @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @###.## @##.##     @####.##
+;
