@@ -8,11 +8,13 @@
 
 use strict;
 
-#use Barefoot::debug;
+#use Barefoot::debug(1);
 
 use Getopt::Std;
 use Tie::IxHash;
+use Date::Parse;
 use Data::Dumper;
+use Time::ParseDate;
 
 use Barefoot::base;
 use Barefoot::date;
@@ -24,6 +26,7 @@ use Barefoot::input qw<input get_yn menu_select>;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
+use Barefoot::T3::db_get qw<one_datum>;
 
 
 #################################
@@ -39,10 +42,19 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 
 use constant TodoListHeader =>
 "   Todo:       Description:                              CLI PRJ  Due by:\n" .
-"   ==========  ========================================  === ===  ==========";
+"   ==========  ========================================  === ===  ========";
 
 use constant TodoList =>
-'   @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @>>>>>>>>>';
+'   @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
+
+use constant TodoTask =>
+	'
+    Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Date:
+    Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
+    Phase:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    Description:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
 
 #################################
@@ -54,8 +66,9 @@ our $parminfo = {};
 if (-t STDOUT or @ARGV)
 {
 	my $opt = {};
-	getopts('fh', $opt) or usage();
+	getopts('fhu:', $opt) or usage();
 	$parminfo->{noconfirm} = defined $opt->{f};
+	$parminfo->{user} = $opt->{u};
 
 	usage() if defined $opt->{h};
 }
@@ -74,10 +87,19 @@ our %menu_list;
 tie %menu_list, 'Tie::IxHash',
 (
 	"Add a task"			=>		\&add_todo,
+	"Show task details"		=>		\&todo_details,
+	"Edit a task"			=>		\&edit_todo,
 	"Cancel a task"			=>		\&cancel_todo,
 	"Complete a task"		=>		\&complete_todo,
 	"Quit program"			=>		sub { exit },
 );
+
+# this is a primitive way to get this, but it works
+my ($screen_rows) = split(' ', `stty size`);
+# now figure maximum number of tasks we can put in our list:
+# save 2 rows for list header, 1 for separator between list and menu,
+# the number of menu items, and 2 for the prompt after the menu
+our $max_task_list = $screen_rows - 2 - 1 - scalar(keys %menu_list) - 2;
 
 
 #################################
@@ -106,22 +128,35 @@ sub add_todo
 	my $new_todo = {};
 
 	$new_todo->{name} = input("Short codename for the item:");
-	$new_todo->{descr} = input("Brief description of the task:");
-	$new_todo->{due} = input(
-			"When task is due:",
-			date::today(), 
-			{
-				VALID		=>	\&date::isValid,
-				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
-			}
-	);
-
-	# need to save results in object, not parminfo
-	my $opts = { SAVE_IN_OBJECT => 1 };
-	get_parameter("client", $parminfo, $new_todo, $opts);
-	get_parameter("project", $parminfo, $new_todo, $opts);
+	if (exists $todo_index{$new_todo->{name}})
+	{
+		print "There is already a task with that code; sorry.\n";
+		input(PRESS_RETURN);
+		return undef;
+	}
+	input_todo($new_todo);
 
 	push @todo_list, $new_todo and sync_lists();
+	writefile();
+}
+
+
+sub todo_details
+{
+	my $index = get_existing_todo("show details for");
+	return unless defined $index;
+	input(PRESS_RETURN);
+}
+
+
+sub edit_todo
+{
+	my $index = get_existing_todo("edit");
+	return unless defined $index;
+
+	input_todo($todo_list[$index]);
+
+	sync_lists();
 	writefile();
 }
 
@@ -129,13 +164,7 @@ sub add_todo
 sub cancel_todo
 {
 	my $index = get_existing_todo("cancel");
-
-	unless (defined $index)
-	{
-		print "No such task!\n";
-		input(PRESS_RETURN);
-		return;
-	}
+	return unless defined $index;
 
 	print "A cancelled todo task is gone forever!!\n";
 	if (get_yn("Are you sure you want to do this?"))
@@ -143,7 +172,7 @@ sub cancel_todo
 		my $old_todo = splice @todo_list, $index, 1;
 		sync_lists();
 		save_history($parminfo->{history}, $parminfo->{user}, "cancel",
-				fields($old_todo));
+				todo_fields($old_todo));
 		writefile();
 	}
 }
@@ -152,20 +181,14 @@ sub cancel_todo
 sub complete_todo
 {
 	my $index = get_existing_todo("complete");
-
-	unless (defined $index)
-	{
-		print "No such task!\n";
-		input(PRESS_RETURN);
-		return;
-	}
+	return unless defined $index;
 
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
 		my $old_todo = splice @todo_list, $index, 1;
 		sync_lists();
 		save_history($parminfo->{history}, $parminfo->{user}, "complete",
-				fields($old_todo));
+				todo_fields($old_todo));
 		writefile();
 	}
 }
@@ -211,7 +234,7 @@ sub error
 
 sub initialize
 {
-	$parminfo->{user} = t3_username();
+	$parminfo->{user} ||= t3_username();
 
 	($parminfo->{filename}, $parminfo->{history})
 			= t3_filenames("todo", $parminfo->{user});
@@ -228,7 +251,12 @@ sub readfile
 		chomp;
 
 		my $todo = {};
-		(fields($todo)) = split("\t");
+		(todo_fields($todo)) = split("\t");
+
+		# account for the possibility that due dates are stored as
+		# date strings instead of time numbers (as they should be)
+		$todo->{due} = str2time($todo->{due}) if $todo->{due} =~ m@/@;
+
 		push @todo_list, $todo;
 	}
 	close(IN);
@@ -243,7 +271,7 @@ sub writefile
 	foreach my $todo (@todo_list)
 	{
 		print OUT
-				join("\t", fields($todo)), "\n";
+				join("\t", todo_fields($todo)), "\n";
 	}
 	close(OUT);
 }
@@ -258,32 +286,26 @@ sub sync_lists
 }
 
 
-# this looks very esoteric, but it just encapsulates a single place where
-# a todo item can be broken into its various components.  by having this
-# function, all the fields will always be in the same order, and since the
-# sub is marked lvalue and returns a slice, you can assign to it too.
-# (Warning! default context for lvalue subs in Perl is scalar, so this is
-# not going to work:
-#		fields($todo) = split("\t");
-# it ought to give you a warning.  proper syntax is this:
-#		(fields($todo)) = split("\t");
-# don't shoot us; we didn't make the rules.)
-
-sub fields : lvalue
-{
-	@{$_[0]}{ qw<name descr client project due> };
-}
-
-
 sub show_todos
 {
 	if (@todo_list)
 	{
-		print "\n", TodoListHeader, "\n";
-		foreach my $todo (@todo_list)
+		# sort list and truncate if too long to fit on screen
+		my @disp_list = sort { $a->{due} <=> $b->{due} } @todo_list;
+		my $more = false;
+		if (@disp_list > $max_task_list)
 		{
-			writeln(TodoList, fields($todo));
+			# use max number - 1 to account for "more" line
+			splice @disp_list, $max_task_list - 1;
+			$more = true;
 		}
+
+		print "\n", TodoListHeader, "\n";
+		foreach my $todo (@disp_list)
+		{
+			writeln(TodoList, todo_fields($todo));
+		}
+		print "<<MORE TASKS THAN SHOWN>>\n" if $more;
 		print "\n";
 	}
 	else
@@ -298,16 +320,112 @@ sub get_existing_todo
 	my ($operation) = @_;
 
 	my $name = input("What is the name of the task you want to $operation?");
-	return exists $todo_index{$name} ? $todo_index{$name} : undef;
+
+	unless (exists $todo_index{$name})
+	{
+		print "No such task!\n";
+		input(PRESS_RETURN);
+		return undef;
+	}
+
+	my $todo = $todo_list[$todo_index{$name}];
+
+	# retrieve full names from database
+	foreach (
+			[ "client",		"{~timer}.client",			"client_id",	false ],
+			[ "project",	"{~timer}.project",			"proj_id",		true ],
+			[ "phase",		"{~timer}.phase",			"phase_id",		false ],
+			[ "tracking",	"{~timer}.client_tracking",	"tracking_code",true ],
+			)
+	{
+		my ($which, $table, $id_col, $use_client) = @$_;
+
+		# it's okay if the element is missing; just blank out and move on
+		if (not $todo->{$which})
+		{
+			$todo->{$which} = $todo->{"${which}_name"} = "";
+			next;
+		}
+
+		my $query = "
+				select name from $table
+				where $id_col = '$todo->{$which}'
+			";
+		$query .= " and client_id = '$todo->{client}'" if $use_client;
+
+		$todo->{"${which}_name"} = one_datum($query);
+	}
+
+	writeln(TodoTask, @$todo{ qw<client client_name project project_name
+			due phase phase_name tracking tracking_name descr> } );
+	print "\n\n";
+
+	return $todo_index{$name};
+}
+
+
+sub input_todo
+{
+	my ($todo) = @_;
+
+	$todo->{descr} = input("Brief description of the task:", $todo->{descr});
+	$todo->{due} = input(
+			"When task is due:",
+			$todo->{due} ? swrite('@m/#d/@y', $todo->{due}) : date::today(), 
+			{
+				VALID		=>	\&valid_date_input,
+				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
+			}
+	);
+	# turn due date into a number
+	if ($todo->{due} =~ /^\+(\d+)$/)
+	{
+		# interpret as number of days from today
+		$todo->{due} = date::incDays(date::today(), $1);
+	}
+	elsif ($todo->{due} =~ /^[A-Za-z]{3}$/)
+	{
+		# interpret as a 3-char abbrev for day of week (in the future)
+		$todo->{due} = date::mdy(parsedate($todo->{due}, PREFER_FUTURE => 1));
+	}
+	$todo->{due} = str2time($todo->{due});
+
+	# need to save results in object, not parminfo
+	my $opts = { SAVE_IN_OBJECT => 1 };
+	get_parameter("client", $parminfo, $todo, $opts);
+	get_parameter("project", $parminfo, $todo, $opts);
+}
+
+
+BEGIN
+{
+	# this ought to go in date.pm, but I'm too lazy right now ...
+	my @DoW = qw< sun mon tue wed thu fri sat >;
+	our %DoW = map { ($DoW[$_] => $_) } (0..$#DoW);
+
+	sub valid_date_input
+	{
+		# valid day of week abbreviation
+		return true if exists $DoW{ lc $_[0] };
+
+		# '+' and number of days offset
+		return true if $_[0] =~ /^\+\d+$/;
+
+		# valid date is okay, obviously
+		return true if date::isValid($_[0]);
+
+		# no hits so far, must be bogus
+		return false;
+	}
 }
 
 
 sub save_history
 {
-	my ($file, $user, $command, @fields) = @_;
+	my ($file, $user, $command, @todo_fields) = @_;
 
 	open(HIST, ">>$file") or die("can't open history file $file");
 	print HIST join("\t", $ENV{USER}, date::today(), $command, $user,
-			@fields), "\n";
+			@todo_fields), "\n";
 	close(HIST);
 }
