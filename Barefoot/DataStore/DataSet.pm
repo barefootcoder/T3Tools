@@ -22,6 +22,67 @@
 #
 ###########################################################################
 
+package DataStore::DataSet::Builder;
+
+### Private ###############################################################
+
+use strict;
+
+use Barefoot::base;
+
+
+###########################
+# Subroutines:
+###########################
+
+
+sub new
+{
+	my ($class, $field_list, $index_hash) = @_;
+	print STDERR "Builder: column list ", join(',', @$field_list), "\n"
+			if DEBUG >= 2;
+
+	# can build index_hash if we weren't given it
+	unless ($index_hash)
+	{
+		$index_hash->{$field_list->[$_]} = $_ foreach 0..$#$field_list;
+	}
+
+	my $this = {};
+	$this->{field_list} = $field_list;
+	$this->{index_hash} = $index_hash;
+
+	my $dataset = [];
+	bless $dataset, 'DataStore::DataSet';
+	$this->{dataset} = $dataset;
+
+	bless $this, $class;
+	return $this;
+}
+
+
+sub add_row
+{
+	my $this = $_[0];
+	# can pass data as an arrayref, or omit for a blank row
+	my $data = $_[1] || [ (undef) x scalar(@{$this->{field_list}}) ];
+
+	my $new_row = DataStore::DataRow->new($this->{field_list},
+			$this->{index_hash}, $data);
+	push @{$this->{dataset}}, $new_row;
+	return $new_row;
+}
+
+
+sub dataset
+{
+	return $_[0]->{dataset};
+}
+
+
+###########################################################################
+
+
 package DataStore::DataSet;
 
 ### Private ###############################################################
@@ -48,14 +109,15 @@ sub new
 	# (and that would be bad)
 	my @fields = @{ $sth->{NAME} };
 	my %index = %{ $sth->{NAME_hash} };
+	my $builder = DataStore::DataSet::Builder->new(\@fields, \%index);
 
 	my $data = [];
 	while (my $row = $sth->fetchrow_arrayref())
 	{
-		print STDERR "row in DataSet: ", join(':', @$row), "\n" if DEBUG >= 3;
+		print STDERR "row in DataSet: ", join(':', @$row), "\n" if DEBUG >= 4;
 		# *must* make a copy of $row because fetchrow_arrayref() returns
 		# the same reference every time (see DBI manpage)
-		push @$data, DataStore::DataRow->new(\@fields, \%index, [ @$row ]);
+		$builder->add_row( [@$row] );
 	}
 
 	# check for error
@@ -63,7 +125,7 @@ sub new
 
 	dump_set($data, *STDERR) if DEBUG >= 3;
 
-	bless $data, $class;
+	return $builder->dataset();
 }
 
 
@@ -85,6 +147,14 @@ sub dump_set
 }
 
 
+sub colnames
+{
+	# just pass through to our first DataRow
+	# (note: this will bomb if called on an emtpy DataSet)
+	return $_[0]->[0]->colnames();
+}
+
+
 sub foreach_row
 {
 	my ($data, $func) = @_;
@@ -98,17 +168,85 @@ sub foreach_row
 }
 
 
+sub alter_dataset
+{
+	my ($data, $opts) = @_;
+	my $add_cols = $opts->{add_columns} || [];
+	my $del_cols = $opts->{remove_columns} || [];
+
+	# got to go into the DataRow's and twiddle the field list by hand
+	# Note 1) we have to do this in two places: the array of fields, and
+	#	the hash which links a field name to its index in the value array
+	# Note 2) we only have to do this for one DataRow; since all rows in
+	#	the set are linked to the same field list and index hash, updating
+	#	one updates them all
+	my $first_row = $data->[0];
+	my $field_list = $$first_row->{impl}->[DataStore::DataRow::KEYS];
+	my $index_hash = $$first_row->{impl}->[DataStore::DataRow::INDEX];
+
+	# having $del_cols be the column names doesn't really do us a lot of good
+	# what we really need is the column indices; so we get them here
+	$_ = $index_hash->{$_} foreach @$del_cols;
+
+	# handle columns to add first
+	if (@$add_cols)
+	{
+		# remember size before we start adding to it
+		my $index = @$field_list;
+		# tack new column names onto end
+		push @$field_list, @$add_cols;
+		# update index entries for new names
+		$index_hash->{$_} = $index++ foreach @$add_cols;
+	}
+
+	foreach (@$data)
+	{
+		# run the processor
+		# this should presumably fill in any added columns
+		# also, since we haven't taken out the remove_columns yet,
+		# the processor can refer to those columns too
+		$opts->{foreach_row}->() if $opts->{foreach_row};
+
+		# while we're here, and now that the processor is done, get
+		# rid of the data for the remove_columns
+		# note this doesn't get rid of the column _names_, just the data
+		# column names are removed after the loop
+		my $row = $_;					# so we can use $_ for indices
+		splice @$row, $_, 1 foreach @$del_cols;
+	}
+
+	# now handle any removed columns
+	if (@$del_cols)
+	{
+		# take the column names out of the field list
+		splice @$field_list, $_, 1 foreach @$del_cols;
+
+		# finally, rebuild index hash
+		# this insures that the hash will be correct
+		%$index_hash = ();
+		$index_hash->{$field_list->[$_]} = $_ foreach 0..$#$field_list;
+	}
+
+	return $data;
+}
+
+
 sub group
 {
 	my ($data, %opts) = @_;
 
 	return undef if not exists $opts{group_by};
+	return undef if not exists $opts{new_columns};
+	print STDERR "group: new columns ", join(',', @{$opts{new_columns}}),
+			"\n" if DEBUG >= 2;
+
 	my @group_by_cols = @{$opts{group_by}};
 	my (@constant_cols, $process);
 	@constant_cols = @{$opts{constant}} if exists $opts{constant};
 	$process = $opts{calculate} if exists $opts{calculate};
 
-	my $group_data = {};
+	my $group_data = DataStore::DataSet::Builder->new($opts{new_columns});
+	my $group_data_hash = {};
 	foreach my $src (@$data)
 	{
 		my @group_by_vals;
@@ -118,9 +256,9 @@ sub group
 		print STDERR "group by vals are $group_by_vals\n" if DEBUG >= 4;
 
 		my $dst;
-		if (exists $group_data->{$group_by_vals})
+		if (exists $group_data_hash->{$group_by_vals})
 		{
-			$dst = $group_data->{$group_by_vals};
+			$dst = $group_data_hash->{$group_by_vals};
 
 			# have to check to make sure constant cols are the same
 			foreach my $col (@constant_cols)
@@ -151,30 +289,44 @@ sub group
 		}
 		else
 		{
-			$group_data->{$group_by_vals} = {};
-			$dst = $group_data->{$group_by_vals};
+			# put a blank row in the dataset, then save it in the hash
+			$dst = $group_data_hash->{$group_by_vals} = $group_data->add_row();
+			die("not a DataRow in new group create")
+					unless $dst->isa('DataStore::DataRow');
+			print Data::Dumper->Dump( [$$dst->{impl}], qw<dst> ) if DEBUG >= 4;
 
 			$dst->{$_} = $src->{$_} foreach @group_by_cols;
 			$dst->{$_} = $src->{$_} foreach @constant_cols;
+			if (exists $opts{on_new_group})
+			{
+				local $_ = $dst;
+				$opts{on_new_group}->();
+			}
 		}
 
 		$process->($src, $dst) if defined $process;
 	}
+	print STDERR Data::Dumper->Dump( [$group_data], [ qw<group_data> ] )
+			if DEBUG >= 4;
 
+	# now sort group_data into a new dataset (new_data)
 	my $new_data = [];
-	foreach (sort keys %$group_data)
+	foreach (sort keys %$group_data_hash)
 	{
-		push @$new_data, $group_data->{$_};
+		die("not a DataRow ($_) in sorting")
+				unless $group_data_hash->{$_}->isa('DataStore::DataRow');
+		push @$new_data, $group_data_hash->{$_};
 	}
 
-	return $new_data;
+	# make sure new_data is a DataSet, like us
+	return bless $new_data, ref $data;
 }
 
 
 sub add_column
 {
 	my ($data, $colname, $adder_sub) = @_;
-	croak("must specify column to remove") unless $colname;
+	croak("must specify column to add") unless $colname;
 	croak("must specify a subroutine to calculate new values")
 			unless $adder_sub;
 
@@ -231,6 +383,21 @@ sub remove_column
 	}
 
 	return $data;
+}
+
+
+sub rename_column
+{
+	my ($data, $old_col, $new_col) = @_;
+
+	my $first_row = $data->[0];
+	my $idx = delete $$first_row->{impl}->
+			[DataStore::DataRow::INDEX]->{$old_col};
+	croak("unknown column name: $old_col") unless $idx;
+
+	$$first_row->{impl}->[DataStore::DataRow::KEYS]->[$idx] = $new_col;
+	$$first_row->{impl}->[DataStore::DataRow::INDEX]->{$new_col} = $idx;
+	return true;
 }
 
 
