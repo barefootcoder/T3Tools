@@ -1,51 +1,106 @@
--- SORT GROUP: Employee Reports
--- TITLE: Time Log Listing
+# SORT GROUP: Employee Reports
+# TITLE: Time Log Listing
 
-select tl.log_id, tl.emp, $(employee_name e) "employee", tl.client "CLI",
-		tl.proj "PRJ", tl.phase "PHASE", tl.cliproj,
-		convert(char(10), tl.date, 101) "date", tl.hours, tl.comments
-from time_log tl, employee e, client c
-where tl.emp = e.emp
-and e.login = '{user}'										{?user}
-and tl.client = c.client
-and c.client = '{client}'									{?client}
-and tl.proj = '{proj}'										{?proj}
-and tl.date between '{start_date}' and '{end_date}'
-order by convert(char(8), tl.date, 112)
--- compute sum(l.hours)
-go
+	select tl.log_id, tl.emp_id, pe.first_name "employee", tl.client_id "CLI",
+			tl.proj_id as "PRJ", tl.phase_id as "PHASE", tl.tracking_code,
+			tl.log_date, tl.hours, tl.comments
+	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
+			{~t3}.person pe, {~t3}.workgroup_user wu
+	where tl.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and pe.person_id = wu.person_id
+{if user}
+	and wu.nickname = '{user}'
+{endif}
+	and tl.client_id = c.client_id
+{if client}
+	and c.client_id = '{client}'
+{endif}
+{if proj}
+	and tl.proj_id = '{proj}'
+{endif}
+	and tl.log_date between '{start_date}' and '{end_date}'
+	order by tl.log_date
+	# compute sum(l.hours)
+;
 
-print ''
-print ''
-print 'Totals by Client/Project'
-select tl.emp, $(employee_name e) "employee", tl.client "cli", c.name "client",
-		tl.proj, tl.phase, sum(tl.hours)
-from time_log tl, employee e, client c
-where tl.emp = e.emp
-and e.login = '{user}'										{?user}
-and tl.client = c.client
-and c.client = '{client}'									{?client}
-and tl.proj = '{proj}'										{?proj}
-and tl.date between '{start_date}' and '{end_date}'
-group by tl.emp, $(employee_name e), tl.client, c.name, tl.proj, tl.phase
-order by tl.client, tl.proj
-compute sum(sum(tl.hours)) by tl.client, tl.proj
-go
+&print
+Totals by Client/Project
+;
 
-print ''													{!user}
-print ''													{!user}
-print 'Totals by Employee'									{!user}
-select tl.emp, $(employee_name e) "employee",				{!user}
-		tl.client "cli", c.name "client",					{!user}
-		tl.proj, sum(tl.hours)								{!user}
-from time_log tl, employee e, client c						{!user}
-where tl.emp = e.emp										{!user}
-and tl.client = c.client									{!user}
-and c.client = '{client}'									{!user}	{?client}
-and tl.proj = '{proj}'										{!user}	{?proj}
-and tl.date between '{start_date}' and '{end_date}'			{!user}
-group by tl.emp, $(employee_name e), tl.client,				{!user}
-		c.name, tl.proj										{!user}
-order by tl.emp, tl.client, tl.proj							{!user}
-compute sum(sum(tl.hours)) by tl.emp						{!user}
-go
+	select tl.emp_id, pe.first_name "employee", tl.client_id "cli",
+			c.name "client", tl.proj_id, tl.phase_id, sum(tl.hours) as "hours"
+	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
+			{~t3}.person pe, {~t3}.workgroup_user wu
+	where tl.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and pe.person_id = wu.person_id
+{if user}
+	and wu.nickname = '{user}'
+{endif}
+	and tl.client_id = c.client_id
+{if client}
+	and c.client_id = '{client}'
+{endif}
+{if proj}
+	and tl.proj_id = '{proj}'
+{endif}
+	and tl.log_date between '{start_date}' and '{end_date}'
+	group by tl.emp_id, pe.first_name, tl.client_id, c.name,
+			tl.proj_id, tl.phase_id
+	order by tl.client_id, tl.proj_id
+	# compute sum(sum(tl.hours)) by tl.client_id, tl.proj_id
+;
+
+{if not user}
+	&print
+
+
+Totals by Employee
+{endif}
+;
+
+&ignore
+	select tl.emp, $(employee_name e) "employee",				{!user}
+			tl.client "cli", c.name "client",					{!user}
+			tl.proj, sum(tl.hours)								{!user}
+	from time_log tl, employee e, client c						{!user}
+	where tl.emp = e.emp										{!user}
+	and tl.client = c.client									{!user}
+	and c.client = '{client}'									{!user}	{?client}
+	and tl.proj = '{proj}'										{!user}	{?proj}
+	and tl.date between '{start_date}' and '{end_date}'			{!user}
+	group by tl.emp, $(employee_name e), tl.client,				{!user}
+			c.name, tl.proj										{!user}
+	order by tl.emp, tl.client, tl.proj							{!user}
+	compute sum(sum(tl.hours)) by tl.emp						{!user}
+;
+
+&print
+
+
+Totals by Client Tracking Code
+;
+
+	select tl.emp_id, pe.first_name as "employee", tl.client_id as "cli",
+			c.name "client", tl.tracking_code, sum(tl.hours) as "hours"
+	from {~timer}.time_log tl, {~timer}.employee e, {~timer}.client c,
+			{~t3}.person pe, {~t3}.workgroup_user wu
+	where tl.emp_id = e.emp_id
+	and e.person_id = pe.person_id
+	and pe.person_id = wu.person_id
+{if user}
+	and wu.nickname = '{user}'
+{endif}
+	and tl.client_id = c.client_id
+{if client}
+	and c.client_id = '{client}'
+{endif}
+{if proj}
+	and tl.proj_id = '{proj}'
+{endif}
+	and tl.log_date between '{start_date}' and '{end_date}'
+	group by tl.emp_id, pe.first_name, tl.client_id, c.name, tl.tracking_code
+	order by tl.client_id, tl.tracking_code
+	# compute sum(sum(tl.hours)) by tl.client_id
+;
