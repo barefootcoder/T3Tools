@@ -67,6 +67,12 @@ our %timer_commands =
 );
 
 # data store for database operations
+unless ($ENV{USER})
+{
+	$ENV{USER} = "www";
+	$ENV{HOME} = "/home/www";
+	$ENV{SYBASE} = "/opt/sybase";
+}
 our $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
 
 
