@@ -28,6 +28,25 @@ set pay_rate = 0
 where requires_payment = 0
 go
 
+select pa.emp, ip.category, convert(numeric(7,2), sum(pa.hours)) "pay_hrs"
+into #cp_payhours
+from pay_amount pa, int_project ip
+where pa.proj = ip.proj
+and pa.requires_payment = 1
+group by pa.emp, ip.category
+go
+
+-- select * from #cp_payhours
+-- go
+
+select pa.emp, ip.category, convert(numeric(7,2), sum(pa.hours)) "nonpay_hrs"
+into #cp_nonpayhours
+from pay_amount pa, int_project ip
+where pa.proj = ip.proj
+and pa.requires_payment = 0
+group by pa.emp, ip.category
+go
+
 select pa.emp, ip.category, convert(numeric(7,2), sum(pa.hours)) "cat_hrs"
 into #cp_cathours
 from pay_amount pa, int_project ip
@@ -48,11 +67,17 @@ from pay_amount pa, int_project ip
 where pa.proj = ip.proj
 go
 
-select cpct.emp, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
+select cpct.emp, cpct.category, isnull(cppt.pay_hrs, 0) "pay_hrs",
+		isnull(cpnpt.nonpay_hrs, 0) "nonpay_hrs", cpct.cat_hrs, cpet.ttl_hrs,
 		convert(numeric(5,2), 0) "pct"
 into #cat_pcts
-from #cp_cathours cpct, #cp_emphours cpet
+from #cp_payhours cppt, #cp_nonpayhours cpnpt, #cp_cathours cpct,
+		#cp_emphours cpet
 where cpct.emp = cpet.emp
+and cpct.emp *= cppt.emp
+and cpct.category *= cppt.category
+and cpct.emp *= cpnpt.emp
+and cpct.category *= cpnpt.category
 go
 
 update #cat_pcts
@@ -60,6 +85,7 @@ set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
 go
 
 select $(employee_name e) "name", cat.name "category",
+		cp.pay_hrs, cp.nonpay_hrs,
 		cp.cat_hrs, cp.ttl_hrs, str(cp.pct, 6, 2) + '%' "pct"
 from #cat_pcts cp, employee e, category cat
 where cp.emp = e.emp
