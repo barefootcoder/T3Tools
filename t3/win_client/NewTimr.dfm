@@ -1,0 +1,249 @@
+object NewTimer: TNewTimer
+  Left = 165
+  Top = 187
+  HorzScrollBar.Visible = False
+  VertScrollBar.Visible = False
+  BorderIcons = []
+  BorderStyle = bsSingle
+  Caption = 'New Timer'
+  ClientHeight = 283
+  ClientWidth = 258
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -11
+  Font.Name = 'MS Sans Serif'
+  Font.Style = []
+  FormStyle = fsStayOnTop
+  Icon.Data = {
+    0000010001002020100000000000E80200001600000028000000200000004000
+    0000010004000000000080020000000000000000000000000000000000000000
+    000000008000008000000080800080000000800080008080000080808000C0C0
+    C0000000FF0000FF000000FFFF00FF000000FF00FF00FFFF0000FFFFFF000000
+    00000000000000000000000000000777777777777777777777777777777007FF
+    FFFFFFFFFFFFFFFFFFFFFFFFFF7007FFFFFFFFFFFFFFFFFFFFFFFFFFFF7007FF
+    FFFFFFFFFFFFFFFFFFFFFFFFFF7007FFFFFFFFFFFFF77FFFFFFFFFFFFF7007FF
+    FF00000000000000000000FFFF7007FFFF0FFFFFFFF77FFFFFFFF0FFFF7007FF
+    FF0FFFFFFFFFFFFFFFFFF0FFFF7007FFFF0FFFFFFFFFFFFFFFFFF0FFFF7007FF
+    FF0FFFFFFFFFFFFFFFFFF0FFFF7007FFFF0FFFFFFFFFFFFFFFFFF0FFFF7007FF
+    FF0FFFFFFFFFFFFFFFFFF0FFFF7007FFFF0FFFFFFFFFFFFFFFFFF0FFFF7007FF
+    FF0FFFFFFFFFFFFFFFFFF0FFFF7007FFF707FFFFFFFFFFFFFFFF707FFF7007FF
+    F707FFFFFFF00FFFFFFF707FFF7007FFFF0FFFFFFFF00FFFFFFFF0FFFF7007FF
+    FF0FFFFFFFF00FFFFFFFF0FFFF7007FFFF0FFFFFFFF00FFFFFFFF0FFFF7007FF
+    FF0FFFFFFFF00FFFFFFFF0FFFF7007FFFF0FFFFFFFF00FFFFFFFF0FFFF7007FF
+    FF0FFFFFFFF00FFFFFFFF0FFFF7007FFFF0FFFFFFFF00FFFFFFFF0FFFF7007FF
+    FF0FFFFFFFF00FFFFFFFF0FFFF7007FFFF00000000000000000000FFFF7007FF
+    FFFFFFFFFFF00FFFFFFFFFFFFF7007FFFFFFFFFFFFFFFFFFFFFFFFFFFF7007FF
+    FFFFFFFFFFFFFFFFFFFFFFFFFF7007FFFFFFFFFFFFFFFFFFFFFFFFFFFF700777
+    7777777777777777777777777770000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    0000000000000000000000000000000000000000000000000000000000000000
+    000000000000000000000000000000000000000000000000000000000000}
+  OldCreateOrder = False
+  Position = poScreenCenter
+  Scaled = False
+  OnKeyDown = FormKeyDown
+  PixelsPerInch = 96
+  TextHeight = 13
+  object Label1: TLabel
+    Left = 8
+    Top = 24
+    Width = 72
+    Height = 15
+    Caption = 'Timer Name:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label2: TLabel
+    Left = 8
+    Top = 224
+    Width = 36
+    Height = 15
+    Caption = 'Notes:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label3: TLabel
+    Left = 8
+    Top = 176
+    Width = 29
+    Height = 15
+    Caption = 'Date:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label4: TLabel
+    Left = 144
+    Top = 176
+    Width = 37
+    Height = 15
+    Caption = 'Hours:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label5: TLabel
+    Left = 8
+    Top = 128
+    Width = 44
+    Height = 15
+    Caption = 'Project:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label6: TLabel
+    Left = 144
+    Top = 128
+    Width = 39
+    Height = 15
+    Caption = 'Phase:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object Label7: TLabel
+    Left = 8
+    Top = 80
+    Width = 35
+    Height = 15
+    Caption = 'Client:'
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clGray
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+  end
+  object TimerNotes: TMemo
+    Left = 8
+    Top = 240
+    Width = 241
+    Height = 33
+    Anchors = [akLeft, akTop, akRight]
+    Color = clBtnFace
+    TabOrder = 6
+  end
+  object TimerName: TEdit
+    Left = 8
+    Top = 40
+    Width = 241
+    Height = 23
+    Anchors = [akLeft, akTop, akRight]
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clBlack
+    Font.Height = -12
+    Font.Name = 'Arial'
+    Font.Style = [fsBold]
+    ParentFont = False
+    TabOrder = 0
+  end
+  object TimerDate: TEdit
+    Left = 8
+    Top = 192
+    Width = 121
+    Height = 21
+    TabOrder = 4
+  end
+  object TimerHours: TEdit
+    Left = 144
+    Top = 192
+    Width = 105
+    Height = 21
+    TabOrder = 5
+  end
+  object TimerProject: TComboBox
+    Left = 8
+    Top = 144
+    Width = 121
+    Height = 21
+    ItemHeight = 13
+    TabOrder = 2
+  end
+  object TimerPhase: TComboBox
+    Left = 144
+    Top = 144
+    Width = 105
+    Height = 21
+    ItemHeight = 13
+    TabOrder = 3
+  end
+  object TimerClient: TComboBox
+    Left = 8
+    Top = 96
+    Width = 241
+    Height = 21
+    ItemHeight = 13
+    TabOrder = 1
+  end
+  object Save: TBitBtn
+    Left = 196
+    Top = 6
+    Width = 25
+    Height = 25
+    Hint = 'OK'
+    ModalResult = 1
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 7
+    Glyph.Data = {
+      66010000424D6601000000000000760000002800000014000000140000000100
+      040000000000F000000000000000000000001000000010000000000000000000
+      8000008000000080800080000000800080008080000080808000C0C0C0000000
+      FF0000FF000000FFFF00FF000000FF00FF00FFFF0000FFFFFF00FFFFFFFFFFFF
+      FFFFFFFF0000FFFFFFFFFFFFFFFFFFFF0000FFFFFF47FFFFFFFFFFFF0000FFFF
+      F4477FFFFFFFFFFF0000FFFFF4447FFFFFFFFFFF0000FFFF444447FFFFFFFFFF
+      0000FFFF444447FFFFFFFFFF0000FFF44474447FFFFFFFFF0000FF4447F7447F
+      FFFFFFFF0000F44447FF4447FFFFFFFF0000FF447FFFF4477FFFFFFF0000FFFF
+      FFFFFF447FFFFFFF0000FFFFFFFFFFF447FFFFFF0000FFFFFFFFFFFF447FFFFF
+      0000FFFFFFFFFFFFF447FFFF0000FFFFFFFFFFFFFF447FFF0000FFFFFFFFFFFF
+      FFF447FF0000FFFFFFFFFFFFFFFF44FF0000FFFFFFFFFFFFFFFFFFFF0000FFFF
+      FFFFFFFFFFFFFFFF0000}
+  end
+  object Cancel: TBitBtn
+    Left = 224
+    Top = 6
+    Width = 25
+    Height = 25
+    Hint = 'Cancel'
+    ModalResult = 2
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 8
+    Glyph.Data = {
+      66010000424D6601000000000000760000002800000014000000140000000100
+      040000000000F000000000000000000000001000000010000000000000000000
+      8000008000000080800080000000800080008080000080808000C0C0C0000000
+      FF0000FF000000FFFF00FF000000FF00FF00FFFF0000FFFFFF00FFFFFFFFFFFF
+      FFFFFFFF0000FFFFFFFFFFFFFFFFFFFF0000FFFFFFFFFFFFFFFFFFFF0000FFFF
+      17FFFFFFFFFFFFFF0000FFF9917FFFFFF917FFFF0000FF999917FFFF99997FFF
+      0000FFFF99917FF99917FFFF0000FFFFFF99179997FFFFFF0000FFFFFFF99199
+      7FFFFFFF0000FFFFFFFF9991FFFFFFFF0000FFFFFFF999917FFFFFFF0000FFFF
+      FF99919917FFFFFF0000FFFFF9991F999177FFFF0000FFFF99917FF999117FFF
+      0000FFFF9997FFFF99991FFF0000FFFFF917FFFFF991FFFF0000FFFFFFFFFFFF
+      FFFFFFFF0000FFFFFFFFFFFFFFFFFFFF0000FFFFFFFFFFFFFFFFFFFF0000FFFF
+      FFFFFFFFFFFFFFFF0000}
+  end
+end
