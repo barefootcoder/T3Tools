@@ -33,7 +33,8 @@ Totals by Client/Project
 ;
 
 	select tl.emp_id, pe.first_name "employee", tl.client_id "cli",
-			c.name "client", tl.proj_id, tl.phase_id, sum(tl.hours) as "hours"
+			c.name "client", tl.proj_id, tl.phase_id, sum(tl.hours) as "hours",
+			{*running = $total_hrs += %hours}
 	from {@time_log} tl, {@employee} e, {@client} c, {@person} pe
 	where tl.emp_id = e.emp_id
 	and e.person_id = pe.person_id
@@ -58,6 +59,13 @@ Totals by Client/Project
 			tl.proj_id, tl.phase_id
 	order by tl.client_id, tl.proj_id
 	# compute sum(sum(tl.hours)) by tl.client_id, tl.proj_id
+->format
+	H=> E  Employee Name         C  Client Name           P  PH   Hours
+	H=>--- -------------------- --- -------------------- --- --- ------
+	B->@<< @<<<<<<<<<<<<<<<<<<< @<< @<<<<<<<<<<<<<<<<<<< @<< @<< ###.##
+;
+&print
+Total Hours: {total_hrs}
 ;
 
 {if not user}
