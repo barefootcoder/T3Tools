@@ -34,6 +34,7 @@ use vars qw<@EXPORT_OK>;
 		valid_trackings>;
 
 use Carp;
+use Data::Dumper;
 
 use Barefoot::base;
 use Barefoot::input qw<input get_yn>;
@@ -82,40 +83,46 @@ our %valid_function =
 sub get_parameter
 {
 	my ($parmname, $parminfo, $objinfo, $opts) = @_;
+	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n"
+			if DEBUG >= 4;
 
-	# database default is lowest priority
-	# (based on dispatch table; if we don't have such a function, better barf)
-	croak("can't determine default value for $parmname")
-			unless exists $db_default{$parmname};
-	my $parm = $db_default{$parmname}->($parminfo);
-	print "after db default, parm is $parm\n" if DEBUG >= 3;
+	my $parm = "";					# set to empty in case we bail out early
+	my $valid_parms = {};
 
-	if (exists $objinfo->{$parmname})# pre-existing parm - higher priority
-	{
-		$parm = $objinfo->{$parmname};
-	}
-	print "after objinfo, parm is $parm\n" if DEBUG >= 3;
+	TRY:							# try several things to figure out just
+	{								# what the parameter's value should be
 
-	if ($parminfo->{$parmname})		# program flags - highest priority
-	{
-		if ($opts->{RESTRICT_CHANGES} and exists $objinfo->{$parmname})
+		# database default is lowest priority (based on dispatch table;
+		# if we don't have such a function, better barf)
+		croak("can't determine default value for $parmname")
+				unless exists $db_default{$parmname};
+		$parm = $db_default{$parmname}->($parminfo);
+		print "after db default, parm is $parm\n" if DEBUG >= 3;
+
+		if (exists $objinfo->{$parmname})# pre-existing parm - higher priority
 		{
-			# not allowed to change the parameter via command-line:
-			# use pre-existing if available
-			print "Can't change pre-existing $parmname with this option: ",
-					"value ignored. \n";
-			return $parm;
+			$parm = $objinfo->{$parmname};
 		}
-		else
-		{
-			$parm = $parminfo->{$parmname};
-		}
-	}
-	print "after parminfo, parm is $parm\n" if DEBUG >= 3;
+		print "after objinfo, parm is $parm\n" if DEBUG >= 3;
 
-	my $valid_parms = {};				# set to empty in case force is set
-	unless ($parminfo->{force})
-	{
+		if ($parminfo->{$parmname})		# program flags - highest priority
+		{
+			if ($opts->{RESTRICT_CHANGES} and exists $objinfo->{$parmname})
+			{
+				# not allowed to change the parameter via command-line:
+				# use pre-existing if available
+				print "Can't change pre-existing $parmname with this option: ",
+						"value ignored. \n";
+				last TRY;
+			}
+			else
+			{
+				$parm = $parminfo->{$parmname};
+			}
+		}
+		print "after parminfo, parm is $parm\n" if DEBUG >= 3;
+
+		last TRY if $parminfo->{force};
 
 		# get list of valid values (based on dispatch table;
 		# if we don't have such a function, better barf)
@@ -123,7 +130,8 @@ sub get_parameter
 		# because that might set up some values we need here)
 		croak("can't determine valid list for $parmname")
 				unless exists $valid_function{$parmname};
-		my $valid_parms = $valid_function{$parmname}->($parminfo);
+		$valid_parms = $valid_function{$parmname}->($parminfo);
+		print Dumper($valid_parms), "\n" if DEBUG >= 4;
 		
 		# at this point, parm will act as our default
 		# need to save it in case user enters "?", then we can put it back
@@ -132,7 +140,10 @@ sub get_parameter
 		# make a block so redo will work
 		PARM:
 		{
-			$parm = input("Which $parmname is this for? (? for list)", $default);
+			$parm = input(
+					"Which $parmname is this for? (? for list)",
+					$default
+			);
 			$parm = string::upper($parm);				# codes are all UC
 			$parm = string::trim($parm);				# no spaces
 
@@ -176,6 +187,10 @@ sub get_parameter
 	{
 		$objinfo->{$parmname} = $parm;
 	}
+
+	print Dumper($valid_parms), "\n" if DEBUG >= 4;
+	print wantarray ?  "will return ($parm, $valid_parms->{$parm})"
+			: "will return $parm", "\n" if DEBUG >= 3;
 
 	# if force was specified, you'll get ($parm, undef)
 	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
