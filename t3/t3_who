@@ -2,11 +2,17 @@
 
 use strict;
 
-#use Barefoot::debug;		# comment out for production
+use Barefoot::debug;		# comment out for production
 
 use Barefoot::T3;
+use Getopt::Std;
+
+my $opt={};
 
 T3::initialize("/export/usr/$::ENV{USER}");
+
+getopts('w:', $opt);
+T3::set_workgroup($opt->{w}) if $opt->{w};
 
 foreach (T3::send_message(T3::build_message(T3::INFO_MESSAGE)))
 {
