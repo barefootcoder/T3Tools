@@ -54,8 +54,8 @@ my $opt = {};
 getopts("U:s:d:h", $opt);
 if (defined $opt->{h})
 {
-    print STDERR "usage: $0 [-Uuser] [-sdatastore] [-dsource_database]";
-    print STDERR "   defaults are -U$user -s$destds -d$srcdb";
+    print STDERR "usage: $0 [-U user] [-s datastore] [-d source_database]\n";
+    print STDERR "   defaults are -U $user -s $destds -d $srcdb\n";
     exit;
 }
 $user = $opt->{U} if defined $opt->{U};
