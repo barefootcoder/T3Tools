@@ -29,6 +29,7 @@ use strict;
 
 use Carp;
 
+use CGI;
 use Barefoot::html_menu;
 use Barefoot::config_file;
 
@@ -111,16 +112,33 @@ sub build_message
 
 	# put the lines together
 	my $message = join('', @messages);
-	# encode special chars
+
+	# It seems that one single layer of encoding isn't gonna cut it; the windows
+	# client requires escaped HTML (the &#decimal; format, or words like &gt; ),
+	# but the server CGI decodes as well (the %02X format). So we need to
+	# double-encode.
+	
+	$message = CGI::escapeHTML($message);
+
+	# Also, we need to handle newlines and slashes.  Since any character can be
+	# escaped in this fashion, I suppose we could theoretically escape *every*
+	# character, and do this in one line (actually, two, the newlines would still
+	# have to be separate, wouldn't they?) instead of three, but that would require
+	# a lot of space in history (five times as much per character).
+
+	$message =~ s/\n/&#13;&#10;/g;
+	$message =~ s/\//&#47;/g;
+	
+	# To match the windows client, the command-line client will have to
+	# call CGI::unescapeHTML.  That will decode the newlines and slashes as well.
+	
+	# Ok, now HMTL encode the special chars for the server CGI.
 	$message = html_menu::_escape_uri_value($message);
-	# windows client apparently doesn't like spaces encoded the "right" way
-	$message =~ s/%20/+/g;
-	# windows client also apparently doesn't care for not having ^M's
-	$message =~ s/%0A/%0D$&/g;
 
 	my $url = $server_url . 'DATA=<MESSAGE+subject=""+location=""+from="'
 			. $from . '"+to="' . $to . '"+status="' . $status . '">'
 			. $message . '</MESSAGE>';
+
 	return $url;
 }
 
@@ -132,6 +150,7 @@ sub send_message
 	my @lines = `lynx -source '$message'`;
 	croak("can't start lynx: $?") if $?;
 	chomp @lines;
+
 	# remove blank lines on the way out
 	return grep { ! /^\s*$/ } @lines;
 }
