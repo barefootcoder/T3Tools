@@ -50,7 +50,7 @@ object OptionsForm: TOptionsForm
     Top = 29
     Width = 450
     Height = 358
-    ActivePage = TimerPreferences
+    ActivePage = TalkerOptions
     Align = alClient
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
@@ -410,7 +410,7 @@ object OptionsForm: TOptionsForm
         Font.Height = -11
         Font.Name = 'Arial'
         Font.Style = []
-        ItemHeight = 0
+        ItemHeight = 14
         ParentFont = False
         TabOrder = 12
       end
@@ -822,9 +822,9 @@ object OptionsForm: TOptionsForm
     object Label8: TLabel
       Left = 8
       Top = 6
-      Width = 164
+      Width = 158
       Height = 14
-      Caption = 'Development Release version 16c'
+      Caption = 'Development Release version 17'
       Font.Charset = ANSI_CHARSET
       Font.Color = clNavy
       Font.Height = -11
