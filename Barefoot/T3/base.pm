@@ -42,6 +42,7 @@ use constant CONFIG_FILE => '/etc/t3.conf';
 use constant DBSERVER_DIRECTIVE => 'DBServer';
 use constant DATABASE_DIRECTIVE => 'Database';
 use constant TIMERDIR_DIRECTIVE => 'TimerDir';
+use constant REQUESTDIR_DIRECTIVE => 'RequestDir';
 
 
 # files for use by client/server routines
@@ -89,13 +90,21 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
-@EXPORT = qw<t3 t3_username t3_filenames timer_fields todo_fields>;
+@EXPORT = qw<t3 t3_config t3_username t3_filenames timer_fields todo_fields>;
 
 use Barefoot::base;
 use Barefoot::config_file;
 
 
 our $t3;									# DataStore for singleton
+
+# need this for getting proper values out of config file (below)
+our $workgroup = $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
+
+# let's read in the config file here and let people use t3_config
+# to get various and sundry parameters out of it
+# (saves having to read the config file in several times)
+our $cfg_file = config_file->read(T3::CONFIG_FILE);
 
 our %t3_file_ext =							# extensions for local files
 (
@@ -123,6 +132,13 @@ sub t3
 }
 
 
+sub t3_config
+{
+	# just return lookup of current workgroup and first argument
+    return $cfg_file->lookup($workgroup, $_[0]);
+}
+
+
 sub t3_username
 {
 	die("Invalid user.  Change username or talk to administrator.")
@@ -142,10 +158,7 @@ sub t3_filenames
 	die("don't know history file for module $module")
 			unless exists $t3_hist_file{$module};
 
-    my $cfg_file = config_file->read(T3::CONFIG_FILE);
-    my $workgroup = $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
-
-    my $t3dir = $cfg_file->lookup($workgroup, T3::TIMERDIR_DIRECTIVE);
+    my $t3dir = t3_config(T3::TIMERDIR_DIRECTIVE);
 	die("don't have a directory for timer files") unless $t3dir;
 	die("cannot write to directory $t3dir") unless -d $t3dir and -w $t3dir;
 
