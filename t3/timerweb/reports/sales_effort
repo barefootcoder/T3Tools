@@ -1,5 +1,5 @@
--- SORT GROUP: Management Reports
--- TITLE: Sales and Effort (by Client)
+-- SORT GROUP: Board Reports
+-- TITLE: (2) Sales and Effort (by Client)
 -- ALSO RUN WITH: detail=yes
 -- SORT GROUP: Management Reports
 -- TITLE: Sales and Effort (Super Detailed)

@@ -1,5 +1,5 @@
--- SORT GROUP: Management Reports
--- TITLE: Average Hours by Employee
+-- SORT GROUP: Board Reports
+-- TITLE: (1) Average Hours by Employee
 -- ALSO RUN WITH: detail=yes
 -- SORT GROUP: Management Reports
 -- TITLE: Average Hours by Employee/Client/Rate
