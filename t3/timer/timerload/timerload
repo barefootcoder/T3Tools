@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  1999/01/08 04:46:32  buddy
+# now bringing over date invoices and payroll paid
+# removed rate table (now in make_rates script)
+#
 # Revision 1.2  1998/12/31 19:02:47  buddy
 # decommented the dbf2sybase line
 #
@@ -98,23 +102,140 @@ run_query -S$server -U$user -D$destdb <<-END
 		client				char(3)			NOT NULL,
 		proj				char(3)			NOT NULL,
 		name				varchar(30)		NOT NULL,
+		proj_type			char(1)			NOT NULL,
 		start_date			datetime		NOT NULL,
 		end_date			datetime		NOT NULL
 	")
 
 	insert project
-	select p.client, p.code, p.name,
+	select p.client, p.code, p.name, c.type,
 		isnull(min(p.start_date), $BEGINNING_OF_TIME),
 		isnull(max(p.end_date), $END_OF_TIME)
-	from $srcdb..project p, client c
-	where p.client = c.client
+	from $srcdb..project p, $srcdb..client c
+	where p.client = c.code
 	and c.type != 'I'
-	group by p.client, p.code, p.name
+	group by p.client, p.code, p.name, c.type
+	go
+
+	-- get Barefoot Software projects
+	insert project
+	select "001", bp.proj, bp.name, "I", $BEGINNING_OF_TIME, $END_OF_TIME
+	from bproj bp
+	go
+
+	-- repeat for Barefoot non-payable, except don't need
+	-- corp. sec. project or vacation time
+	insert project
+	select "011", bp.proj, bp.name, "i", $BEGINNING_OF_TIME, $END_OF_TIME
+	from bproj bp
+	where bp.proj not in ("SEC","VAC")
 	go
 
 	create unique index proj
 	on project (client, proj)
 	go
+
+	-- project type fix-ups
+		-- IDP
+		update project
+		set proj_type = "N"
+		where client = "002"
+		and proj in ("DC", "WEB", "WPC")
+		go
+		-- DatAsyst
+		update project
+		set proj_type = "N"
+		where client = "003"
+		go
+		-- Intelligent Decisions
+		update project
+		set proj_type = "N"
+		where client = "004"
+		go
+		-- Pete Moyer
+		update project
+		set proj_type = "N"
+		where client = "005"
+		go
+		-- Mortgage Affiliates
+		update project
+		set proj_type = "N"
+		where client = "201"
+		go
+		-- CBR
+		update project
+		set proj_type = "N"
+		where client = "503"
+		and proj = "OSC"
+		go
+		-- Antrim Beckwith
+		update project
+		set proj_type = "N"
+		where client = "504"
+		and proj in ("HDW", "MEM")
+		go
+		-- Steve's Mowing
+		update project
+		set proj_type = "N"
+		where client = "505"
+		and proj = "CON"
+		go
+		-- Brooks Technologies
+		update project
+		set proj_type = "N"
+		where client = "506"
+		and proj in ("QRS", "TS")
+		go
+		-- Psychiatric Resources
+		update project
+		set proj_type = "N"
+		where client = "508"
+		and proj = "NET"
+		go
+		-- SIMS, Inc.
+		update project
+		set proj_type = "N"
+		where client = "601"
+		go
+		-- Borland International
+		update project
+		set proj_type = "C"
+		where client = "602"
+		go
+		-- Generic DTP Customer			(this should probably just be removed)
+		update project
+		set proj_type = "N"
+		where client = "700"
+		go
+		-- TT Reynold's
+		update project
+		set proj_type = "N"
+		where client = "701"
+		go
+		-- VBH
+		update project
+		set proj_type = "D"
+		where client = "801"
+		and proj = "CLO"
+		go
+		update project
+		set proj_type = "T"
+		where client = "801"
+		and proj = "SR"
+		go
+		-- Mike Avenick
+		delete project
+		where client = "901"
+		and proj like "UN%"
+		go
+	
+	-- project date fixups
+		-- Borland
+		update project
+		set end_date = "6/21/1998"
+		where client = "602"
+		and proj = "OLR"
+		go
 
 
 	-- employee
@@ -162,102 +283,74 @@ run_query -S$server -U$user -D$destdb <<-END
 	go
 
 	$(overwrite_table log "
+		id					numeric(6,0)	identity,
 		emp					char(3)			NOT NULL,
 		client				char(3)			NOT NULL,
 		proj				char(3)			NOT NULL,
 		phase				char(3)			NULL,
 		cliproj				varchar(10)		NULL,
 		date				datetime		NOT NULL,
-		time				numeric(5,2)	NOT NULL,
+		hours				numeric(5,2)	NOT NULL,
 		comments			varchar(255)	NULL,
-		req_billing			bit				NOT NULL,
 		invoice_num			char(7)			NULL,
-		date_paid			datetime		NULL,
-		req_sales_comm		bit				NOT NULL,
-		sales_comm_date		smalldatetime	NULL,
-		req_admin_comm		bit				NOT NULL,
-		admin_comm_date		smalldatetime	NULL,
-		req_referral_comm	bit				NOT NULL,
-		referral_comm_paid	smalldatetime	NULL,
-		payroll_paid		datetime		NULL,
+		invoice_paydate		datetime		NULL,
+		payroll_date		datetime		NULL,
+		sales_comm_paydate	smalldatetime	NULL,
+		ref_comm_paydate	smalldatetime	NULL,
+		admin_comm_paydate	smalldatetime	NULL,
 		chguser				varchar(20)		NOT NULL,
 		chgdate				datetime		NOT NULL
 	")
 
 	insert log
+		(emp, client, proj, phase, cliproj, date, hours, comments,
+				invoice_num, invoice_paydate, payroll_date, chguser, chgdate)
 	select empcode, client, proj, phase, cliproj, date, time, comments,
-		1, invoice, paid, 0, NULL, 0, NULL, 0, NULL, payroll,
-		isnull(chguser, "UNKNOWN"), isnull(chgdate, $SMALL_BEGINNING_OF_TIME)
+		invoice, paid, payroll, isnull(chguser, "UNKNOWN"),
+		isnull(chgdate, $SMALL_BEGINNING_OF_TIME)
 	from $srcdb..log
 	where proj is not NULL
-	go
-
-	alter table log
-	add id numeric(6,0) identity
 	go
 
 	checkpoint
 	go
 
 	update log
-	set req_billing = 0, invoice_num = NULL
-	from log l, client c
-	where l.client = c.client
-	and c.type = 'I'
+	set invoice_num = NULL
+	from log l, project p, project_type pt
+	where l.client = p.client
+	and l.proj = p.proj
+	and p.proj_type = pt.proj_type
+	and pt.requires_billing = 0
 	go
 
 	create unique clustered index id
 	on log (id)
 	go
 
-
-	-- test queries
-
-	--dump tran TIMER
-	--with no_log
-	--go
-
-	print "starting category report queries"
+	print "fixing Tim's SEC log entries"
 	go
-
-	select distinct l.id, b.category
-	into #cp_logs
-	from log l, bproj b, client c
-	where l.client = c.client
-	and c.type = 'I'
-	and l.proj = b.proj
-	and l.date between "6/1/98" and "11/30/98"
+	update log
+	set hours = convert(numeric(4,2), hours / 1.5)
+	where emp = "119"
+	and client = "001"
+	and proj = "SEC"
 	go
-
-	select l.emp, cpl.category, convert(numeric(5,2), sum(l.time)) "cat_hrs"
-	into #cp_cattime
-	from #cp_logs cpl, log l
-	where l.id = cpl.id
-	group by l.emp, cpl.category
+	
+	print "fixing payroll dates for 1998"
 	go
-
-	select l.emp, convert(numeric(5,2), sum(l.time)) "ttl_hrs"
-	into #cp_emptime
-	from #cp_logs cpl, log l
-	where l.id = cpl.id
-	group by l.emp
-	go
-
-	select cpct.emp, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
-		convert(numeric(5,2), 0) "pct"
-	into #cat_pcts
-	from #cp_cattime cpct, #cp_emptime cpet
-	where cpct.emp = cpet.emp
-	go
-
-	update #cat_pcts
-	set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
-	go
-
-	select cp.emp, e.name, cp.category, cp.cat_hrs, cp.ttl_hrs,
-		$(right_justify cp.pct 6) + '%' "pct"
-	from #cat_pcts cp, employee e
-	where cp.emp = e.emp
+	declare @payroll_start datetime, @payroll_end datetime
+	select @payroll_start = "12/15/1997"
+	select @payroll_end = dateadd(day, 13, @payroll_start)
+	while @payroll_start < "12/14/1998"
+	begin
+		update log
+		set payroll_date = dateadd(day, 15, @payroll_end)
+		where date between @payroll_start and @payroll_end
+		
+		select @payroll_start = dateadd(day, 1, @payroll_end)
+		select @payroll_end = dateadd(day, 13, @payroll_start)
+	end
 	go
 
 END
