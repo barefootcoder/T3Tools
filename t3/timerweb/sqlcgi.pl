@@ -2,6 +2,10 @@
 
 # $Header$
 # $Log$
+# Revision 1.4  1999/05/27 20:44:55  buddy
+# added check for conditional tokens
+# added some comments
+#
 # Revision 1.3  1999/02/18 06:28:55  buddy
 # changed web base path
 # synced to work with new showreports.pl
@@ -97,6 +101,18 @@ END
 		{
 								debug("got conditional $1");
 			next unless defined $ENV{$1};
+								debug("will process this line");
+		}
+		# check for "only if this var is _not_ set" lines
+		# format: any line containing a token like this:
+		#		?!var
+		# will be removed if "var" is set; if "var" is _not_ set, the
+		# conditional token is removed and the line is processed normally
+		if (s/\?!(\w+)//)
+		{
+								debug("got not conditional $1");
+			next if defined $ENV{$1};
+								debug("will process this line");
 		}
 		# check for var substitutions
 		# format: any token like this:
