@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  1999/03/28 17:50:55  buddy
+# Initial revision
+#
 # $Id$
 # $Revision$
 
@@ -10,8 +13,29 @@
 
 server=SYBASE_1
 user=$USER
-srcdb=TIMERLOAD
-destdb=TIMER
+destdb=timertest
+
+while getopts ":S:U:D:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		h)  echo "usage: $0 [-Sserver] [-Uusername] [-Ddest_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb" >&2
+			exit
+			;;
+		:)  echo "$0: $OPTARG requires an argument ($0 -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $0 -h for usage" >&2
+			exit
+	esac
+done
+shift $((OPTIND - 1))
 
 run_query -S$server -U$user -D$destdb <<-END
 
@@ -99,5 +123,26 @@ run_query -S$server -U$user -D$destdb <<-END
 		maximum_amount = low_range_amount * 3
 	where proj = "REP"
 	go
+
+	insert estimate
+	values ('512', 'PH2', 'DBD', 10, 1010, 1212, 1818, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'ANA', 20, 1980, 2376, 3564, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'DES', 165, 19305, 23166, 34749, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'PRG', 200, 14875, 17850, 26775, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'QAT', 110, 7700, 9240, 13860, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'INT', 15, 1256.25, 1507.5, 2261.25, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'DAT', 20, 1400, 1680, 2520, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'DOC', 20, 1200, 1440, 2160, '$USER', getdate())
+	insert estimate
+	values ('512', 'PH2', 'PM', 56, 7000, 8400, 12600, '$USER', getdate())
+	go
+
 
 END
