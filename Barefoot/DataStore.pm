@@ -32,17 +32,18 @@ package DataStore;
 
 use strict;
 
-#use Barefoot::debug(2);
-
 use DBI;
 use Carp;
 use Storable;
 
 use Barefoot::base;
+use Barefoot::exception;
 use Barefoot::DataStore::DataSet;
 
 
 use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
+
+use constant PASSWORD_FILE => '.dbpasswd';
 
 
 # load_table is just an alias for load_data
@@ -82,10 +83,10 @@ our $constants =
 our $funcs =
 {
 		Sybase		=>	{
-							curdate			=>	sub {
-													"dateadd(hour, 1,
-															getdate())"
-													},
+							curdate			=>	sub { "getdate()" },
+													# "dateadd(hour, 1,
+													# 		getdate())"
+													# },
 							ifnull			=>	sub { "isnull($_[0], $_[1])" },
 							drop_index		=>	sub {
 													"drop index $_[0].$_[1]"
@@ -122,11 +123,20 @@ sub _login
 		my $server = $this->{config}->{server};
 		print STDERR "attempting to get password for server $server "
 				. "user $this->{user}\n" if DEBUG >= 3;
+
 		print STDERR "environment for dbpasswd: user $ENV{USER} "
 				. "home $ENV{HOME} path $ENV{PATH}\n" if DEBUG >= 4;
-		my $passwd = `dbpasswd $server $this->{user} 2>/dev/null`;
-		chomp $passwd;
-		croak("can't get db password") unless $passwd;
+		my $passwd;
+		my $pwerror = "";
+		try
+		{
+			$passwd = get_password($server, $this->{user});
+		}
+		catch
+		{
+			$pwerror = " ($_)";
+		};
+		croak("can't get db password" . $pwerror) unless defined $passwd;
 
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
@@ -385,13 +395,41 @@ sub _dump_attribs
 # interface methods
 
 
+sub get_password
+{
+	my ($find_server, $find_user) = @_;
+	my $pwfile = "$ENV{HOME}/" . PASSWORD_FILE;
+
+	croak("must have a $pwfile file in your home directory")
+			unless -e $pwfile;
+	my $pwf_mode = (stat _)[2];				# i.e., the permissions
+	croak("$pwfile must be readable and writable only by you")
+			if $pwf_mode & 077;
+
+	open(PW, $pwfile) or croak("can't read file $pwfile");
+	while ( <PW> )
+	{
+		chomp;
+
+		my ($server, $user, $pass) = split(/:/);
+		if ($server eq $find_server and $user eq $find_user)
+		{
+			close(PW);
+			return $pass;
+		}
+	}
+	close(PW);
+	return undef;
+}
+
+
 sub open
 {
 	my $class = shift;
 	my ($data_store_name, $user_name) = @_;
 
 	my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-	# print STDERR "file name is $ds_filename\n";
+	print STDERR "file name is $ds_filename\n" if DEBUG >= 3;
 	croak("data store $data_store_name not found") unless -e $ds_filename;
 
 	my $this = {};
