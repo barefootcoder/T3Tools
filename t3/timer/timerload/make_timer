@@ -3,6 +3,11 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.6  2000/11/13 18:26:42  tryan
+# Added tables salary_draw, salary_bank to support salary handling
+# in payroll. Added the field has_insurance to employee as an indicator
+# for who is currently using BF insurance.
+#
 # Revision 1.5  2000/10/31 22:17:02  buddy
 # fucked up and forgot to fix unique index for pay_rate; fixed
 #
@@ -608,6 +613,7 @@ run_query -S$server -U$user -D$destdb <<-END
 	")
 
 	grant insert on payroll to $admin_users
+	grant update on payroll to $admin_users
 	go
 
 	create unique clustered index id
