@@ -1,9 +1,6 @@
 -- SORT GROUP: Commission Reports
 -- TITLE: Administrative Commission
 
-use TIMER
-go
-
 print ""
 print ""
 print "<H3>Period from [start_date] to [end_date]</H3>"
@@ -15,95 +12,129 @@ set nocount on
 go
 
 
-$(build_emp_comm "
-	date between '[start_date]' and '[end_date]'
-	and admin_comm_paydate is NULL
-	and exists
+$(build_profit_item "
+	log.date <= '[end_date]'
+	and not exists
 	(
 		select 1
-		from project p, project_type pt
-		where l.client = p.client
-		and l.proj = p.proj
-		and p.proj_type = pt.proj_type
-		and pt.requires_billing = 1
+		from commission com
+		where log.log_source = com.log_source
+		and log.log_id = com.log_id
+		and com.comm_type = 'A'
 	)
-" "
-	date_delivered between '[start_date]' and '[end_date]'
-	and admin_comm_paydate is NULL
-" "
-	start_time between '[start_date]' and '[end_date]'
-	and admin_comm_paydate is NULL
 ")
-exec emp_commission
+
+calc_profit
 go
 
 -- for debugging
 /*
-select source_tbl, emp, client, proj, convert(char(10), date, 101) "date",
-	hours, convert(numeric(6,2), payrate) "payrate", paytype "PayT",
-	convert(numeric(6,2), billrate) "billrate",
-	convert(numeric(6,2), amt_billed) "amt_billed",
-	convert(numeric(6,2), salescomm) "salescomm",
-	convert(numeric(6,2), refcomm) "refcomm",
-	convert(numeric(6,2), amt_paid) "amt_paid",
-	convert(numeric(6,2), diff) "diff",
-	convert(numeric(6,2), empcomm) "empcomm"
-from #emp_comm
-order by emp, client, proj, date
+select log_source, client, proj, convert(char(10), end_date, 101) "date",
+	units, convert(numeric(6,2), price_per_unit) "billrate",
+	convert(numeric(6,2), total_price) "amt_billed",
+	convert(numeric(6,2), sales_commission) "salescomm",
+	convert(numeric(6,2), ref_commission) "refcomm",
+	convert(numeric(6,2), total_cost) "amt_paid",
+	convert(numeric(6,2), emp_commission) "empcomm"
+from profit_item
+order by client, proj, date
 */
 go
 
-select convert(char(25), c.name) "client", ec.proj,
-		convert(char(10), $(employee_name e)) "employee",
-		convert(numeric(5,2), sum(ec.hours)) "hours",
-		convert(numeric(7,2), sum(amt_billed)) "amt billed",
-		convert(numeric(6,2), sum(salescomm)) "sls comm",
-		convert(numeric(5,2), sum(refcomm)) "ref comm",
-		convert(numeric(7,2), sum(amt_paid)) "amt paid",
-		convert(numeric(6,2), sum(empcomm)) "emp comm",
-		convert(numeric(7,2), sum(diff) - sum(empcomm)) "simp prof"
-/*
-		convert(numeric(4,2), (sum(diff) - sum(empcomm))
-				/ sum(amt_billed) * 100) "margin"
-*/
-from #emp_comm ec, client c, employee e
-where ec.source_tbl != 'training_class'		-- these are handled by other rows
-and ec.diff != NULL							-- hopefully ditto
-and ec.client = c.client
-and ec.emp *= e.emp
-group by convert(char(25), c.name), ec.proj,
-		convert(char(10), $(employee_name e))
+select c.name "client", pi.proj, sum(pi.units) "units",
+		sum(pi.total_price) "total_price",
+		sum(pi.sales_commission) "sales_comm",
+		sum(pi.ref_commission) "ref_comm",
+		sum(pi.total_cost) "total_cost",
+		sum(pi.emp_commission) "emp_comm",
+		sum(pi.simple_profit) "simple_profit",
+		convert(numeric(4,2), NULL) "margin"
+into #profits
+from profit_item pi, client c
+where pi.client = c.client
+group by c.name, pi.proj
 go
 
-select convert(numeric(10,2), sum(amt_billed)) "gross sales",
-		convert(numeric(10,2), sum(amt_paid)) "COGS",
-		convert(numeric(10,2), sum(salescomm)) "sales comm",
-		convert(numeric(10,2), sum(refcomm)) "ref comm",
-		convert(numeric(10,2), sum(empcomm)) "emp comm",
-		convert(numeric(10,2), sum(salescomm) + sum(refcomm)
-				+ sum(empcomm)) "total comms",
-		convert(numeric(10,2), sum(diff) - sum(empcomm)) "simple profit"
-from #emp_comm
-where source_tbl != 'training_class'		-- same as above
-and diff != NULL
+update #profits
+set margin = convert(numeric(4,2), 100.0 * simple_profit / total_price)
+where simple_profit > 0
+and total_price > simple_profit
+go
+
+select convert(char(25), client) "client", isnull(proj, '') "proj",
+		convert(numeric(6,2), units) "units",
+		convert(char(10), total_price, 1) "amt billed",
+		convert(char(8), sales_comm, 1) "sls comm",
+		convert(char(8), ref_comm, 1) "ref comm",
+		convert(char(10), total_cost, 1) "amt paid",
+		convert(char(8), emp_comm, 1) "emp comm",
+		convert(char(10), simple_profit, 1) "simp prof", margin
+from #profits
+order by client, proj
+go
+
+select convert(char(13), sum(total_price), 1) "gross sales",
+		convert(char(13), sum(total_cost), 1) "COGS",
+		convert(char(13), sum(sales_commission), 1) "sales comm",
+		convert(char(13), sum(ref_commission), 1) "ref comm",
+		convert(char(13), sum(emp_commission), 1) "emp comm",
+		convert(char(13), sum(sales_commission + ref_commission
+				+ emp_commission), 1) "total comms",
+		convert(char(13), sum(simple_profit), 1) "simple profit"
+from profit_item
 go
 
 print ""
 print ""
 go
 
-declare @total_simple_profit money
-select @total_simple_profit =
-(
-	select sum(diff) - sum(empcomm)
-	from #emp_comm
-)
+select sum(pi.simple_profit) "simple_profit", act.name "comm_name",
+		act.sort_order, ac.pay_type, ac.pay_to,
+		convert(varchar(30), NULL) "pay_name", ac.commission_percent,
+		ac.start_date, ac.end_date, convert(money, NULL) "amount"
+into #admin_comm_amount
+from profit_item pi, admin_commission ac, admin_commission_type act
+where pi.end_date between ac.start_date and ac.end_date
+and ac.admin_comm = act.admin_comm
+group by act.name, act.sort_order, ac.pay_type, ac.pay_to,
+		ac.commission_percent, ac.start_date, ac.end_date
+go
 
-select convert(numeric(7,2), @total_simple_profit) "simple profit",
-		ac.name "commission", ac.amount "percentage",
-		convert(numeric(7,2), ac.amount * @total_simple_profit / 100) "amount"
-from admin_commission ac
-where "[end_date]" between ac.start_date and ac.end_date
-order by ac.priority
-compute sum(convert(numeric(7,2), ac.amount * @total_simple_profit / 100))
+update #admin_comm_amount
+set pay_name = s.name
+from #admin_comm_amount aca, salesman s
+where aca.pay_type = 'S'
+and aca.pay_to = s.salesman
+go
+
+update #admin_comm_amount
+set pay_name = $(employee_name e)
+from #admin_comm_amount aca, employee e
+where aca.pay_type = 'E'
+and aca.pay_to = e.emp
+go
+
+update #admin_comm_amount
+set amount = simple_profit * commission_percent / 100
+go
+
+update #admin_comm_amount
+set end_date = '[end_date]'
+where end_date > '[end_date]'
+go
+
+select comm_name "commission", pay_name "paid to",
+		convert(char(10), end_date, 101) "until",
+		convert(numeric(8,2), simple_profit) "simple profit",
+		commission_percent "percentage",
+		convert(numeric(7,2), amount) "amount"
+from #admin_comm_amount
+order by sort_order, start_date
+--compute sum(convert(numeric(7,2), ac.amount * @total_simple_profit / 100))
+go
+
+select pay_name "paid to", sum(amount) "total amount"
+from #admin_comm_amount
+group by pay_name
+compute sum(sum(amount))
 go

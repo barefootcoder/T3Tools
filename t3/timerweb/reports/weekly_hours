@@ -15,61 +15,18 @@ print ""
 go
 
 
-select tl.emp, tl.client, tl.proj, tl.date, tl.hours,
-		convert(money, NULL) "pay_rate"
-into #time_log_week
-from time_log tl, employee e
-where tl.emp = e.emp
-and tl.date between '[start_date]' and '[end_date]'
-and e.login = '[user]'											??user
-go
+$(build_pay_amount "
+	log.date between '[start_date]' and '[end_date]'
+	and exists													??user
+	(															??user
+		select 1												??user
+		from employee e											??user
+		where log.emp = e.emp									??user
+		and e.login = '[user]'									??user
+	)															??user
+")
 
-update #time_log_week
-set pay_rate = 0
-from #time_log_week tlw, project p, project_type pt
-where tlw.client = p.client
-and tlw.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_payment = 0
-go
-
-update #time_log_week
-set pay_rate = pr.rate
-from #time_log_week tlw, project p, project_type pt, pay_rate pr
-where tlw.client = p.client
-and tlw.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_payment = 1
-and tlw.emp = pr.emp
-and pr.client is NULL
-and pr.proj is NULL
-and tlw.date between pr.start_date and pr.end_date
-go
-
-update #time_log_week
-set pay_rate = pr.rate
-from #time_log_week tlw, project p, project_type pt, pay_rate pr
-where tlw.client = p.client
-and tlw.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_payment = 1
-and tlw.emp = pr.emp
-and tlw.client = pr.client
-and pr.proj is NULL
-and tlw.date between pr.start_date and pr.end_date
-go
-
-update #time_log_week
-set pay_rate = pr.rate
-from #time_log_week tlw, project p, project_type pt, pay_rate pr
-where tlw.client = p.client
-and tlw.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_payment = 1
-and tlw.emp = pr.emp
-and tlw.client = pr.client
-and tlw.proj = pr.proj
-and tlw.date between pr.start_date and pr.end_date
+calc_pay_amount
 go
 
 -- for debugging
@@ -82,28 +39,28 @@ go
 
 select
 		$(employee_name e) "employee",							?!user
-		convert(char(6), tlw.pay_rate, 1) "payrate", c.name "client",
-		$(period_name "$(period_num tlw.date 7)" 7) "week",
-		sum(tlw.hours) "hours"
-from #time_log_week tlw, employee e, client c
-where tlw.emp = e.emp
+		convert(char(6), pa.pay_rate, 1) "payrate", c.name "client",
+		$(period_name "$(period_num pa.date 7)" 7) "week",
+		sum(pa.hours) "hours"
+from pay_amount pa, employee e, client c
+where pa.emp = e.emp
 and e.login = "[user]"											??user
-and tlw.client = c.client
-group by $(employee_name e), tlw.pay_rate, c.name,
-		$(period_name "$(period_num tlw.date 7)" 7)
-order by $(employee_name e), tlw.payrate, c.name
-compute sum(sum(tlw.hours))
-	by $(employee_name e), tlw.payrate, c.name
+and pa.client = c.client
+group by $(employee_name e), pa.pay_rate, c.name,
+		$(period_name "$(period_num pa.date 7)" 7)
+order by $(employee_name e), pa.payrate, c.name
+compute sum(sum(pa.hours))
+	by $(employee_name e), pa.payrate, c.name
 go
 
 select
 		$(employee_name e) "employee",							?!user
-		$(period_name "$(period_num tlw.date 7)" 7) "week",
-		sum(tlw.hours) "hours"
-from #time_log_week tlw, employee e
-where tlw.emp = e.emp
+		$(period_name "$(period_num pa.date 7)" 7) "week",
+		sum(pa.hours) "hours"
+from pay_amount pa, employee e
+where pa.emp = e.emp
 and e.login = "[user]"											??user
 group by
 		$(employee_name e),										?!user
-		$(period_name "$(period_num tlw.date 7)" 7)
+		$(period_name "$(period_num pa.date 7)" 7)
 go

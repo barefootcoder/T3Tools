@@ -1,22 +1,12 @@
 -- SORT GROUP: Error Checkers
--- TITLE: Unpaid Invoices Report (Q4 1997 onward)
+-- TITLE: Unpaid Invoices Report
 
-use TIMER
-go
-
-select l.invoice_num, convert(char(10), e.name) "employee",
-	convert(char(25), c.name) "client",
-	convert(char(25), p.name) "project",
-	convert(char(8), l.date, 1) "date", l.hours
-from log l, employee e, client c, project p, project_type pt
-where l.emp = e.emp
-and l.client = c.client
-and l.client = p.client
-and l.proj = p.proj
-and p.proj_type = pt.proj_type
-and pt.requires_billing = 1
-and l.invoice_num is not NULL
-and l.invoice_paydate is NULL
-and l.date >= "10/1/1997"
-order by l.invoice_num
+select i.invoice_number "Number:", i.client "C", c.name "Client:",
+		convert(char(10), i.invoice_amount, 1) "Amount:",
+		convert(char(10), i.invoice_billdate, 101) "Billed on:",
+		isnull(convert(char(10), i.invoice_paydate, 101), "unpaid") "Paid on:"
+from invoice i, client c
+where i.client = c.client
+and i.invoice_paydate is NULL
+order by i.invoice_number
 go

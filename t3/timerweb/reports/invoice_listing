@@ -1,37 +1,15 @@
 -- SORT GROUP: Database Lists
 -- TITLE: List of Invoices
 
-use TIMER
-go
-
 print "List starts with invoice [invoice]"
 go
 
-$(build_emp_comm "
-	invoice_num is not NULL
-	and invoice_num between '[invoice]' and '9999999'
-")
-exec billing_amounts
-go
-
-select l.invoice_num, c.name, convert(char(10), min(ec.date), 101) "From:",
-		convert(char(10), max(ec.date), 101) "To:",
-		convert(numeric(8,2), sum(amt_billed)) "invoice total",
-		convert(char(10), l.invoice_paydate, 101) "Paid on:"
-from #emp_comm ec, log l, client c
-where ec.source_tbl = 'log'
-and ec.source_id = l.id
-and l.client = c.client
-group by l.invoice_num, c.name, l.invoice_paydate
-union
-select op.invoice_num, c.name,
-		convert(char(10), min(op.date_delivered), 101) "From:",
-		convert(char(10), max(op.date_delivered), 101) "To:",
-		convert(numeric(8,2), sum(op.amount_billed)) "invoice total",
-		convert(char(10), op.invoice_paydate, 101)
-from other_profits op, client c
-where op.client = c.client
-and op.invoice_num between '[invoice]' and '9999999'
-group by op.invoice_num, c.name, op.invoice_paydate
-order by l.invoice_num, c.name
+select i.invoice_number, c.name,
+		convert(char(10), i.invoice_billdate, 101) "Billed On",
+		convert(char(12), i.invoice_amount) "Amount",
+		convert(char(10), i.invoice_paydate, 101) "Paid On"
+from invoice i, client c
+where i.client = c.client
+and i.invoice_number >= '[invoice]'
+order by i.invoice_number
 go
