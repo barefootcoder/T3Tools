@@ -1,0 +1,35 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+use Barefoot::debug;					# comment out for production use
+
+use Barefoot::base;
+use Barefoot::DataStore;
+use Barefoot::exception;
+use Barefoot::DataStore::display;
+
+sub test_error(&@);
+
+# looks okay
+print "ALL TESTS PASSED\n";
+
+
+sub test_error (&@)
+{
+	my ($try, $catch) = @_;
+
+	# print STDERR "in test_error block\n";
+	eval { &$try };
+	if ($@)
+	{
+		# print "in try: $@";
+		$@ =~ /^(.*) at (.*) line (\d+)(?:.*\.)?\n$/;
+		die("incorrect 'die' format: $@") unless $3;
+		local $_ = $1;
+		$__FILE__ = $2;
+		$__LINE__ = $3;
+		return true if &$catch;
+	}
+	return false;
+}
