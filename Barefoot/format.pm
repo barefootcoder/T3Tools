@@ -32,7 +32,14 @@
 # In general, most standard Perl formats should work.  There are some
 # additional features and caveats, however.
 #
-#		1) Multiline Formats
+#		1) Undefined Variables
+#		Undefined variables sent to either swrite() or writeln() are treated
+#		exactly like empty strings.  In general, this is considered to be a
+#		Good Thing(tm).  If you disagree, you should make other arrangements
+#		(like checking the vars before you call the funcs, or write your own
+#		damn funcs).
+#
+#		2) Multiline Formats
 #		These are achieved as normal, that is by using a ^ format field
 #		instead of a @ format field, but you should note that putting other
 #		formats _after_ a multiline format on the same line is probably
@@ -68,7 +75,7 @@
 #		of it, so don't try to pass a format like "^&".  Your format must be
 #		at least 3 characters to use this feature.
 #
-#		2) Date Formats
+#		3) Date Formats
 #		Some basic functionality to allow you to format a time integer (i.e.,
 #		a number of seconds since the epoch, such as might be returned by
 #		time()) is included.  To allow maximum flexibility, a date format
