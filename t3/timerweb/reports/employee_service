@@ -1,27 +1,32 @@
--- SORT GROUP: Management Reports
--- TITLE: Service Periods of Employees
+# SORT GROUP: Management Reports
+# TITLE: Service Periods of Employees
 
-print "Service periods for all employees"
-print "Period from [start_date] to [end_date]"
-print ""
-print ""
-go
+&print
+Service periods for all employees
+Period from {start_date} to {end_date}
 
-select tl.emp "E", $(employee_name e) "employee",
-		convert(char(12), min(tl.date), 107) "first worked",
-		convert(char(12), max(tl.date), 107) "last worked"
-from time_log tl, employee e
-where tl.emp = e.emp
-and tl.date between '[start_date]' and '[end_date]'
-and exists
-(
-	select 1
-	from pay_rate pr
-	where tl.emp = pr.emp
-	and pr.rate_type = 'P'
-	and tl.client = isnull(pr.client, tl.client)
-	and tl.proj = isnull(pr.proj, tl.proj)
-	and tl.date between pr.start_date and pr.end_date
-)
-group by tl.emp, $(employee_name e)
-go
+
+;
+
+	select tl.emp_id, pe.first_name, pe.last_name,
+			min(tl.log_date), max(tl.log_date)
+	from {~timer}.time_log tl, {~timer}.employee e, {~t3}.person pe
+	where tl.emp_id = e.emp_id
+	and tl.log_date between {start_date} and {end_date}
+	and e.person_id = pe.person_id
+	and exists
+	(
+		select 1
+		from {~timer}.pay_rate pr
+		where tl.emp_id = pr.emp_id
+		and pr.rate_type = 'P'
+		and tl.client_id = {&ifnull pr.client_id, tl.client_id}
+		and tl.proj_id = {&ifnull pr.proj_id, tl.proj_id}
+		and tl.log_date between pr.start_date and pr.end_date
+	)
+	group by tl.emp_id, pe.first_name, pe.last_name
+->format
+	H=> E  Employee Name         First Worked Last Worked
+	H=>--- --------------------- ------------ -----------
+	B->@<< @<<<<<<<<< @<<<<<<<<< @<<<<<<<<<<< @<<<<<<<<<<
+;
