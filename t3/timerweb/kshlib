@@ -16,6 +16,12 @@
 
 	# general stuff
 	readonly me=${0##*/}							# slightly prettier than $0
+	# This is the amount that BF is paying
+	#  to employees ever pay period.
+	readonly REGULAR_SAL3=25 
+	readonly SAL3_PAY_NONBILL_THRESHOLD=60.0
+	readonly SAL3_MULTIPLIER=5.0
+
 
 	# date stuff
 	readonly BEGINNING_OF_TIME="'1/1/1753'"			# according to Sybase docs
@@ -320,9 +326,10 @@ function build_pay_amount
 		-- put in the new
 		insert pay_amount
 			(log_source, log_id, emp, client, proj, phase, date, hours,
-					requires_payment)
-		select log.log_source, log.log_id, log.emp, log.client, log.proj,
-				log.phase, log.date, log.hours, pt.requires_payment
+					requires_payment, requires_billing)
+		select log.log_source, log.log_id, log.emp, log.client, 
+		        log.proj, log.phase, log.date, log.hours, 
+				pt.requires_payment, pt.requires_billing
 		from time_log log, project p, project_type pt
 		where $where_clause
 		and log.client = p.client
