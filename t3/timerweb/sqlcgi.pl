@@ -24,9 +24,10 @@ my $cgi = new CGI;
 my $basepath = DEBUG ? "/proj/$ENV{REMOTE_USER}/t3/timerweb/reports"
 		: "/home/httpd/sybase/timer_reports";
 my $lib = "/usr/local/bin/kshlib";
-my $dsname = DEBUG ? "t3test" : "t3";
-my $title = "";
+my $dsname = DEBUG ? "t3test" : "T3";
 my $debug_string = "" if DEBUG;
+debug("first dir is $INC[0]");
+debug("procs are " . join(",", keys %$DataStore::procs));
 
 set_environment();
 print $cgi->header();
@@ -57,24 +58,27 @@ if ($file)
 		$ds->define_var($name, $value) if $value;
 	}
 
+	my $title = get_title($file);
+
 	print $cgi->start_html(-title=>$title);
 	if ($title)
 	{
 		print $cgi->center($cgi->h1($title)), "\n";
 	}
 
-	print "<PRE>\n";
+	print "<PRE>\n\n";
 	try
 	{
 		print DataStore::display($ds, $file);
 	}
 	catch
 	{
-		error($_);
+		DEBUG ? error("$_\n(file $__FILE__, line $__LINE__)") : error($_);
 	};
-	print "</PRE>\n";
-	print $debug_string if DEBUG;
-	print $cgi->end_html();
+	print "</PRE>\n\n";
+	print "<!-- Debugging String -->\n" if DEBUG;
+	print "$debug_string\n" if DEBUG;
+	print $cgi->end_html(), "\n";
 }
 else
 {
@@ -95,6 +99,22 @@ sub set_environment
 		$ENV{$attr} = $cgi->param($attr);
 	}
 =cut
+}
+
+sub get_title
+{
+	my ($file) = @_;
+
+	my $title = "";
+	open(IN, $file) or (error("can't open report $file"), return "");
+	while ( <IN> )
+	{
+		last if /^$/;			# first blank line marks end of header
+		$title = $1 if /^#\s*TITLE:\s*(.*)$/;
+	}
+	close(IN);
+
+	return $title;
 }
 
 =comment
@@ -195,11 +215,11 @@ sub error
 {
 	my ($msg) = @_;
 
-	$msg =~ s/\n/<BR>/g;
+	$msg =~ s/\n/<BR>\n/g;
 	print $cgi->h1("ERROR"), "\n";
 	print "<P>", $cgi->strong("Your request has the following error!");
-	print "<BR>\n", "$msg</P>\n";
-	print $debug_string if DEBUG;
+	print "<BR>\n", "$msg</P>\n\n";
+	# print $debug_string if DEBUG;
 }
 
 sub debug
