@@ -36,6 +36,8 @@ package T3;
 
 use strict;
 
+use Barefoot::base;
+
 
 # config file and directives for same
 
