@@ -1,0 +1,272 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+# $Log$
+# $Id$
+# $Revision$
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=$USER
+srcdb=TIMERLOAD
+destdb=TIMER
+
+# get the raw data into Sybase
+# dbf2sybase *.DBF
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	-- bproj
+
+	print "making bproj"
+	go
+
+	$(overwrite_table bproj "
+		proj				char(3)			NOT NULL,
+		name				varchar(30)		NOT NULL,
+		category			char(3)			NOT NULL
+	")
+
+	insert bproj
+	select proj, name, category
+	from $srcdb..bproj
+	go
+
+	create unique index proj
+	on bproj (proj)
+	go
+
+
+	-- phase
+
+	print "making phase"
+	go
+
+	$(overwrite_table phase "
+		phase				char(3)			NOT NULL,
+		name				varchar(30)		NOT NULL
+	")
+
+	insert phase
+	select code, name
+	from $srcdb..phase
+	go
+
+	create unique index phase
+	on phase (phase)
+	go
+
+
+	-- client					(have to have before can do project)
+
+	print "making client"
+	go
+
+	$(overwrite_table client "
+		client				char(3)			NOT NULL,
+		name				varchar(30)		NOT NULL,
+		type				char(1)			NOT NULL,
+		rounding			char(1)			NOT NULL,
+		tonearest			numeric(3,2)	NOT NULL
+	")
+
+	insert client
+	select code, name, type, rounding, tonearest
+	from $srcdb..client
+	where code is not NULL
+	go
+
+	create unique index client
+	on client (client)
+	go
+
+
+	-- project
+
+	print "making project"
+	go
+
+	$(overwrite_table project "
+		client				char(3)			NOT NULL,
+		proj				char(3)			NOT NULL,
+		name				varchar(30)		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL
+	")
+
+	insert project
+	select p.client, p.code, p.name,
+		isnull(min(p.start_date), $BEGINNING_OF_TIME),
+		isnull(max(p.end_date), $END_OF_TIME)
+	from $srcdb..project p, client c
+	where p.client = c.client
+	and c.type != 'I'
+	group by p.client, p.code, p.name
+	go
+
+	create unique index proj
+	on project (client, proj)
+	go
+
+
+	-- employee
+
+	print "making employee"
+	go
+
+	$(overwrite_table employee "
+		emp					char(3)			NOT NULL,
+		name				varchar(15)		NOT NULL,
+		lname				varchar(15)		NOT NULL,
+		showlast			bit				NOT NULL,
+		login				varchar(30)		NULL,
+	")
+
+	use $srcdb
+	go
+	$(overwrite_table emp_maxdates "
+		id					char(3)			NOT NULL,
+		maxdate				datetime		NOT NULL
+	")
+	insert emp_maxdates
+	select id, max(end_date)
+	from employee
+	group by id
+	go
+	use $destdb
+	go
+
+	insert employee
+	select e.id, name, lastname, isnull(showlast, 0), username
+	from $srcdb..employee e, $srcdb..emp_maxdates emd
+	where e.id = emd.id
+	and e.end_date = emd.maxdate
+	go
+
+	create unique index employee
+	on employee (emp)
+	go
+
+
+	-- log
+
+	print "making log"
+	go
+
+	$(overwrite_table log "
+		emp					char(3)			NOT NULL,
+		client				char(3)			NOT NULL,
+		proj				char(3)			NOT NULL,
+		phase				char(3)			NULL,
+		cliproj				varchar(10)		NULL,
+		date				datetime		NOT NULL,
+		time				numeric(5,2)	NOT NULL,
+		comments			varchar(255)	NULL,
+		req_billing			bit				NOT NULL,
+		invoice_num			char(7)			NULL,
+		req_sales_comm		bit				NOT NULL,
+		sales_comm_date		smalldatetime	NULL,
+		req_admin_comm		bit				NOT NULL,
+		admin_comm_date		smalldatetime	NULL,
+		req_referral_comm	bit				NOT NULL,
+		referral_comm_paid	smalldatetime	NULL,
+		chguser				varchar(20)		NOT NULL,
+		chgdate				datetime		NOT NULL
+	")
+
+	insert log
+	select empcode, client, proj, phase, cliproj, date, time, comments,
+		1, invoice, 0, NULL, 0, NULL, 0, NULL,
+		isnull(chguser, "UNKNOWN"), isnull(chgdate, $SMALL_BEGINNING_OF_TIME)
+	from $srcdb..log
+	where proj is not NULL
+	go
+
+	alter table log
+	add id numeric(6,0) identity
+	go
+
+	checkpoint
+	go
+
+	update log
+	set req_billing = 0, invoice_num = NULL
+	from log l, client c
+	where l.client = c.client
+	and c.type = 'I'
+	go
+
+	create unique clustered index id
+	on log (id)
+	go
+
+
+	-- rate									(new table)
+
+	$(overwrite_table rate "
+		rate_type			char(1)			NOT NULL,
+		rate				money			NOT NULL,
+		to_whom				char(3)			NOT NULL,
+		emp					char(3)			NULL,
+		client				char(3)			NULL,
+		proj				char(3)			NULL,
+		start_date			datetime		NOT NULL,
+		end_date			datetime		NOT NULL
+	")
+
+	insert rate
+	select 'P', rate, 
+
+
+	-- test queries
+
+	--dump tran TIMER
+	--with no_log
+	--go
+
+	print "starting category report queries"
+	go
+
+	select distinct l.id, b.category
+	into #cp_logs
+	from log l, bproj b, client c
+	where l.client = c.client
+	and c.type = 'I'
+	and l.proj = b.proj
+	and l.date between "6/1/98" and "11/30/98"
+	go
+
+	select l.emp, cpl.category, convert(numeric(5,2), sum(l.time)) "cat_hrs"
+	into #cp_cattime
+	from #cp_logs cpl, log l
+	where l.id = cpl.id
+	group by l.emp, cpl.category
+	go
+
+	select l.emp, convert(numeric(5,2), sum(l.time)) "ttl_hrs"
+	into #cp_emptime
+	from #cp_logs cpl, log l
+	where l.id = cpl.id
+	group by l.emp
+	go
+
+	select cpct.emp, cpct.category, cpct.cat_hrs, cpet.ttl_hrs,
+		convert(numeric(5,2), 0) "pct"
+	into #cat_pcts
+	from #cp_cattime cpct, #cp_emptime cpet
+	where cpct.emp = cpet.emp
+	go
+
+	update #cat_pcts
+	set pct = convert(numeric(5,2), cat_hrs / ttl_hrs * 100)
+	go
+
+	select cp.emp, e.name, cp.category, cp.cat_hrs, cp.ttl_hrs,
+		$(right_justify cp.pct 6) + '%' "pct"
+	from #cat_pcts cp, employee e
+	where cp.emp = e.emp
+	go
+
+END
