@@ -113,13 +113,6 @@ our $procs = {};				# we don't use this, but someone else might
 # helper methods
 
 
-sub _ping
-{
-	my $this = shift;
-	return $this->{dbh}->ping();
-}
-
-
 sub _login
 {
 	my $this = shift;
@@ -490,6 +483,13 @@ sub commit_configs
 		croak("can't save data store specification")
 				unless store($this->{config}, $ds_filename);
 	}
+}
+
+
+sub ping
+{
+	my $this = shift;
+	return $this->{dbh}->ping();
 }
 
 
