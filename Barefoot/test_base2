@@ -5,5 +5,6 @@ use strict;
 use Barefoot::debug;
 
 die("DEBUG not correct") unless DEBUG == 1;
+die("DEBUG not correct") unless Barefoot::DEBUG == 1;
 
 use test_base2;
