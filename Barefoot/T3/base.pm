@@ -34,6 +34,7 @@ use vars qw<@EXPORT>;
 @EXPORT = qw<t3 t3_username t3_filenames>;
 
 use Barefoot::base;
+use Barefoot::config_file;
 
 
 # constants
