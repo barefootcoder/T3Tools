@@ -2,67 +2,10 @@
 
 # For RCS:
 # $Date$
-# $Log$
-# Revision 1.13  2001/01/10 17:05:25  tryan
-# Altered calc_salary_pay and calc_insurance_contribution to sync w/changes
-# (use payroll_id in salary_bank instead of start_date,check_date etc).
-#
-# Revision 1.12  2001/01/09 19:27:37  tryan
-# Added insurance_amount, calc_insurance_contribution.
-#
-# Revision 1.11  2000/11/16 23:11:27  tryan
-# Altered some formatting in calc_salary_pay
-#
-# Revision 1.10  2000/11/14 17:03:39  tryan
-# Altered proc calc_salary_pay to use latest salary_bank record
-# occurring before start_date variable, rather than max (end_date).
-#
-# Revision 1.9  2000/11/13 20:30:39  tryan
-# Added requires_billing to pay_amount.
-# Added salary_amount table and calc_salary_pay sproc.
-#
-# Revision 1.8  2000/10/31 21:48:01  buddy
-# added phase to pay_amount
-# fixed calc_pay_amount to handle phases in pay_rate
-#
-# Revision 1.7  2000/10/10 05:27:40  buddy
-# added phase-specific billing ratios
-#
-# Revision 1.6  2000/03/29 20:25:56  buddy
-# changed stored procedures to match new commission table structure
-# added new table (profit_client) to calc_profit
-# changed *_comm_amount tables to have consistent columns (needed)
-#     by mark_commission script)
-#
-# Revision 1.5  2000/03/16 17:03:11  buddy
-# updated to work with new timer db
-#
-# Revision 1.4  2000/01/26 05:18:13  buddy
-# some changes for training rates to work
-#
-# Revision 1.3  1999/12/10 04:23:23  buddy
-# major changes to the way training rates are calculated:
-#     no calculation until project completed
-#     zeroing out of log (payroll) rows for training classes (this keeps
-#          these rows from affecting profit calculations)
-#     have to insert bill_rate along with 'training work' rows (otherwise
-#          referall commission doesn't get calc'ed for some strange reason)
-#
-# Revision 1.2  1999/10/28 14:18:20  buddy
-# removed stuff relegated to make_rates
-# added handling for training rates
-# various bug fixes
-#
-# Revision 1.1  1999/09/01 17:52:13  buddy
-# Initial revision
-#
-# Revision 1.1  1999/01/04 19:46:09  buddy
-# Initial revision (of make_rates, where this was originally)
-#
 # $Id$
 # $Revision$
 
-. /home/buddy/proj/timerweb/kshlib
+. /usr/local/bin/kshlib
 
 server=SYBASE_1
 user=$USER
@@ -1324,9 +1267,11 @@ run_query -S$server -U$user -D$destdb <<-END
 		 update insurance_amount
 		 set insurance_adjustment = barefoot_contribution - @sal3_adjustment
 		 where fixed_amount is null
-		 go
+	go
 
-	 grant exec on calc_insurance_contribution to public
-	 go
+	print "Granting rights on proc calc_insurance_contribution"
+	go
+	grant exec on calc_insurance_contribution to public
+	go
 
 END
