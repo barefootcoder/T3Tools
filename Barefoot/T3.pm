@@ -47,7 +47,8 @@ use constant LOGOFF_MESSAGE => 'IMOFF';
 use constant BUSY_MESSAGE => 'IMBUSY';
 use constant TALKER_MESSAGE => 'NORMAL';
 use constant ERROR_MESSAGE => 'ERROR';
-
+use constant INFO_MESSAGE => 'INFO';
+use constant NOREPLY_MESSAGE => 'NO_REPLY';
 
 my $cfg_file = config_file->read(CONFIG_FILE);
 my $workgroup = defined($::ENV{T3_WORKGROUP})
@@ -117,8 +118,8 @@ sub build_message
 	# windows client also apparently doesn't care for not having ^M's
 	$message =~ s/%0A/%0D$&/g;
 
-	my $url = $server_url . '<MESSAGE+from="' . $from . '"+to="' . $to
-			. '"+status="' . $status . '">' . $message . '</MESSAGE>';
+	my $url = $server_url . '<MESSAGE+subject=""+location=""+from="' . $from . '"+to="'
+			. $to . '"+status="' . $status . '">' . $message . '</MESSAGE>';
 	return $url;
 }
 
