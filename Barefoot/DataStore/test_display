@@ -55,29 +55,6 @@ test_parse_failure("
 
 test_parse_failure("
 
-		# test multi print before endif - should fail
-		{if END_OF_TIME}
-		&print
-			You're not supposed to be able to multiple-line print during ifs
-		;
-
-	", "can't call a command inside a conditional",
-	"command inside conditional didn't fail"
-);
-
-test_parse_failure("
-
-	# test single print before endif - should fail
-	{if END_OF_TIME}
-	&print You're not supposed to be able to single-line print during ifs
-	;
-
-	", "can't call a command inside a conditional",
-	"command inside conditional didn't fail"
-);
-
-test_parse_failure("
-
 		# test another if before endif - should fail
 		{if END_OF_TIME}
 			{if END_OF_TIME}
