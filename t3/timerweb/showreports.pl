@@ -2,6 +2,11 @@
 
 # $Header$
 # $Log$
+# Revision 1.6  1999/05/27 20:41:20  buddy
+# added proj to variables
+# set sort order for variables
+# added check for certain variables if not admin user
+#
 # Revision 1.5  1999/05/26 19:09:02  buddy
 # added check_date variable to allow marking payrolls as done
 #
@@ -76,6 +81,12 @@ $vars = {
 						size	=>	10,
 						admin	=>	1,
 					},
+	inv_paydate	=>	{
+						sort	=>	8,
+						value	=>	"",
+						size	=>	10,
+						admin	=>	1,
+					},
 };
 @admin_users = ('tweber', 'christy', 'buddy');
 
@@ -139,6 +150,7 @@ for $file ( < $basepath/* > )
 	}
 }
 
+print "<multicol cols=2>\n";
 foreach my $group (keys %report_groups)
 {
 	next if ($group eq "Administrative Updates"
@@ -151,6 +163,7 @@ foreach my $group (keys %report_groups)
 				$report->{title}), "<BR>\n";
 	}
 }
+print "</multicol>\n";
 
 # print $debug_string;
 print $cgi->end_html();
