@@ -3,79 +3,80 @@
 use strict;
 
 use Barefoot::date;
-use Barefoot::input qw(get_yn input);
-use Barefoot::timerdata;
+use Barefoot::input qw<get_yn input>;
+use Barefoot::DataStore;
+use Barefoot::DataStore::DataSet;
+
+use Barefoot::T3::base;
 
 
 ################
 #    main()    #
 ################
 
-my $inv_num = input("\nInvoice number:");
+my $inv_num = $ARGV[0] || input("\nInvoice number:");
 
-my $rows = timerdata::query_results("
-		select client, convert(char(10), invoice_billdate, 101),
-				invoice_amount, convert(char(10), invoice_paydate, 101)
-		from invoice
-		where invoice_number = '$inv_num'
-	");
-die("couldn't access timer database") unless defined($rows);
-die("invoice number not found") if @$rows == 0;
 
-die("more than once invoice row") if @$rows > 1;
-my $row = $rows->[0];
+my $data = &t3->load_data('
 
+		select client_id, invoice_billdate, invoice_amount, invoice_paydate
+		from {@invoice}
+		where invoice_number = {inv_num}
+',
+		inv_num => $inv_num,
+
+) or die("database error: ", &t3->last_error());
+die("invoice number not found") unless @$data == 1;
+
+my $row = $data->[0];
 my ($client, $bill_date, $amount, $pay_date) = @$row;
-$amount =~ s/,//g;
 
 print "\nInvoice for client $client: "
 		. "$amount billed on $bill_date\n";
-if ($pay_date ne "NULL")
+if (defined $pay_date)
 {
 	print "This invoice was already marked paid as of $pay_date\n";
 	exit 2;
 }
 exit 1 unless get_yn("Is this right?");
 
-$pay_date = input("\nPaid on date:");
-die("illegal date") unless date::isValid($pay_date);
 
-my $update_query = "
+$pay_date = input("\nPaid on date:", date::today(),
+	{
+		VALID		=>	\&date::isValid,
+		VALID_ERR	=>	"illegal date!",
+	}
+);
 
-	update invoice
-	set invoice_paydate = '$pay_date',
-			chguser = '$::ENV{USER}', chgdate = getdate()
-	where invoice_number = '$inv_num'
-	go
 
-";
-
-timerdata::set_user($::ENV{USER});
-my $results = timerdata::run_query("
-	begin tran
-	go
-
-	$update_query
-
-	rollback tran
-	go
-");
-die("mark failed <<$results>>") unless
-		$results =~ /^\(1 row affected\)/;
+&t3->begin_tran();
+update_invoice($pay_date, "wrong number of rows returned");
+&t3->rollback();
 
 print "\nInitial attempt successful for invoice $inv_num, client $client,\n";
 print "    pay date $pay_date (1 row affected)\n";
 exit 1 unless get_yn("Proceed?");
 
-my $results = timerdata::run_query("
-	begin tran
-	go
+&t3->begin_tran();
+update_timer($pay_date, "theoretically impossible error occurred");
+&t3->commit();
 
-	$update_query
-
-	commit tran
-	go
-");
-die("theoretically impossible error occurred <<$results>>") unless
-		$results =~ /^\(1 row affected\)/;
 print "\nmark was successful\n";
+
+
+sub update_invoice
+{
+	my ($pay_date, $message) = @_;
+
+	my $res = &t3->do('
+
+			update {@invoice}
+			set invoice_paydate = {pay_date},
+					chguser = {user}, chgdate = {&curdate}
+			where invoice_number = {inv_num}
+	',
+			pay_date => $pay_date, inv_num => $inv_num,
+			user => t3_username(),
+	) or die("can't update invoice: ", &t3->last_error());
+	die("$message: ", &t3->last_error()) unless $res->rows_affected() == 1;
+}

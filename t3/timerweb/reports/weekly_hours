@@ -1,86 +1,126 @@
--- SORT GROUP: Management Reports
--- TITLE: Hours per Week (by employee/rate)
+# SORT GROUP: Management Reports
+# TITLE: Hours per Week (by employee/rate)
 
-set nocount on
-go
+&print <H4>Hours per week</H4>
 
-print '<H4>Hours per week</H4>'
+{if user}
+	select pe.first_name
+	from {~t3}.workgroup_user wu, {~t3}.person pe
+	where wu.nickname = {user}
+	and wu.person_id = pe.person_id
+->format
+	B=>for %1
+{endif}
+{if !user}
+	&print for all employees
+{endif}
+;
 
-select 'for ' + $(employee_name e)								{?user}
-from employee e													{?user}
-where e.login = '{user}'										{?user}
-print 'for all employees'										{!user}
+{if client}
+	select c.name
+	from {~timer}.client c
+	where c.client_id = {client}
+->format
+	B=>for %1
+{endif}
+{if !client}
+	&print for all clients
+{endif}
+;
 
-select 'for ' + c.name											{?client}
-from client c													{?client}
-where c.client = '{client}'										{?client}
-print 'for all clients'											{!client}
+{if proj}
+	select p.name
+	from {~timer}.project p
+	where p.client_id = '{client}'
+	and p.proj_id = '{proj}'
+->format
+	B=>for %1
+{endif}
+{if !proj}
+	&print for all projects
+{endif}
+;
 
-select 'for ' + p.name											{?proj}
-from project p													{?proj}
-where p.client = '{client}'										{?proj}
-and p.proj = '{proj}'											{?proj}
-print 'for all projects'										{!proj}
-
-print 'Period from {start_date} to {end_date}'
-print ''
-print ''
-go
+	&print 
+Period from {start_date} to {end_date}
 
 
-$(build_pay_amount "
-	log.date between '{start_date}' and '{end_date}'
-	and exists													{?user}
-	(															{?user}
-		select 1												{?user}
-		from employee e											{?user}
-		where log.emp = e.emp									{?user}
-		and e.login = '{user}'									{?user}
-	)															{?user}
-	and log.client = '{client}'									{?client}
-	and log.proj = '{proj}'										{?proj}
-")
+;
 
-calc_pay_amount
-go
 
+&proc build_pay_amount
+
+	log.log_date between {start_date} and {end_date}
+
+	{if user}
+		and exists
+		(
+			select 1
+			from {~t3}.workgroup_user wu, {~timer}.employee e
+			where wu.nickname = {user}
+			and wu.person_id = e.person_id
+			and e.emp_id = log.emp_id
+		)
+	{endif}
+
+	{if client}
+		and log.client_id = {client}
+	{endif}
+
+	{if proj}
+		and log.proj_id = {proj}
+	{endif}
+
+;
+
+&ignore
 -- for debugging
 /*
 select emp, client, proj, convert(char(10), date, 101) "date", hours, pay_rate
 from #time_log_week
 order by emp, client, proj, date
 */
-go
+;
 
-select
-		$(employee_name e) "employee",							{!user}
-		convert(char(6), pa.pay_rate, 1) "payrate",
-		c.name "client",										{!client}
-		$(period_name "$(period_num pa.date 7)" 7) "week",
-		sum(pa.hours) "hours"
-from pay_amount pa, employee e, client c
-where pa.emp = e.emp
-and pa.client = c.client
-group by $(employee_name e), pa.pay_rate, c.name,
-		$(period_name "$(period_num pa.date 7)" 7)
-order by $(employee_name e), pa.payrate, c.name
-compute sum(sum(pa.hours))
-	by $(employee_name e), pa.payrate, c.name
-go
 
-select
-		$(employee_name e) "employee",							{!user}
-		$(period_name "$(period_num pa.date 7)" 7) "week",
-		sum(pa.hours) "hours"
-from pay_amount pa, employee e
-where pa.emp = e.emp
-group by
-		$(employee_name e),										{!user}
-		$(period_name "$(period_num pa.date 7)" 7),
-		$(period_num pa.date 7)
-order by
-		$(employee_name e),										{!user}
-		$(period_num pa.date 7)
-compute sum(sum(pa.hours))
-		by $(employee_name e)									{!user}
-go
+	select
+			{if !user}
+				pe.first_name "employee",
+			{endif}
+			pa.pay_rate "payrate",
+			{if !client}
+				c.name "client",
+			{endif}
+			-- $(period_name "$(period_num pa.date 7)" 7) "week",
+			sum(pa.hours) "hours"
+	from {~reporting}.pay_amount pa, {~timer}.employee e, {~timer}.client c,
+			{~t3}.person pe
+	where pa.emp_id = e.emp_id
+	and pa.client_id = c.client_id
+	and e.person_id = pe.person_id
+	group by pe.first_name, pa.pay_rate, c.name/*,
+			$(period_name "$(period_num pa.date 7)" 7)*/
+	order by pe.first_name, pa.payrate, c.name
+	/*
+	compute sum(sum(pa.hours))
+		by $(employee_name e), pa.payrate, c.name
+	*/
+;
+
+#&ignore
+#select
+#		$(employee_name e) "employee",							{!user}
+#		$(period_name "$(period_num pa.date 7)" 7) "week",
+#		sum(pa.hours) "hours"
+#from pay_amount pa, employee e
+#where pa.emp = e.emp
+#group by
+#		$(employee_name e),										{!user}
+#		$(period_name "$(period_num pa.date 7)" 7),
+#		$(period_num pa.date 7)
+#order by
+#		$(employee_name e),										{!user}
+#		$(period_num pa.date 7)
+#compute sum(sum(pa.hours))
+#		by $(employee_name e)									{!user}
+#;
