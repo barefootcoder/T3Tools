@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl -wT
 
 # For RCS:
 # $Date$
@@ -11,6 +11,7 @@ use strict;
 #use Barefoot::debug(1);						# comment out for production
 
 use CGI;
+use User::pwent;
 
 use Barefoot::base;
 use Barefoot::exception;
@@ -91,8 +92,10 @@ sub set_environment
 {
 	$ENV{PATH} .= ":/opt/sybase/bin:/usr/local/dbutils:/opt/sybase";
 	$ENV{SYBASE} = "/opt/sybase";
-	$ENV{USER} = "www" unless $ENV{USER};
-	$ENV{HOME} = "/home/$ENV{USER}" unless $ENV{HOME};
+	# note: use effective uid, not real uid
+	my $pw = getpwuid( $> );
+	$ENV{USER} = $pw->name unless $ENV{USER};
+	$ENV{HOME} = $pw->dir unless $ENV{HOME};
 
 =comment
 	# get CGI attributes and stick them in the environment too
