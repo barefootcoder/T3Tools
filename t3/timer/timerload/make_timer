@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  2000/10/19 21:18:48  tryan
+# Changed column name from emp to pay_to.
+#
 # Revision 1.2  2000/10/16 22:21:49  tryan
 # Added statements for creating the commission_modifier table.
 #
@@ -366,6 +369,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		emp					internal_id		NOT NULL,
 		client				internal_id		NULL,
 		proj				internal_id		NULL,
+		phase				internal_id		NULL,
 		rate_type			type_id			NOT NULL,
 		rate				money			NOT NULL,
 		start_date			datetime		NOT NULL,
