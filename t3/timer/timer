@@ -20,12 +20,11 @@ use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw<get_yn input>;
-use Barefoot::T3Timer qw<get_timer_info do_timer_command this_week_totals
-		insert_time_log>;
+use Barefoot::T3Timer qw<get_timer_info do_timer_command this_week_totals>;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
-use Barefoot::T3::Timer qw<calc_date calc_time>;
+use Barefoot::T3::Timer qw<calc_date calc_time test_connection>;
 use Barefoot::T3::db_get qw<client_rounding proj_requirements>;
 
 
