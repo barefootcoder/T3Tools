@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  1998/12/31 19:02:47  buddy
+# decommented the dbf2sybase line
+#
 # Revision 1.1  1998/12/17 04:08:25  gregg
 # Initial revision
 #
@@ -169,19 +172,21 @@ run_query -S$server -U$user -D$destdb <<-END
 		comments			varchar(255)	NULL,
 		req_billing			bit				NOT NULL,
 		invoice_num			char(7)			NULL,
+		date_paid			datetime		NULL,
 		req_sales_comm		bit				NOT NULL,
 		sales_comm_date		smalldatetime	NULL,
 		req_admin_comm		bit				NOT NULL,
 		admin_comm_date		smalldatetime	NULL,
 		req_referral_comm	bit				NOT NULL,
 		referral_comm_paid	smalldatetime	NULL,
+		payroll_paid		datetime		NULL,
 		chguser				varchar(20)		NOT NULL,
 		chgdate				datetime		NOT NULL
 	")
 
 	insert log
 	select empcode, client, proj, phase, cliproj, date, time, comments,
-		1, invoice, 0, NULL, 0, NULL, 0, NULL,
+		1, invoice, paid, 0, NULL, 0, NULL, 0, NULL, payroll,
 		isnull(chguser, "UNKNOWN"), isnull(chgdate, $SMALL_BEGINNING_OF_TIME)
 	from $srcdb..log
 	where proj is not NULL
@@ -204,23 +209,6 @@ run_query -S$server -U$user -D$destdb <<-END
 	create unique clustered index id
 	on log (id)
 	go
-
-
-	-- rate									(new table)
-
-	$(overwrite_table rate "
-		rate_type			char(1)			NOT NULL,
-		rate				money			NOT NULL,
-		to_whom				char(3)			NOT NULL,
-		emp					char(3)			NULL,
-		client				char(3)			NULL,
-		proj				char(3)			NULL,
-		start_date			datetime		NOT NULL,
-		end_date			datetime		NOT NULL
-	")
-
-	insert rate
-	select 'P', rate, 
 
 
 	-- test queries
