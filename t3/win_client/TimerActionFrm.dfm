@@ -1,6 +1,6 @@
 object TimerActionForm: TTimerActionForm
-  Left = 270
-  Top = 538
+  Left = 87
+  Top = 599
   BorderIcons = [biSystemMenu]
   BorderStyle = bsToolWindow
   Caption = ' '

@@ -271,8 +271,8 @@ void MessageMgr::confirmDelivery (const T3Message& what_messg)
 	//build status message to send out (the 'from' of received will now be 'to')
 	map<string, string> attr;
 	attr["id"] = what_messg.getAttribute("id");
-	attr["to"] = IniOpt->getValue("user_name").c_str(); 
-	attr["from"] = what_messg.getAttribute("from");
+	attr["from"] = IniOpt->getValue("user_name").c_str(); 
+	attr["to"] = what_messg.getAttribute("from");
 	attr["status"] = "NORMAL_DLVD";
 	attr["location"] = IniOpt->getValue("user_location").c_str();
 	T3Message trans_out("MESSAGE", attr, "");

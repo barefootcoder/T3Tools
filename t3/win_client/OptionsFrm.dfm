@@ -1,6 +1,6 @@
 object OptionsForm: TOptionsForm
-  Left = 498
-  Top = 268
+  Left = 613
+  Top = 402
   BorderIcons = []
   BorderStyle = bsSingle
   Caption = 'General Options'
@@ -50,7 +50,7 @@ object OptionsForm: TOptionsForm
     Top = 29
     Width = 450
     Height = 358
-    ActivePage = TalkerOptions
+    ActivePage = TimerPreferences
     Align = alClient
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
@@ -322,20 +322,6 @@ object OptionsForm: TOptionsForm
         TabOrder = 4
         Text = 'Arial'
       end
-      object TestMode: TCheckBox
-        Left = 346
-        Top = 121
-        Width = 73
-        Height = 25
-        Caption = 'Test Mode'
-        Font.Charset = ANSI_CHARSET
-        Font.Color = clNavy
-        Font.Height = -11
-        Font.Name = 'Arial'
-        Font.Style = []
-        ParentFont = False
-        TabOrder = 7
-      end
       object UserStatus: TEdit
         Left = 224
         Top = 24
@@ -347,7 +333,7 @@ object OptionsForm: TOptionsForm
         Font.Name = 'Arial'
         Font.Style = [fsBold]
         ParentFont = False
-        TabOrder = 8
+        TabOrder = 7
         Text = 'UserStatus'
       end
       object SelectMode: TCheckBox
@@ -364,7 +350,7 @@ object OptionsForm: TOptionsForm
         Font.Name = 'Arial'
         Font.Style = []
         ParentFont = False
-        TabOrder = 9
+        TabOrder = 8
       end
       object ReplaySound: TEdit
         Left = 224
@@ -380,7 +366,7 @@ object OptionsForm: TOptionsForm
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 10
+        TabOrder = 9
         Text = '180'
       end
       object ReplaySoundChange: TUpDown
@@ -395,7 +381,7 @@ object OptionsForm: TOptionsForm
         ParentShowHint = False
         Position = 180
         ShowHint = True
-        TabOrder = 11
+        TabOrder = 10
         Thousands = False
         Wrap = True
       end
@@ -411,7 +397,7 @@ object OptionsForm: TOptionsForm
         Font.Name = 'Arial'
         Font.Style = []
         ParentFont = False
-        TabOrder = 12
+        TabOrder = 11
         OnClick = SoundOffClick
       end
       object MessageSound: TComboBox
@@ -424,9 +410,9 @@ object OptionsForm: TOptionsForm
         Font.Height = -11
         Font.Name = 'Arial'
         Font.Style = []
-        ItemHeight = 14
+        ItemHeight = 0
         ParentFont = False
-        TabOrder = 13
+        TabOrder = 12
       end
       object UserLocation: TEdit
         Left = 16
@@ -439,7 +425,7 @@ object OptionsForm: TOptionsForm
         Font.Name = 'Arial'
         Font.Style = [fsBold]
         ParentFont = False
-        TabOrder = 14
+        TabOrder = 13
         Text = 'UserName'
       end
       object ConfirmOnClear: TCheckBox
@@ -456,7 +442,7 @@ object OptionsForm: TOptionsForm
         Font.Style = []
         ParentFont = False
         State = cbChecked
-        TabOrder = 15
+        TabOrder = 14
       end
     end
     object TimerOptions: TTabSheet
@@ -464,8 +450,68 @@ object OptionsForm: TOptionsForm
       ImageIndex = 1
       TabVisible = False
     end
+    object TimerPreferences: TTabSheet
+      Caption = '&Timer Preferences'
+      ImageIndex = 3
+      object Label23: TLabel
+        Left = 122
+        Top = 24
+        Width = 175
+        Height = 14
+        Alignment = taRightJustify
+        Caption = 'Update Timer List from Server every'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object Label24: TLabel
+        Left = 360
+        Top = 24
+        Width = 37
+        Height = 14
+        Caption = 'Minutes'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+      end
+      object txtTimerPingInterval: TEdit
+        Left = 304
+        Top = 20
+        Width = 33
+        Height = 23
+        Hint = 'Set to 0 for never resending'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 0
+        Text = '10'
+      end
+      object UpDown1: TUpDown
+        Left = 337
+        Top = 20
+        Width = 13
+        Height = 23
+        Associate = txtTimerPingInterval
+        Min = 0
+        Max = 600
+        Position = 10
+        TabOrder = 1
+        Wrap = True
+      end
+    end
     object TalkerAdvanced: TTabSheet
-      Caption = 'Talker &Advanced'
+      Caption = '&Communication'
       ImageIndex = 2
       object Label15: TLabel
         Left = 34
@@ -576,8 +622,8 @@ object OptionsForm: TOptionsForm
         ParentFont = False
       end
       object Label12: TLabel
-        Left = 26
-        Top = 304
+        Left = 18
+        Top = 212
         Width = 299
         Height = 14
         Caption = 'Abort a communication event if no response from server after'
@@ -589,8 +635,8 @@ object OptionsForm: TOptionsForm
         ParentFont = False
       end
       object Label13: TLabel
-        Left = 350
-        Top = 304
+        Left = 342
+        Top = 212
         Width = 42
         Height = 14
         Caption = 'seconds'
@@ -718,8 +764,8 @@ object OptionsForm: TOptionsForm
         Wrap = True
       end
       object CommTimeout: TEdit
-        Left = 327
-        Top = 302
+        Left = 319
+        Top = 210
         Width = 20
         Height = 18
         AutoSize = False
@@ -732,10 +778,20 @@ object OptionsForm: TOptionsForm
         TabOrder = 8
         Text = '10'
       end
-    end
-    object TimerPreferences: TTabSheet
-      Caption = '&Timer Preferences'
-      ImageIndex = 3
+      object chkTestMode: TCheckBox
+        Left = 324
+        Top = 240
+        Width = 97
+        Height = 17
+        Caption = 'Test Mode'
+        Font.Charset = ANSI_CHARSET
+        Font.Color = clNavy
+        Font.Height = -11
+        Font.Name = 'Arial'
+        Font.Style = []
+        ParentFont = False
+        TabOrder = 9
+      end
     end
     object Admin: TTabSheet
       Caption = 'A&dmin'
@@ -835,7 +891,7 @@ object OptionsForm: TOptionsForm
     Font.Style = []
     MinFontSize = 0
     MaxFontSize = 0
-    Left = 396
-    Top = 289
+    Left = 412
+    Top = 57
   end
 end

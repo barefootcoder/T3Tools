@@ -414,7 +414,7 @@ void __fastcall TMessageActionForm::UserListClick(TObject *Sender)
 	for (int i = temp_history1->size() - 1; i >= 0 ; i--)	//read messgs in reverse order
 	{
 		T3Message mess("MESSAGE", (*temp_history1)[i].c_str());			//next message
-		ShowMessage((*temp_history1)[i].c_str());
+		//ShowMessage((*temp_history1)[i].c_str());
 
 		AnsiString from = mess.getAttribute("from").c_str();
 		if (UserList->Items->IndexOf(from) == -1 ||

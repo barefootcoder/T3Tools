@@ -4,6 +4,7 @@
 
 #include <io.h>
 
+#include "t3client.h"
 #include "OptionsFrm.h"
 #include "IniOptions.h"
 #include "MainFrm.h"	//limit calling MainFrm interface to OptionsFrm OnClose
@@ -103,8 +104,13 @@ void TOptionsForm::scatterOptions()
 	}
 
 	//timer settings
-	ShowTimer->Checked = (IniOpt->getValue("timer_active", "0") == "1");
+	ShowTimer->Checked = !!IniOpt->getValueInt("timer_active", 0);
+	txtTimerPingInterval->Text = IniOpt->getValueInt("timer_ping_interval", 10);
 
+	// test mode
+	chkTestMode->Checked = !!IniOpt->getValueInt("test_mode", 0);
+
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -150,11 +156,13 @@ void TOptionsForm::gatherOptions()
 
 	//timer settings
 	IniOpt->setValue("timer_active", ShowTimer->Checked ? "1" : "0");
+	IniOpt->setValueInt("timer_ping_interval",
+    								txtTimerPingInterval->Text.ToIntDef(10));
 
-	//non-persistent settings
-	bool persistent = false;
-	IniOpt->setValue("test_mode", TestMode->Checked ? "1" : "0", persistent);
+	// test mode
+	IniOpt->setValue("test_mode", chkTestMode->Checked ? "1" : "0");
 
+	return;
 }
 //---------------------------------------------------------------------------
 
@@ -168,19 +176,7 @@ void __fastcall TOptionsForm::SoundOffClick(TObject *Sender)
 
 void TOptionsForm::readWavFilenames()
 {
-	String filespec;
-
-	if (getenv(HOME.c_str()))
-	{
-		filespec = String(getenv(HOME.c_str())) + '\\' + SOUNDSFOLDER;
-	}
-	else
-	{
-		filespec = SOUNDSFOLDER;
-	}
-
-	filespec += "\\*.wav";
-
+	String filespec = T3Pathname().c_str() + String("\\*.wav");
 	MessageSound->Clear();
 
 	try
@@ -202,3 +198,4 @@ void TOptionsForm::readWavFilenames()
 
 }
 //---------------------------------------------------------------------------
+

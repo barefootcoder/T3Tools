@@ -13,17 +13,20 @@
 #include <ImgList.hpp>
 #include <ComCtrls.hpp>
 #include <MPlayer.hpp>
+#include <Menus.hpp>
 
 #include <map>
+#include <string>
 #include <vector>
+using namespace std;
+
+#include "TimerMgr.h"
+using namespace barefoot;
 
 #include "TimersImp.h"
 #include "T3Message.h"
+#include "TimerActionFrm.h"
 
-using namespace std;
-
-const String INIFILENAME = "t3client.ini";
-const String HISTFILENAME = "t3client.his";		   
 const String CONNECTING_TO_SERVER = "COMMUNICATING";		//display on status bar
 const String CONNECT_ERROR = "CANNOT CONNECT TO SERVER";
 const String CONNECT_ERROR_STATUS = "ERROR COMMUNICATING";	//display on status bar
@@ -70,6 +73,29 @@ __published:	// IDE-managed Components
 	TImageList *HoursBlack;
 	TImageList *ContactsGlyphs;
 	TImage *InTransit;
+	TImageList *TimerIcons;
+	TPopupMenu *mnuTimerCmd;
+	TMenuItem *mnuStart;
+	TMenuItem *mnuFullTime;
+	TMenuItem *mnuHalfTime;
+	TMenuItem *mnuPauseTimer;
+	TMenuItem *mnuDoneTimer;
+	TMenuItem *mnuCancelTimer;
+	TMenuItem *mnuOptions;
+	TMenuItem *mnuBarMaxHours;
+	TMenuItem *N1;
+	TMenuItem *mnuBreakdownTimer;
+	TMenuItem *N2;
+	TMenuItem *mnuTotalTimer;
+	TPopupMenu *mnuTimerNew;
+	TMenuItem *mnuNewTimer;
+	TMenuItem *mnuLogTimer;
+	TMenuItem *N3;
+	TMenuItem *mnuTotalTimer2;
+	TMenuItem *mnuRename;
+	TMenuItem *mnuUseBars;
+	TMenuItem *mnuUpdate;
+	TMenuItem *mnuUpdate2;
 	void __fastcall FormResize(TObject *Sender);
 	void __fastcall TimersListClick(TObject *Sender);
 	void __fastcall SystemTimerTimer(TObject *Sender);
@@ -81,7 +107,6 @@ __published:	// IDE-managed Components
           TShiftState Shift, int X, int Y);
 	void __fastcall TimersListDrawItem(TWinControl *Control, int Index,
           TRect &Rect, TOwnerDrawState State);
-	void __fastcall AddTimerClick(TObject *Sender);
 	void __fastcall HideContactsClick(TObject *Sender);
 	void __fastcall HideTimersClick(TObject *Sender);
 	void __fastcall RunningDudeClick(TObject *Sender);
@@ -108,7 +133,24 @@ __published:	// IDE-managed Components
 	void __fastcall FormKeyDown(TObject *Sender, WORD &Key,
           TShiftState Shift);
 	void __fastcall InTransitClick(TObject *Sender);
+	void __fastcall mnuNewTimerClick(TObject *Sender);
+	void __fastcall mnuLogTimerClick(TObject *Sender);
+	void __fastcall mnuFullTimeClick(TObject *Sender);
+	void __fastcall mnuHalfTimeClick(TObject *Sender);
+	void __fastcall mnuTotalTimerClick(TObject *Sender);
+	void __fastcall mnuBreakdownTimerClick(TObject *Sender);
+	void __fastcall mnuCancelTimerClick(TObject *Sender);
+	void __fastcall mnuDoneTimerClick(TObject *Sender);
+	void __fastcall mnuPauseTimerClick(TObject *Sender);
+	void __fastcall mnuRenameClick(TObject *Sender);
+	void __fastcall mnuBarMaxHoursClick(TObject *Sender);
+	void __fastcall mnuUseBarsClick(TObject *Sender);
+	void __fastcall mnuUpdateClick(TObject *Sender);
 private:	// User declarations
+
+	// Timer Message Manager
+	TimerMgr& m_tmrmgr;
+
 	bool newmode;
 	bool online;							//this user is on-line for messaging
 	bool available;							//this user is available to talk
@@ -118,9 +160,7 @@ private:	// User declarations
 	bool hidden_timer_panes[3];				//to keep track of timer panes display
 	bool no_timer_update;					//prevents repainting of the timers
 	unsigned __int64 message_base_id;		//64-bit message id for a session
-	map<String, Timer> TimerCollection;		//collection of timers indxd by name
-	map<String, Timer>::iterator CurrTimer;		//to keep track of active timer
-	int item_number;	//currently picked (right-clicked, etc.) item on GUI list
+
 	int contacts_width;	//width of Contacts list
 	int timernames_width;	//width of leftmost (variable) pane of timers list
 
@@ -130,12 +170,12 @@ private:	// User declarations
 	bool canNixWidth (bool caller_is_talker);
 
 	void displayTestStuff (int what_test, String whatever);	//development only
-
-	String getPathFilename(String filename, String extension);
-
 	int getScrollPosition(HWND handle);
 	void setScrollPosition(HWND handle, short int pos);
 	void keepWithinScreen();
+
+	void doContactMaintenance ();
+	void doTimerMaintenance ();
 
 public:		// User declarations
 	__fastcall TMainForm(TComponent* Owner);
@@ -146,21 +186,11 @@ public:		// User declarations
 	map<string, T3Message>* pUserCollection;	//collection of ON/OFF mssgs = Users
 	vector<string>* puser_list;
 
-	String hist_filename;					//full-path name of history file
 	TMessageActionForm* form_last_viewed;	//last message form that had focus
 	String status1, status2;				//strings to display on status bar
 
 	//Timers management methods
 	void activateTimerFeatures();
-	void addNewTimer ();
-	void startTimer ();
-	void stopTimer ();
-	void doneWithTimer ();
-	void cancelTimer (bool transmit = true);
-	void setOptions (int item_index);
-	void manageTimerButtons ();
-	void sendTimerMessage (const map<string, string>& attr, 
-						   const string& content);
 
 	//Messages management methods
 	void ferryMessage(T3Message what_messg);		//the only message-out gateway
@@ -171,7 +201,6 @@ public:		// User declarations
 						String what_users_to);
 	void broadcastMessage (TMessageActionForm* MessageActionForm);
 	void sendStatusMessage (String what_status);
-	void doContactMaintenance ();
 
 	//Ini file management methods and properties
 	void initApp ();

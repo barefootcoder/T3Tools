@@ -7,6 +7,9 @@
 #include <map>
 using namespace std;
 
+class T3Message;
+typedef multimap<string, T3Message> T3MultiMap;
+
 //-----------------------------------------------------------------------------
 class T3Message
 {

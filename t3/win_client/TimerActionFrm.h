@@ -37,6 +37,4 @@ public:			// User declarations
 	__fastcall TTimerActionForm(TComponent* Owner);
 };
 //---------------------------------------------------------------------------
-extern PACKAGE TTimerActionForm *TimerActionForm;
-//---------------------------------------------------------------------------
 #endif

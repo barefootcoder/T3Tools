@@ -7,7 +7,6 @@
 //---------------------------------------------------------------------------
 #pragma package(smart_init)
 #pragma resource "*.dfm"
-TTimerActionForm *TimerActionForm;
 //---------------------------------------------------------------------------
 __fastcall TTimerActionForm::TTimerActionForm(TComponent* Owner)
 	: TForm(Owner)

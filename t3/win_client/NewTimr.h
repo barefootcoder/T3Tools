@@ -7,6 +7,11 @@
 #include <StdCtrls.hpp>
 #include <Forms.hpp>
 #include <Buttons.hpp>
+#include <ExtCtrls.hpp>
+
+#include "TimerMgr.h"
+using namespace barefoot;
+
 //---------------------------------------------------------------------------
 class TNewTimer : public TForm
 {
@@ -27,15 +32,24 @@ __published:	// IDE-managed Components
 	TComboBox *TimerClient;
 	TBitBtn *Save;
 	TBitBtn *Cancel;
+	TCheckBox *chkHalfTime;
+	TBevel *Bevel1;
 	void __fastcall FormKeyDown(TObject *Sender, WORD &Key,
           TShiftState Shift);
+	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
+
 private:	// User declarations
 
+	TimerMgr& m_tmrmgr;
+	string m_tmrname;
+	string m_command;
+
+
 public:		// User declarations
-	__fastcall TNewTimer(TComponent* Owner);
+
+	__fastcall TNewTimer(TComponent* Owner, TimerMgr& mgr,
+						 const string& tmrname, const string& command);
 
 };
-//---------------------------------------------------------------------------
-extern PACKAGE TNewTimer *NewTimer;
 //---------------------------------------------------------------------------
 #endif

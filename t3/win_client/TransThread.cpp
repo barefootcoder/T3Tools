@@ -56,7 +56,7 @@ void __fastcall TransferThread::Execute()
 			//attempt to connect to server up to 2X
 			for (int i = 0; i < 2; i++)
 			{
-				if ( sendT3Message(im, t3rm, cgi_exe, timeout, keeplog) )
+				if ( sendT3Message(im, t3rm, "from", cgi_exe, timeout, keeplog) )
 				{
 					result = EXIT_SUCCESS;
 					break;

@@ -13,7 +13,6 @@
 
 //---------------------------------------------------------------------------
 
-const String HOME = "HOME";		//holds name of env var w/ user path name
 const String SOUNDSFOLDER = "sounds";
 
 //---------------------------------------------------------------------------
@@ -38,7 +37,6 @@ __published:	// IDE-managed Components
 	TEdit *MessageFont;
 	TSpeedButton *SetMessageFont;
 	TFontDialog *FontDialog1;
-	TCheckBox *TestMode;
 	TEdit *UserStatus;
 	TLabel *Label7;
 	TPanel *Panel1;
@@ -79,6 +77,11 @@ __published:	// IDE-managed Components
 	TTabSheet *TimerPreferences;
 	TTabSheet *Admin;
 	TCheckBox *ShowTimer;
+	TLabel *Label23;
+	TEdit *txtTimerPingInterval;
+	TUpDown *UpDown1;
+	TLabel *Label24;
+	TCheckBox *chkTestMode;
 	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
 	void __fastcall SetMessageFontClick(TObject *Sender);
 	void __fastcall FormShow(TObject *Sender);
