@@ -1,6 +1,6 @@
 #! /usr/local/bin/perl
 
-# For RCS:
+# For CVS:
 # $Date$
 #
 # $Id$
@@ -18,7 +18,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000 Barefoot Software.
+# licensing agreement.  Copyright (c) 2000-2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -28,9 +28,11 @@ package T3::Client;
 
 use strict;
 
+use Carp;
+
 use Barefoot::base;
 use Barefoot::exception;
-use Barefoot::T3::common;
+use Barefoot::T3::base;
 
 
 our %output_pipes;
@@ -57,10 +59,12 @@ END
 
 sub _request_to_pipe
 {
-	T3::debug(2, "about to open pipe");
-	open(PIPE, ">" . T3::REQUEST_FILE)
-			or die("can't open request pipe for writing");
-	T3::debug(2, "opened pipe");
+	my $reqfile = (DEBUG ? "." : t3_config(T3::REQUESTDIR_DIRECTIVE))
+			. "/" . T3::REQUEST_FILE;
+
+	T3::debug(4, "about to open pipe $reqfile");
+	open(PIPE, ">$reqfile") or croak("can't open request pipe for writing");
+	T3::debug(5, "opened pipe");
 
 	if (DEBUG)
 	{
@@ -68,30 +72,31 @@ sub _request_to_pipe
 				if grep { /\n/ } @_;
 	}
 	print PIPE "$_\n" foreach @_;
-	T3::debug(2, "printed to pipe");
+	T3::debug(5, "printed to pipe");
 
 	close(PIPE);
-	T3::debug(2, "closed pipe");
+	T3::debug(5, "closed pipe");
 }
 
 
 sub send_request
 {
-	my $module = shift;
-	my $output_id = shift;
-	my $request_string = "module=$module output=$output_id";
+	my $request = shift || "";
+	my $output_id = shift || "";
+	my $request_string = "request=$request output=$output_id";
 
 	if (ref($_[0]) eq 'HASH')
 	{
 		my $options = shift;
-		foreach my $key (%$options)
+		while (my ($key, $value) = each %$options)
 		{
-			$request_string .= " $key=$options->{$key}";
+			die("no value specified for option $key") unless $value;
+			$request_string .= " $key=$value";
 		}
 	}
 
 	$request_string .= " lines=" . scalar(@_) if @_;
-	T3::debug("request string is $request_string\n");
+	T3::debug(2, "request string is $request_string\n");
 
 	_request_to_pipe($request_string, @_);
 }
@@ -130,11 +135,11 @@ sub retrieve_output
 					or die("can't open output pipe for reading ($pipe_file)");
 			@output = <PIPE>;
 		} 3;
-		T3::debug(2, "read output") if $success;
+		T3::debug(3, "read output") if $success;
 		die("never got EOF from output pipe") if @output and not $success;
 		last if $success and @output;
 	}
-	T3::debug(2, "gave up trying to get output");
+	T3::debug(3, "gave up trying to get output");
 	die("can't seem to get any output from $pipe_file")
 			unless $success and @output;
 	close(PIPE);
