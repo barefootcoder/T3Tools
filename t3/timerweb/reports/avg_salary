@@ -1,3 +1,52 @@
 -- SORT GROUP: Employee Reports
 -- TITLE: Average Salary for Staff
 
+set nocount on
+
+declare @header varchar(100)
+select @header = '<CENTER><H3>Average "Salary" for ' + rtrim(e.fname)
+		+ ' ' + rtrim(e.lname) + '</H3>'
+from employee e
+where e.login = '{user}'
+
+print ''
+print @header
+print 'Period: from {start_date} to {end_date}</CENTER>'
+
+set nocount off
+go
+
+$(build_pay_amount "
+	log.date between '{start_date}' and '{end_date}'
+	and exists
+	(
+		select 1
+		from employee e
+		where log.emp = e.emp
+		and e.login = '{user}'
+	)
+")
+
+exec calc_pay_amount
+go
+
+select $(period_num pa.date 7) "period_num", sum(pa.total_pay) "amount"
+into #weekly_amount
+from pay_amount pa
+group by $(period_num pa.date 7)
+go
+
+declare @weekly_salary money
+select @weekly_salary = avg(amount)
+from #weekly_amount
+
+select 'Average per week: $' + convert(varchar(10), @weekly_salary, 1)
+select 'Average per year: $' + convert(varchar(10), @weekly_salary * 52, 1)
+go
+
+print ''
+select $(period_start wa.period_num 7) "start_date",
+		$(period_end wa.period_num 7) "end_date", amount
+from #weekly_amount wa
+order by wa.period_num
+go
