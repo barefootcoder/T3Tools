@@ -22,7 +22,7 @@
 # #########################################################################
 #
 # All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000 Barefoot Software.
+# licensing agreement.  Copyright (c) 2002 Barefoot Software.
 #
 ###########################################################################
 
@@ -31,6 +31,8 @@ package DataStore;
 ### Private ###############################################################
 
 use strict;
+
+#use Barefoot::debug(1);
 
 use DBI;
 use Carp;
@@ -84,6 +86,8 @@ our $funcs =
 						},
 };
 
+our $procs = {};				# we don't use this, but someone else might
+
 1;
 
 
@@ -94,11 +98,13 @@ our $funcs =
 
 # helper methods
 
+
 sub _ping
 {
 	my $this = shift;
 	return $this->{dbh}->ping();
 }
+
 
 sub _login
 {
@@ -107,6 +113,10 @@ sub _login
 	if (exists $this->{config}->{connect_string})
 	{
 		my $server = $this->{config}->{server};
+		print STDERR "attempting to get password for server $server "
+				. "user $this->{user}\n" if DEBUG >= 3;
+		print STDERR "environment for dbpasswd: user $ENV{USER} "
+				. "home $ENV{HOME} path $ENV{PATH}\n" if DEBUG >= 4;
 		my $passwd = `dbpasswd $server $this->{user} 2>/dev/null`;
 		chomp $passwd;
 		croak("can't get db password") unless $passwd;
@@ -142,6 +152,7 @@ sub _login
 	}
 }
 
+
 sub _initialize_vars
 {
 	my $this = shift;
@@ -157,6 +168,7 @@ sub _initialize_vars
 	# _dump_attribs($this, "after var init");
 }
 
+
 sub _make_schema_trans
 {
 	my $this = shift;
@@ -166,133 +178,9 @@ sub _make_schema_trans
 			if exists $this->{config}->{schema_translation_code};
 }
 
-# for debugging
-sub _dump_attribs
-{
-	my $this = shift;
-	my ($msg) = @_;
 
-	foreach (keys %{$this->{config}})
-	{
-		print STDERR "  $msg: config->$_ = $this->{config}->{$_}\n";
-	}
-
-	foreach (keys %{$this->{vars}})
-	{
-		print STDERR "  $msg: vars->$_ = $this->{vars}->{$_}\n";
-	}
-
-	foreach (keys %$this)
-	{
-		print STDERR "  $msg: $_ = $this->{$_}\n"
-				unless $_ eq 'config' or $_ eq 'vars';
-	}
-}
-
-
-# interface methods
-
-sub open
-{
-	my $class = shift;
-	my ($data_store_name, $user_name) = @_;
-
-	my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-	# print STDERR "file name is $ds_filename\n";
-	croak("data store $data_store_name not found") unless -e $ds_filename;
-
-	my $this = {};
-	eval { $this->{config} = retrieve($ds_filename); };
-	croak("read error opening data store") unless $this->{config};
-
-	# supply user name for this session
-	croak("must specify user to data store") unless $user_name;
-	$this->{user} = $user_name;
-
-	# eval schema translation code if it's there
-	_make_schema_trans($this);
-
-	# set up variable space; fill it with constants if any
-	_initialize_vars($this);
-
-	# mark unmodified
-	$this->{modified} = false;
-
-	# _dump_attribs($this, "in open");
-
-	bless $this, $class;
-	$this->_login();
-	# print STDERR "this is a ", ref $this, " for ds $data_store_name\n";
-	return $this;
-}
-
-sub create
-{
-	my $class = shift;
-	my ($data_store_name, %attribs) = @_;
-
-	# error check potential attributes
-	foreach my $key (keys %attribs)
-	{
-		croak("can't create data store with unknown attribute $key")
-				unless grep { /$key/ } (
-					qw<connect_string initial_commands server user>,
-					qw<translation_type>
-				);
-	}
-
-	my $this = {};
-
-	# user has to be present, and should be moved out of config section
-	croak("must specify user to data store") unless exists $attribs{user};
-	$this->{user} = $attribs{user};
-	delete $attribs{user};
-
-	$this->{config} = \%attribs;
-	$this->{config}->{name} = $data_store_name;
-	$this->{modified} = true;
-
-	_initialize_vars($this);
-
-	bless $this, $class;
-	$this->_login();
-
-	return $this;
-}
-
-sub DESTROY
-{
-	my $this = shift;
-	# $this->_dump_attribs("in dtor");
-
-	$this->commit_configs();
-}
-
-sub commit_configs
-{
-	my $this = shift;
-
-	if ($this->{modified})
-	{
-		$this->{modified} = false;
-
-		my $data_store_name = $this->{config}->{name};
-		my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-		# print STDERR "destroying object, saving to file $ds_filename\n";
-
-		croak("can't save data store specification")
-				unless store($this->{config}, $ds_filename);
-	}
-}
-
-sub last_error
-{
-	my $this = shift;
-
-	return $this->{last_err};
-}
-
-sub do
+# handle all substitutions on queries
+sub _transform_query
 {
 	my $this = shift;
 	my ($query) = @_;
@@ -305,7 +193,8 @@ sub do
 	# reference--or more--to the object).  this could produce weird results,
 	# including trying to save the same data store twice (or more) in a row
 	# with different modifications.  for that reason, we just disallow it
-	# altogether.
+	# altogether.  and since this function gets called by every main
+	# subroutine that calls queries, this is a good common place to check.
 	if ($this->{modified})
 	{
 		croak("can't execute query with config's pending; "
@@ -318,6 +207,45 @@ sub do
 	if ($query =~ /{/)	# if you want % to work in vi, you need a } here
 	{
 		# $this->_dump_attribs("before SQL preproc");
+
+		# positive conditionals
+		while ($query =~ / ^ .*? ( {\? (\w+) } ) .*? $ /mx)
+		{
+			my $line = quotemeta($&);
+			my $conditional = quotemeta($1);
+			my $varname = $2;
+
+			# if the variable exists, just remove the conditional
+			# else, get rid of the whole line it's in
+			if (exists $this->{vars}->{$varname})
+			{
+				$query =~ s/$conditional//g;
+			}
+			else
+			{
+				# the /g is not likely to be useful here, but what the hey
+				$query =~ s/$line//g;
+			}
+		}
+
+		# negative conditionals
+		# basically the same, only reversed
+		while ($query =~ / ^ .*? ( {\! (\w+) } ) .*? $ /mx)
+		{
+			my $line = $&;
+			my $conditional = $1;
+			my $varname = $2;
+
+			if (exists $this->{vars}->{$varname})
+			{
+				# ditto on usefulness of /g
+				$query =~ s/$line//g;
+			}
+			else
+			{
+				$query =~ s/$conditional//g;
+			}
+		}
 
 		# schema translations
 		while ($query =~ / {% (\w+) } \. /x)
@@ -363,6 +291,163 @@ sub do
 		}
 	}
 
+	print "DataStore current query:\n$query\n" if $this->{show_queries};
+
+	return $query;
+}
+
+
+# for debugging
+sub _dump_attribs
+{
+	my $this = shift;
+	my ($msg) = @_;
+
+	foreach (keys %{$this->{config}})
+	{
+		print STDERR "  $msg: config->$_ = $this->{config}->{$_}\n";
+	}
+
+	foreach (keys %{$this->{vars}})
+	{
+		print STDERR "  $msg: vars->$_ = $this->{vars}->{$_}\n";
+	}
+
+	foreach (keys %$this)
+	{
+		print STDERR "  $msg: $_ = $this->{$_}\n"
+				unless $_ eq 'config' or $_ eq 'vars';
+	}
+}
+
+
+# interface methods
+
+
+sub open
+{
+	my $class = shift;
+	my ($data_store_name, $user_name) = @_;
+
+	my $ds_filename = "$data_store_dir/$data_store_name.dstore";
+	# print STDERR "file name is $ds_filename\n";
+	croak("data store $data_store_name not found") unless -e $ds_filename;
+
+	my $this = {};
+	eval { $this->{config} = retrieve($ds_filename); };
+	croak("read error opening data store") unless $this->{config};
+
+	# supply user name for this session
+	croak("must specify user to data store") unless $user_name;
+	$this->{user} = $user_name;
+
+	# eval schema translation code if it's there
+	_make_schema_trans($this);
+
+	# set up variable space; fill it with constants if any
+	_initialize_vars($this);
+
+	# mark unmodified
+	$this->{modified} = false;
+	$this->{show_queries} = false;
+
+	# _dump_attribs($this, "in open");
+
+	bless $this, $class;
+	$this->_login();
+	# print STDERR "this is a ", ref $this, " for ds $data_store_name\n";
+	return $this;
+}
+
+
+sub create
+{
+	my $class = shift;
+	my ($data_store_name, %attribs) = @_;
+
+	# error check potential attributes
+	foreach my $key (keys %attribs)
+	{
+		croak("can't create data store with unknown attribute $key")
+				unless grep { /$key/ } (
+					qw<connect_string initial_commands server user>,
+					qw<translation_type>
+				);
+	}
+
+	my $this = {};
+
+	# user has to be present, and should be moved out of config section
+	croak("must specify user to data store") unless exists $attribs{user};
+	$this->{user} = $attribs{user};
+	delete $attribs{user};
+
+	$this->{config} = \%attribs;
+	$this->{config}->{name} = $data_store_name;
+	$this->{modified} = true;
+	$this->{show_queries} = false;
+
+	_initialize_vars($this);
+
+	bless $this, $class;
+	$this->_login();
+
+	return $this;
+}
+
+
+sub DESTROY
+{
+	my $this = shift;
+	# $this->_dump_attribs("in dtor");
+
+	$this->commit_configs();
+}
+
+
+sub commit_configs
+{
+	my $this = shift;
+
+	if ($this->{modified})
+	{
+		$this->{modified} = false;
+
+		my $data_store_name = $this->{config}->{name};
+		my $ds_filename = "$data_store_dir/$data_store_name.dstore";
+		# print STDERR "destroying object, saving to file $ds_filename\n";
+
+		croak("can't save data store specification")
+				unless store($this->{config}, $ds_filename);
+	}
+}
+
+
+sub last_error
+{
+	my $this = shift;
+
+	return $this->{last_err};
+}
+
+
+sub show_queries
+{
+	my $this = shift;
+	my $state = defined $_[0] ? $_[0] : true;
+
+	$this->{show_queries} = $state;
+}
+
+
+sub do
+{
+	my $this = shift;
+	my ($query) = @_;
+
+	# handle substitutions
+	$query = $this->_transform_query($query);
+
 	my $sth = $this->{dbh}->prepare($query);
 	unless ($sth)
 	{
@@ -385,6 +470,7 @@ sub do
 	return $results;
 }
 
+
 sub execute
 {
 	my $this = shift;
@@ -401,18 +487,103 @@ sub execute
 		if (exists $params{report})
 		{
 			my $rows = $res->rows_affected();
-			if ($rows == -1)
+			# maybe this should be "if ($res->{sth}->{NUM_OF_FIELDS})" ??
+			if ($res->{sth}->{NUM_OF_FIELDS})
 			{
 				$rows = 0;
 				++$rows while $res->next_row();
 			}
-			$report .= $params{report};
-			$report =~ s/%R/$rows/g;
+			if ($rows >= 0)
+			{
+				$report .= $params{report};
+				$report =~ s/%R/$rows/g;
+			}
 		}
 	}
 
 	return $report ? $report : true;
 }
+
+
+# despite its name, load_table can be used to load part of a table,
+# or even data from a multiple-table join
+sub load_table
+{
+	my $this = shift;
+	my ($query) = @_;
+
+	my $res = $this->do($query);
+	return undef unless $res;
+
+	return $res->{sth}->fetchall_arrayref({});
+}
+
+
+# for append_table, you need to send it a reference to an array of hash refs
+# all the hash keys in the hashes should be the same
+# your best bet is to only use a structure returned from load_table()
+sub append_table
+{
+	my $this = shift;
+	my ($table, $data) = @_;
+
+	# make sure we have at least one row
+	unless (@$data)
+	{
+		$this->{last_err} = "no rows passed to append_table";
+		return undef;
+	}
+
+	# build an insert statement
+	my @colnames = sort keys %{$data->[0]};
+	print STDERR "column names are: @colnames\n" if DEBUG >= 3;
+	my $columns = join(',', @colnames);
+	my $placeholders = join(',', ("?") x scalar(@colnames));
+	my $query = "insert $table ($columns) values ($placeholders)";
+	$query = $this->_transform_query($query);
+	print STDERR "query is: $query\n" if DEBUG >= 3;
+
+	# now prepare it
+	my $sth = $this->{dbh}->prepare($query);
+	unless ($sth)
+	{
+		$this->{last_err} = $this->{dbh}->errstr();
+		return undef;
+	}
+	print STDERR "query prepared successfully\n" if DEBUG >= 5;
+
+	foreach my $row (@$data)
+	{
+		if (DEBUG >= 4)
+		{
+			print STDERR "row: $_ => $row->{$_}\n" foreach @colnames;
+			print STDERR "sending bind values: @$row{@colnames}\n"
+		}
+		my $rows = $sth->execute(@$row{@colnames});
+		unless ($rows)
+		{
+			$this->{last_err} = $sth->errstr();
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+# replace_table just deletes all rows from the table, then calls
+# append_table for you.  THIS CAN BE VERY DESTRUCTIVE! (obviously)
+# please use with caution
+sub replace_table
+{
+	my $this = shift;
+	my ($table, $data) = @_;
+
+	return undef unless $this->do("delete from $table");
+
+	return $this->append_table($table, $data);
+}
+
 
 sub overwrite_table
 {
@@ -457,6 +628,7 @@ sub overwrite_table
 	return true;
 }
 
+
 sub configure_type
 {
 	my $this = shift;
@@ -465,6 +637,7 @@ sub configure_type
 	$this->{config}->{user_types}->{$user_type} = $base_type;
 	$this->{modified} = true;
 }
+
 
 sub configure_schema_translation
 {
@@ -477,6 +650,15 @@ sub configure_schema_translation
 }
 
 
+sub define_var
+{
+	my $this = shift;
+	my ($varname, $value) = @_;
+
+	$this->{vars}->{$varname} = $value;
+}
+
+
 
 ###########################################################################
 # The DataStore::results "subclass"
@@ -484,20 +666,23 @@ sub configure_schema_translation
 
 package DataStore::results;
 
+use Carp;
+
+use Barefoot::base;
+
+
 sub _get_colnum
 {
 	my $this = shift;
 	my ($name) = @_;
 
-	if (not exists $this->{colnames})
-	{
-		# then build it
-		my $colnames = $this->{sth}->{NAME};
-		$this->{colnames}->{$colnames->[$_]} = $_ foreach 0..$#$colnames;
-	}
-
-	return $this->{colnames}->{$name};
+	print STDERR "checking for column name: $name\n" if DEBUG >= 3;
+	croak("unknown column name $name")
+			unless exists $this->{sth}->{NAME_hash}->{$name};
+	print STDERR "found column name: $name\n" if DEBUG >= 5;
+	return $this->{sth}->{NAME_hash}->{$name};
 }
+
 
 sub next_row
 {
@@ -515,6 +700,7 @@ sub next_row
 	return 1;
 }
 
+
 sub rows_affected
 {
 	my $this = shift;
@@ -522,12 +708,14 @@ sub rows_affected
 	return $this->{rows};
 }
 
+
 sub num_cols
 {
 	my $this = shift;
 
 	return $this->{sth}->{NUM_OF_FIELDS};
 }
+
 
 sub col
 {
@@ -538,6 +726,16 @@ sub col
 
 	return $this->{currow}->[$col_id];
 }
+
+
+sub colname
+{
+	my $this = shift;
+	my ($colnum) = @_;
+
+	return $this->{sth}->{NAME}->[$colnum];
+}
+
 
 sub all_cols
 {
