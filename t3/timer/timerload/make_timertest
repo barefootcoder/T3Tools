@@ -1,0 +1,374 @@
+#! /bin/ksh
+
+# For RCS:
+# $Date$
+#
+# $Id$
+# $Revision$
+
+
+# create tables for TIMER
+#
+# these tables were originally created long ago (see the timerload script)
+# this script includes updates for new tables and fields to help prepare
+# TIMER for general release
+
+. /usr/local/bin/kshlib
+
+server=SYBASE_1
+user=sa
+destdb=timertest
+srcdb=timer
+
+while getopts ":S:U:D:d:h" opt
+do
+	case $opt in
+		S)  server=$OPTARG
+			;;
+		U)  user=$OPTARG
+			;;
+		D)  destdb=$OPTARG
+			;;
+		d)	srcdb=$OPTARG
+			;;
+		h)  echo "usage: $0 [-Sserver] [-Uusername] [-Ddest_db] [-dsrc_db]" >&2
+			echo "   defaults are -S$server -U$user -D$destdb -d$srcdb" >&2
+			exit
+			;;
+		:)  echo "$0: $OPTARG requires an argument ($0 -h for usage)" >&2
+			exit
+			;;
+		\?) echo "illegal option; $0 -h for usage" >&2
+			exit
+	esac
+done
+
+# build the tables
+if ! make_timer -S$server -U$user -D$destdb
+then
+	exit 1
+fi
+
+run_query -S$server -U$user -D$destdb <<-END
+
+	
+	-- int_project
+
+	print "building int_project"
+	go
+
+	insert int_project
+	select * from $srcdb..int_project
+	go
+
+
+	-- phase
+
+	print "building phase"
+	go
+
+	insert phase
+	select * from $srcdb..phase
+	go
+
+
+	-- client
+
+	print "building client"
+	go
+
+	insert client
+	select * from $srcdb..client
+	go
+
+
+	-- client_project
+
+	print "building client_project"
+	go
+
+	insert client_project
+	select * from $srcdb..client_project
+	go
+
+
+	-- project
+
+	print "building project"
+	go
+
+	insert project
+	select * from $srcdb..project
+	go
+
+
+	-- employee
+
+	print "building employee"
+	go
+
+	insert employee
+	select * from $srcdb..employee
+	go
+
+
+	-- client_employee
+
+	print "building client_employee"
+	go
+
+	insert client_employee
+	select * from $srcdb..client_employee
+	go
+
+
+	-- project_type
+
+	print "building project_type"
+	go
+
+	insert project_type
+	select * from $srcdb..project_type
+	go
+
+
+	-- commission_type
+
+	print "building commission_type"
+	go
+
+	insert commission_type
+	select * from $srcdb..commission_type
+	go
+
+
+	-- admin_commission_type
+
+	print "building admin_commission_type"
+	go
+
+	insert admin_commission_type
+	select * from $srcdb..admin_commission_type
+	go
+
+
+	-- pay_rate
+
+	print "building pay_rate"
+	go
+
+	insert pay_rate
+	select * from $srcdb..pay_rate
+	go
+
+
+	-- bill_rate
+
+	print "building bill_rate"
+	go
+
+	insert bill_rate
+	select * from $srcdb..bill_rate
+	go
+
+
+	-- billing_ratio
+
+	print "building billing_ratio"
+	go
+
+	insert billing_ratio
+	select * from $srcdb..billing_ratio
+	go
+
+
+	-- resource_rate
+
+	print "building resource_rate"
+	go
+
+	insert resource_rate
+	select * from $srcdb..resource_rate
+	go
+
+
+	-- resource_employee
+
+	print "building resource_employee"
+	go
+
+	insert resource_employee
+	select * from $srcdb..resource_employee
+	go
+
+
+	-- salesman
+
+	print "building salesman"
+	go
+
+	insert salesman
+	select * from $srcdb..salesman
+	go
+
+
+
+	-- admin_commission
+
+	print "building admin_commission"
+	go
+
+	insert admin_commission
+	select * from $srcdb..admin_commission
+	go
+
+
+	-- sales_commission
+
+	print "building sales_commission"
+	go
+
+	insert sales_commission
+	select * from $srcdb..sales_commission
+	go
+
+
+	-- referral_commission
+
+	print "building referral_commission"
+	go
+
+	insert referral_commission
+	select * from $srcdb..referral_commission
+	go
+
+
+	-- invoice
+
+	print "building invoice"
+	go
+
+	set identity_insert invoice on
+	go
+	insert invoice
+		(invoice_id, client, invoice_number, invoice_amount,
+				invoice_billdate, invoice_paydate,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..invoice
+	go
+	set identity_insert invoice off
+	go
+
+
+	-- payroll
+
+	print "building payroll"
+	go
+
+	set identity_insert payroll on
+	go
+	insert payroll
+		(payroll_id, period_start, period_end, payroll_amount,
+				overhead_amount, check_date,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..payroll
+	go
+	set identity_insert payroll off
+	go
+
+
+	-- commission_payment
+
+	print "building commission_payment"
+	go
+
+	set identity_insert commission_payment on
+	go
+	insert commission_payment
+		(payment_id, pay_type, pay_to, payment_amount,
+				check_number, check_date, comments,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..commission_payment
+	go
+	set identity_insert commission_payment off
+	go
+
+
+	-- time_log
+
+	print "building time_log"
+	go
+
+	set identity_insert time_log on
+	go
+	insert time_log
+		(log_source, log_id, emp, client, proj, phase, cliproj, date, hours,
+				comments, invoice_id, payroll_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..time_log l
+	go
+	set identity_insert time_log off
+	go
+
+
+	-- materials_log
+
+	print "building materials_log"
+	go
+
+	set identity_insert materials_log on
+	go
+	insert materials_log
+		(log_source, log_id, client, proj, date, amount_billed, amount_paid,
+				comments, invoice_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..materials_log op
+	go
+	set identity_insert materials_log off
+	go
+
+
+	-- class_log
+
+	print "building class_log"
+	go
+
+	set identity_insert class_log on
+	go
+	insert class_log
+		(log_source, log_id, client, proj, num_students, num_breaks, date,
+				start_time, end_time, comments, invoice_id,
+				create_user, create_date, chguser, chgdate)
+	select * from $srcdb..class_log
+	go
+	set identity_insert class_log off
+	go
+
+
+	-- commission
+
+	print "building commission"
+	go
+
+	set identity_insert commission on
+	go
+	insert commission
+		(commission_id, comm_type, pay_type, pay_to, period_start, period_end,
+				amount, payment_id, create_user, create_date, chguser, chgdate)
+	select * from $srcdb..commission
+	go
+	set identity_insert commission off
+	go
+
+
+	-- log_commission
+
+	print "building log_commission"
+	go
+
+	insert log_commission
+	select * from $srcdb..log_commission
+	go
+
+
+END
