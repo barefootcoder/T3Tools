@@ -1,0 +1,3 @@
+#! /usr/bin/ksh
+
+cp "$@" /home/httpd/cgi-bin/${USER}test/t3
