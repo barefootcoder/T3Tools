@@ -191,7 +191,7 @@ sub _make_schema_trans
 sub _transform_query
 {
 	my $this = shift;
-	my ($query) = @_;
+	my ($query, %temp_vars) = @_;
 	my @vars = ();
 	my $calc_funcs = {};
 
@@ -267,9 +267,20 @@ sub _transform_query
 			my $variable = $&;
 			my $varname = $1;
 
-			croak("variable/constant unknown: $varname")
-					unless exists $this->{vars}->{$varname};
-			my $value = $this->{vars}->{$varname};
+			my $value;
+			if (exists $temp_vars{$varname})
+			{
+				# temp_vars override previously defined vars
+				$value = $temp_vars{$varname};
+			}
+			elsif (exists $this->{vars}->{$varname})
+			{
+				$value = $this->{vars}->{$varname};
+			}
+			else
+			{
+				croak("variable/constant unknown: $varname");
+			}
 
 			# if we're being called in a list context, we should use
 			# placeholders and return the var values
@@ -495,12 +506,13 @@ sub show_queries
 
 sub do
 {
-	my $this = shift;
-	my ($query) = @_;
+	# temp_vars not needed here; just pass thru to _transform_query below
+	my ($this, $query) = @_;
 	my (@vars, $calc_funcs);
 
 	# handle substitutions
-	($query, $calc_funcs, @vars) = $this->_transform_query($query);
+	# (note & form of sub call, which just passes our args through w/o copying)
+	($query, $calc_funcs, @vars) = &_transform_query;
 	print STDERR "after transform, query is:\n$query\n" if DEBUG >= 4;
 
 	my $sth = $this->{dbh}->prepare($query);
