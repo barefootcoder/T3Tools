@@ -57,7 +57,7 @@ my $rows = timerdata::query_results("
         union all
         select  0, 
                 sa.actual_pay,
-               convert(char(10), sa.start_date, 112),
+                '12/31/9999',  
 			   'Salary' paytype
         from salary_amount sa
         set nocount off
@@ -76,6 +76,9 @@ foreach my $row (@$rows)
 	my $pay = $row->[1];
 	$pay =~ s/,//g;
 	$total_pay += $pay;
+
+	$row->[2] = $min_date if $row->[2] eq '12/31/9999' ; 
+
 	$min_date = $row->[2] if $row->[2] < $min_date;
 	$max_date = $row->[2] if $row->[2] > $max_date;
 	$num_rows-- if ( $row->[3] eq "Salary" ) ;
@@ -88,22 +91,21 @@ $rows = timerdata::query_results("
 		set nocount on
 
 		select 
-			emp,
-			convert (char(10), start_date,101),
-			convert (char(10), end_date,101),
-			bank_after
-		from salary_amount 
+			sa.emp,
+			sa.bank_after
+		from salary_amount sa
+
 		set nocount off
 
 	");
 die("couldn't access timer database") unless defined($rows);
 
 print "\n\nPayroll: Here are the new bank balances for salaried employees.\n";
-printf "\n%-5.5s %-15.15s %-15.15s %15.15s\n" , "Emp", "Start Date", "End Date", "New Balance";
+printf "\n%-5.5s %15.15s\n" , "Emp", "New Balance";
 foreach my $row (@$rows)
 {
-	$row->[3] =~ s/,//g;
-	printf "%-5.5s %-15.15s %-15.15s %15.2f\n" , $row->[0],$row->[1],$row->[2],$row->[3];
+	$row->[1] =~ s/,//g;
+	printf "%-5.5s %15.2f\n" , $row->[0],$row->[1];
 }
 print "\n";
 exit 1 unless get_yn("Is this right?");
@@ -168,16 +170,12 @@ my $insert_query = "
 	insert salary_bank ( 
 	          emp, 
 	          bank_amount, 
-			  start_date, 
-			  end_date, 
-			  check_date, 
+			  payroll_id,
 			  create_user, 
 			  create_date )
 	select emp, 
-			bank_after, 
-			start_date, 
-			end_date, 
-			'$check_date', 
+			bank_after,
+			\@payroll_id,
 			'$::ENV{USER}', 
 			getdate() 
 	from salary_amount 
