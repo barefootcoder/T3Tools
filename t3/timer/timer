@@ -3,6 +3,10 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.3  1999/04/23 03:59:57  buddy
+# added total function
+# fixed bug with "done" not transmitting proper date to FoxPro
+#
 # Revision 1.2  1999/04/19 20:18:53  buddy
 # added tracking of client number
 # changed "newtimer" var to "giventimer"
@@ -27,7 +31,6 @@ use Barefoot::timerdata;
 
 *timefile = \'timer.$$$';
 *histfile = \'timer.history';
-*timelog = \'p:\\proj\\timer\\timelog.exe';
 
 *sambagrp = \'guestpc';
 
@@ -45,7 +48,20 @@ use Barefoot::timerdata;
 *Totals =
 	\'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  total: @##.## hours';
 
-#################################
+*Log =
+	\'
+    Employee:  @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         Date:
+    Client:    @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         @<<<<<<<<<
+    Project:   @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         Hours:
+    Phase:     @<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<         @##.##
+
+          Client Project ID: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    Comments:';
+*Log_Comments =
+	\'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+
+#################################';
 # OPTIONS AND ENVIRONMENT VARS
 #################################
 
@@ -61,7 +77,7 @@ if (@ARGV == 0)
 		"       -c:   cancel a timer\n",
 		"       -n:   new name for a timer\n",
 		"       -e:   show elapsed time for all timers\n",
-		"       -r:   run the FoxPro TIMELOG program\n",
+		"       -r:   run the time logger\n",
 		"       -b:   break down a timer's portions\n",
 		"       -t:   total for all timers this week (by client)\n",
 		"       -f:   force (ignore all confirmations)\n",
@@ -97,6 +113,7 @@ elsif ($timerinfo->{user} ne $::USER)
 }
 $timerinfo->{tfile} = "$timerinfo->{tdir}/$::timefile";
 $timerinfo->{hfile} = "$timerinfo->{tdir}/$::histfile";
+$timerinfo->{hfile} =~ s/$timerinfo->{user}/misc/;
 $timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : "default";
 $timerinfo->{newname} = $ARGV[1];
 $timerinfo->{timers} = {};
@@ -214,6 +231,7 @@ if ($func eq 'c')					# cancel a timer
 		error(1, "can't cancel; no such timer\n");
 	}
 
+	save_history($timerinfo, "cancel");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
 	delete $timerinfo->{curtimer}
 			if $timerinfo->{curtimer} eq $timerinfo->{giventimer};
@@ -367,25 +385,13 @@ if ($func eq 't')					# total timers by client
 	}
 }
 
-if ($func eq 'r')					# run the FoxPro program (TIMELOG)
+if ($func eq 'r')					# run the logger program (currently can't)
 {
-	if (! -x $::timelog)
-	{
-		error(1, "can't run the timelog program (are you in Linux?)\n");
-	}
-
-	print "running the FoxPro timelog program ...\n";
-	exec $::timelog, $timerinfo->{user};
-	die "couldn't execute timelog: $!";
+	error(1, "can't run the time logger (coming soon!)\n");
 }
 
-if ($func eq 'd')					# done with a timer; run TIMELOG
+if ($func eq 'd')					# done with a timer
 {
-	if (! -x $::timelog)
-	{
-		error(1, "can't run the timelog program (are you in Linux?)\n");
-	}
-
 	if (!$timerinfo->{force})
 	{
 		print_elapsed($timerinfo);
@@ -402,22 +408,21 @@ if ($func eq 'd')					# done with a timer; run TIMELOG
 	my $hours = round($minutes / 60, $::DOWN),
 	my $date = calc_date($thistimer->{time});
 	my $client = $thistimer->{client};
-	print "total time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
+	print "\ntotal time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
 		" mins) on $date for $client\n";
-	print "please remember this in case TIMELOG has a problem!\n";
+	print "please remember this in case there is a problem!\n\n";
 	if (!$timerinfo->{force})
 	{
 		print "press return to continue ...\n";
 		<STDIN>;
 	}
 
+	log_to_sybase($timerinfo);
+
 	save_history($timerinfo, "done");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	print_elapsed($timerinfo);
 	writefile($timerinfo);
-
-	print "\nrunning the FoxPro timelog program ...\n";
-	exec $::timelog, $timerinfo->{user}, "D", $minutes, $date, $client;
-	die "couldn't execute timelog: $!";
 }
 
 
@@ -477,8 +482,9 @@ sub save_history
 	my $timerstuff = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
 	open(HIST, ">>$timerinfo->{hfile}") or die("couldn't open history file");
-	print HIST "$timerinfo->{user}\t$func\t$timerinfo->{giventimer}\t",
-			"$timerstuff->{time}\t$timerstuff->{client}\n";
+	local ($,) = "\t";				# put tabs between elements
+	print HIST $timerinfo->{user}, $::USER, $func, $timerinfo->{giventimer},
+			$timerstuff->{time}, $timerstuff->{client}, "\n";
 	close(HIST);
 }
 
@@ -645,6 +651,167 @@ sub calc_date
 	return ++$mon . "/" . $day . "/" . ($year + 1900);
 }
 
+sub log_to_sybase
+{
+	my ($timerinfo) = @_;
+	# a shortcut
+	my $timer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+
+	my ($emp, $client, $rounding, $date, $hours, $proj, $phase,
+			$cliproj, $comments);
+
+	# a bunch of anonymous blocks for purposes of redo
+	# (well, they're called "anonymous" even tho they're named ... go figure)
+	EMP: {
+		$emp = input("Employee number:",
+				timerdata::emp_number($timerinfo->{user}));
+		my $fullname = timerdata::emp_fullname($emp);
+		print "  {Invalid employee!}\n" and redo unless $fullname;
+		print "  {Employee is $fullname}\n";
+	}
+
+	CLIENT: {
+		$client = input("Client number:", $timer->{client});
+		my $fullname = timerdata::client_name($client);
+		print "  {Invalid client!}\n" and redo unless $fullname;
+		print "  {Client is $fullname}\n";
+		$rounding = timerdata::client_rounding($client);
+	}
+
+	DATE: {
+		$date = input("Date:", calc_date($timer->{time}));
+		my ($mon, $day, $year) = split(?/|-?, $date);
+		print "  {Invalid date!}\n" and redo unless date::isValid($date);
+	}
+
+	HOURS: {
+		$hours = input("Hours:",
+				round(calc_time($timer->{time}) / 60, $rounding, .25));
+		print "  {Hours must divisible by .25}\n" and redo
+				unless $hours == round($hours, $::OFF, .25);
+		print "  {Hours must be greater than zero}\n" and redo
+				unless $hours > 0;
+	}
+
+	PROJECT: {
+		my $valid_projs = timerdata::query_results("
+				select proj, name
+				from project
+				where client = '$client'
+				and '$date' between start_date and end_date
+			");
+		$proj = input("Project or ? for list:");
+		if ($proj eq "?")
+		{
+			foreach my $row (@$valid_projs)
+			{
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
+			}
+			redo;
+		}
+		# uppercase it for 'em
+		$proj = string::upper($proj);
+		# check for valid project
+		foreach my $row (@$valid_projs)
+		{
+			print "  {Project is ", $row->[1], "}\n" and last PROJECT
+					if $proj eq $row->[0];
+		}
+		print "  {Invalid project!}\n";
+		redo;
+	}
+
+	my ($phase_needed, $cliproj_needed, $comments_needed)
+			= timerdata::proj_requirements($client, $proj);
+
+	PHASE: {
+		last PHASE unless $phase_needed;
+		my $valid_phases = timerdata::query_results("
+				select phase, name
+				from phase
+			");
+		$phase = input("Phase or ? for list:");
+		if ($phase eq "?")
+		{
+			foreach my $row (@$valid_phases)
+			{
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
+			}
+			redo;
+		}
+		# uppercase it for 'em
+		$phase = string::upper($phase);
+		# check for valid project
+		foreach my $row (@$valid_phases)
+		{
+			print "  {Phase is ", $row->[1], "}\n" and last PHASE
+					if $phase eq $row->[0];
+		}
+		print "  {Invalid phase!}\n";
+		redo;
+	}
+
+	CLIPROJ: {
+		last CLIPROJ unless $cliproj_needed;
+		my $valid_cliprojs = timerdata::query_results("
+				select project_id, name
+				from cliproj
+				where client = '$client'
+			");
+		$cliproj = input("Client Project ID or ? for list:");
+		if ($cliproj eq "?")
+		{
+			foreach my $row (@$valid_cliprojs)
+			{
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
+			}
+			redo;
+		}
+		# uppercase it for 'em
+		$cliproj = string::upper($cliproj);
+		# check for valid project
+		foreach my $row (@$valid_cliprojs)
+		{
+			last CLIPROJ if $cliproj eq $row->[0];
+		}
+		print "  {Invalid client project ID!}\n";
+		redo;
+	}
+
+	COMMENTS: {
+		last unless $comments_needed;
+		print "\nEnter comments below (maximum 255 chars):\n";
+		print "  (255 chars is a little over 3 lines if your screen is 80\n";
+		print "   columns wide and you don't hit RETURN at all (which you ",
+				"shouldn't))\n";
+		print "Enter ^D (control-D) on a line by itself to finish the ",
+				"comments.\n";
+		local ($/) = undef;
+		$comments = input();
+		while ($comments =~ s/^\s+$//) {};	# no completely blank lines
+		while ($comments =~ s/^\n//) {};	# no extra newlines in front
+		$comments =~ s/\s*\n+\s*$//;		# none at the end either
+		print "  {You must have comments}\n\n" and redo if not $comments;
+		print "  {Comments too long!}\n\n" and redo if length($comments) > 255;
+	}
+
+	# show everything and double check:
+	writeln($::Log, $emp, timerdata::emp_fullname($emp),
+			$client, timerdata::client_name($client), $date,
+			$proj, timerdata::proj_name($client, $proj),
+			$phase, timerdata::phase_name($phase), $hours,
+			$cliproj, timerdata::cliproj_name($client, $cliproj));
+	writeln($::Log_Comments, $comments);
+
+	print "\n\nis everything okay? (y/N)  ";
+	print "\n  {Try to log this timer out again later.}\n" and exit
+			unless <STDIN> =~ /^y/i;
+
+	timerdata::insert_log($emp, $client, $proj, $phase, $cliproj, $date,
+			$hours, $comments);
+	print "\ntime has been logged to Sybase\n\n";
+}
+
 # rounding function ... note that if $whichway is not specified, it will
 # be interpreted as OFF, but if you give an illegal value for $whichway,
 # you get DOWN (probably this should be fixed) ...
@@ -664,10 +831,25 @@ sub round
 	return $what * $towhat;
 }
 
+sub input
+{
+	my ($prompt, $default) = @_;
+	
+	local ($|) = 1;							# autoflush stdout
+	print $prompt;
+	print " (", $default, ")" if defined($default);
+	print "  " if defined($prompt);
+
+	my $answer = <STDIN>;
+	chomp $answer;
+	return $answer ? $answer : $default;
+}
+
 sub writeln
 {
 	my ($format, @vars) = @_;
+	$format .= "\n";
 	$^A = "";
 	formline($format, @vars);
-	print $^A, "\n";
+	print $^A;
 }
