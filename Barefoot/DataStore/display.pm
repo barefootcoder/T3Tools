@@ -367,10 +367,6 @@ sub display
 		print STDERR "line is $_ and query is $query\n" if DEBUG >= 4;
 		if ( / ^ \s* & (\w+) (?: \s+ (.*?) )? \s* $ /x and not $query )
 		{
-			# again, can't start a command inside a conditional
-			_fatal("can't call a command inside a conditional")
-					unless $if_status == -1;
-
 			$command = $1;
 			print STDERR "processing command $command\n" if DEBUG >= 2;
 
