@@ -146,6 +146,7 @@ sub timeout (&$)
 			local $SIG{ALRM} = sub { die("timeout"); };
 			alarm $seconds;
 			&$code;
+			alarm 0;
 		}
 		catch
 		{
