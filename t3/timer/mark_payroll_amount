@@ -11,41 +11,42 @@ use Barefoot::timerdata;
 #    main()    #
 ################
 
-my $inv_num = input("\nInvoice number:");
+my $check_date = input("\nPayroll check date:");
+die("illegal date") unless date::isValid($check_date);
 
 my $rows = timerdata::query_results("
-		select client, convert(char(10), invoice_billdate, 101),
-				invoice_amount, convert(char(10), invoice_paydate, 101)
-		from invoice
-		where invoice_number = '$inv_num'
+		select convert(char(10), period_start, 101),
+				convert(char(10), period_end, 101),
+				payroll_amount, overhead_amount
+		from payroll
+		where check_date = '$check_date'
 	");
 die("couldn't access timer database") unless defined($rows);
-die("invoice number not found") if @$rows == 0;
+die("payroll not found") if @$rows == 0;
 
-die("more than once invoice row") if @$rows > 1;
+die("more than once payroll row") if @$rows > 1;
 my $row = $rows->[0];
 
-my ($client, $bill_date, $amount, $pay_date) = @$row;
-$amount =~ s/,//g;
+my ($period_start, $period_end, $payroll_amount, $overhead) = @$row;
 
-print "\nInvoice for client $client: "
-		. "$amount billed on $bill_date\n";
-if ($pay_date ne "NULL")
+print "\nPayroll for period from $period_start to $period_end\n";
+if ($payroll_amount ne "NULL")
 {
-	print "This invoice was already marked paid as of $pay_date\n";
+	print "This payroll was already marked:\n";
+	print "  Payroll amount: $payroll_amount, Overhead amount: $overhead\n";
 	exit 2;
 }
 exit 1 unless get_yn("Is this right?");
 
-$pay_date = input("\nPaid on date:");
-die("illegal date") unless date::isValid($pay_date);
+$payroll_amount = input("\nTotal payroll amount:");
+$overhead = input("\nTotal overhead amount:");
 
 my $update_query = "
 
-	update invoice
-	set invoice_paydate = '$pay_date',
+	update payroll
+	set payroll_amount = $payroll_amount, overhead_amount = $overhead,
 			chguser = '$::ENV{USER}', chgdate = getdate()
-	where invoice_number = '$inv_num'
+	where check_date = '$check_date'
 	go
 
 ";
@@ -63,8 +64,8 @@ my $results = timerdata::run_query("
 die("mark failed <<$results>>") unless
 		$results =~ /^\(1 row affected\)/;
 
-print "\nInitial attempt successful for invoice $inv_num, client $client,\n";
-print "    pay date $pay_date (1 row affected)\n";
+print "\nInitial attempt successful for payroll $check_date,\n";
+print "    period from $period_start to $period_end\n";
 exit 1 unless get_yn("Proceed?");
 
 my $results = timerdata::run_query("
