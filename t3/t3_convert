@@ -1,0 +1,31 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::T3;
+use Time::Local;
+
+T3::initialize($::ENV{HOME});
+
+print STDERR "$0: no user name defined in ini file\n" and exit(1)
+        unless defined($T3::username);
+
+if (! -e "Timer.his") { die ("Error: No history file -- wrong directory?"); }
+if (-e "Timer.bak") { die ("Error: Timer.bak exists -- already converted?"); }
+
+rename "Timer.his", "Timer.bak";
+
+open(IN, "Timer.bak") or die("Error: Can't open Timer.bak file for reading");
+open(OUT, ">Timer.his") or die("Error: Can't create new Timer.his file");
+
+my $perlsecs = time;
+
+while ( <IN> )
+{
+	chomp;
+	my @fields = split /> /;
+	print OUT @fields[0], "><$T3::username><$perlsecs><>";
+	shift @fields;
+	print OUT join('> ', @fields), "\n";
+}
+close OUT;
