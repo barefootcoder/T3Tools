@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.12  2001/01/09 19:27:37  tryan
+# Added insurance_amount, calc_insurance_contribution.
+#
 # Revision 1.11  2000/11/16 23:11:27  tryan
 # Altered some formatting in calc_salary_pay
 #
@@ -1036,13 +1039,23 @@ run_query -S$server -U$user -D$destdb <<-END
 
 	create procedure calc_salary_pay
 
-	@start_date datetime,
-	@end_date datetime
+	@start_date datetime   = null,
+	@end_date datetime     = null,
+	@check_date datetime   = null
 
 	as
 
 		-- 0. Clear out salary_amount
 		delete from salary_amount
+
+
+		if @check_date is not null
+		begin
+			select @start_date = period_start,
+				   @end_date = period_end
+			from payroll
+			where check_date = @check_date
+		end
 
 		-- 1. Set up the draw limits for salary/draw employees.
 		insert salary_amount (
@@ -1058,11 +1071,7 @@ run_query -S$server -U$user -D$destdb <<-END
 			overcap_amt, 
 			bank_adjust, 
 			bank_after, 
-			actual_pay,
-			start_date,
-			end_date,
-			create_date,
-			create_user)
+			actual_pay)
 		select distinct  
 			sd.emp, 
 			0,                                         -- bank_before
@@ -1076,11 +1085,7 @@ run_query -S$server -U$user -D$destdb <<-END
 			0, 
 			0, 
 			0, 
-			0,
-			@start_date,
-			@end_date,
-			getdate(),
-			suser_name()
+			0
 		from pay_amount pa, salary_draw sd
 		where pa.emp =* sd.emp 
 		and @start_date between sd.start_date and sd.end_date
@@ -1100,14 +1105,16 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		-- 3. Set the previous bank balance.
 		update salary_amount
-		set bank_before = sb.bank_amount 
-		from salary_amount csp, salary_bank sb
+		set bank_before = sb.bank_amount
+		from salary_amount csp, salary_bank sb, payroll p
 		where csp.emp = sb.emp
-		and sb.end_date = 
-			( select max (end_date)
-			  from salary_bank sb2
+		and p.payroll_id = sb.payroll_id
+		and p.period_end =
+			( select max ( p2.period_end )
+			  from salary_bank sb2, payroll p2
 			  where sb2.emp = sb.emp
-			  and sb2.end_date < @start_date )
+			  and p2.payroll_id = sb2.payroll_id
+			  and p2.period_end < @start_date )
 
 		----------------------------------------------------------------
 		-- 4. BEGIN: Employee earned *more* than regular weekly pay 
@@ -1230,7 +1237,8 @@ run_query -S$server -U$user -D$destdb <<-END
 	$(drop_procedure calc_insurance_contribution)
 
 	create procedure calc_insurance_contribution
- 		@start_date datetime
+ 		@start_date datetime = null,
+ 		@check_date datetime = null
 	as
 
 		 declare @sal3_adjustment money
@@ -1239,14 +1247,22 @@ run_query -S$server -U$user -D$destdb <<-END
 
 		 delete insurance_amount
 
+	  	 if @check_date is not null
+		 begin
+			select @start_date = period_start
+			from payroll where check_date = @check_date
+		 end
+
 		 -- Retrieve current insurance terms for those covered.
-		 insert insurance_amount ( emp, fixed_amount, nonbill_hrs_limit,
-								   multiplier, total_hours )
+		 insert insurance_amount 
+		      ( emp, fixed_amount, nonbill_hrs_limit,
+			    multiplier, total_hours, insurance_adjustment )
 		 select pa.emp,
 			 ir.fixed_amount,
 			 ir.nonbill_hrs_limit,
 			 ir.multiplier,
-			 sum ( pa.hours ) total_hours
+			 sum ( pa.hours ) total_hours,
+			 0
 		 from pay_amount pa, insurance_rate ir
 		 where ir.emp = pa.emp
 		 and  @start_date between ir.start_date and ir.end_date
@@ -1309,6 +1325,7 @@ run_query -S$server -U$user -D$destdb <<-END
 		 -- Calculate what needs to be displayed as the SAL3 Adjustment.
 		 update insurance_amount
 		 set insurance_adjustment = barefoot_contribution - @sal3_adjustment
+		 where fixed_amount is null
 		 go
 
 	 grant exec on calc_insurance_contribution to public
