@@ -5,7 +5,7 @@ use strict;
 use CGI;
 $| = 1;
 
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 
 my $cgi = new CGI;
 my $script = "/tmp/sqlcgi$$.ksh";
