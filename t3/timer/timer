@@ -1,4 +1,4 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
 
 # For RCS:
 # $Date$
@@ -8,7 +8,7 @@
 
 use strict;
 
-use Barefoot::debug;						# comment out for production
+#use Barefoot::debug;
 
 use CGI;
 use POSIX;
@@ -17,6 +17,8 @@ use Env qw(TIMERDIR HOME USER);
 
 use Barefoot::date;
 use Barefoot::array;
+use Barefoot::input qw(get_yn input);
+use Barefoot::format;
 use Barefoot::range;
 use Barefoot::timerdata;
 use Barefoot::config_file;
@@ -45,7 +47,7 @@ use constant FALLBACK_TIMER => 'default';
 #################################
 
 use constant Elapsed =>
-	'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<  at  @> hrs @> mins  (@>>>>>>>>>)   @<<<';
+	'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
 use constant Totals =>
 	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  $@##.##  total: @##.## hours';
@@ -81,12 +83,13 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcpnbtfhu:C:P:@:', $opt);
+	getopts('sedlcpnbtfhu:C:P:H:@:', $opt);
 	$timerinfo->{force} = defined($opt->{f});
 	$timerinfo->{halftime} = defined($opt->{h});
 	$timerinfo->{user} = $opt->{u};
 	$timerinfo->{client} = $opt->{C};
 	$timerinfo->{proj} = $opt->{P};
+	$timerinfo->{phase} = $opt->{H};
 	$timerinfo->{parse_fmt} = $opt->{'@'};
 
 	$timerinfo->{giventimer} = $ARGV[0] ? $ARGV[0] : FALLBACK_TIMER;
@@ -156,7 +159,7 @@ if (length($func) != 1)
 	error(2, "you must specify exactly one function (s,e,d,l,c,p,n,b)");
 }
 
-if ($timerinfo->{halftime} and $func != 's')
+if ($timerinfo->{halftime} and $func ne 's')
 {
 	error(2, "half-time flag only makes sense when starting a timer");
 }
@@ -212,14 +215,25 @@ if ($func eq 's')					# start a timer
 		$timerinfo->{timers}->{$timerinfo->{curtimer}}->{posted} = 0;
 	}
 
-	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{time} .=
-			($timerinfo->{halftime} ? "2/" : "") . time . '-';
-	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{client}
-			= get_client($func, $timerinfo);
-	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{proj}
-			= get_project($func, $timerinfo);
-	$timerinfo->{timers}->{$timerinfo->{giventimer}}->{posted} = 0;
+	my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+	$giventimer = {} unless defined($giventimer);
+
+	my $time = $giventimer->{time} ? $giventimer->{time} : "";
+	my $posted = $giventimer->{posted} ? $giventimer->{posted} : 0;
+
+	$time .= ($timerinfo->{halftime} ? "2/" : "") . time . '-';
+	my $client = get_client($func, $timerinfo); 
+	my $proj = get_project($func, $timerinfo, $client);
+
+	my ($phase_needed)
+			= timerdata::proj_requirements($client, $proj, calc_date(time));
+
+	my $phase = get_phase($func, $timerinfo) if $phase_needed;
 	$timerinfo->{curtimer} = $timerinfo->{giventimer};
+
+	@{$giventimer}{qw(time client proj phase posted)} = 
+		($time, $client, $proj, $phase, $posted);
+	$timerinfo->{timers}->{$timerinfo->{giventimer}} = $giventimer;
 
 	print_elapsed($timerinfo);
 	writefile($timerinfo);
@@ -298,10 +312,7 @@ if ($func eq 'n')					# new name for a timer
 	else
 	{
 		my $defname = $timerinfo->{newname} ? $timerinfo->{newname} : $oldname;
-		print STDERR "new name for this timer? ($defname)  ";
-		$newname = <STDIN>;
-		chomp $newname;
-		$newname = $defname if not $newname;
+		$newname = input("new name for this timer?", $defname);
 	}
 
 	# if we're renaming ...
@@ -319,12 +330,23 @@ if ($func eq 'n')					# new name for a timer
 	}
 
 	# but of course we might just be changing the client
-	$timerinfo->{timers}->{$newname}->{client} = get_client($func, $timerinfo);
+	my $giventimer = $timerinfo->{timers}->{$newname};
+	
+	$giventimer->{client} = get_client($func, $timerinfo);
 	# or the project
-	$timerinfo->{timers}->{$newname}->{proj} = get_project($func, $timerinfo);
+	$giventimer->{proj} = get_project($func, $timerinfo, 
+			$timerinfo->{timers}->{$newname}->{client});
+
+	my ($phase_needed, $cliproj_needed, $comments_needed)
+			= timerdata::proj_requirements($giventimer->{client}, 
+				$giventimer->{proj}, calc_date(time));
+
+	$giventimer->{phase} = get_phase($func, $timerinfo) if $phase_needed;
 
 	#regardless of what changed, we'll have to post
-	$timerinfo->{timers}->{$newname}->{posted} = 0;
+	$giventimer->{posted} = 0;
+
+	$timerinfo->{timers}->{$newname} = $giventimer;
 
 	$timerinfo->{curtimer} = $newname if $timerinfo->{curtimer} eq $oldname;
 	print_elapsed($timerinfo);
@@ -352,6 +374,7 @@ if ($func eq 'b')					# break down a timer
 		}
 
 		$part =~ m{(?:(\d+)/)?(\d+)-(\d+)?};
+		my $tmp = $1 ? $1 : 0;
 		my ($min, $hr, $day, $mon, $year) = (localtime $2)[1..5];
 		++$mon, $year += 1900;
 		print "from $hr:$min $mon/$day/$year ";
@@ -365,7 +388,8 @@ if ($func eq 'b')					# break down a timer
 		{
 			print "to current (still timing)";
 		}
-		print " at half-time" if $1 == 2;
+		print " at half-time" if $tmp == 2;
+		#print " at half-time" if $1 == 2;
 		print " ($mins mins)\n";
 	}
 }
@@ -443,7 +467,13 @@ if ($func eq 'd')					# done with a timer
 		<STDIN>;
 	}
 
+	# Sets force off so get_ routines don't skip their valid checks
+	my $force = 1 if $timerinfo->{force};
+	#$timerinfo->{force} = 0 if $force;
+	
 	log_to_sybase($timerinfo, $timerinfo->{giventimer});
+	
+	#$timerinfo->{force} = 1 if $force;
 
 	save_history($timerinfo, "done");
 	delete $timerinfo->{timers}->{$timerinfo->{giventimer}};
@@ -471,7 +501,8 @@ sub usage
 	error(0,
 		"incorrect usage; usage is:\n",
 		"    timer -{s|p|d|c|e|l|b|t} [-fh] [-u user] [-C clientnum] ",
-						"[-P projcode] [timername [newtimername]]\n",
+						"[-P projcode] [timername [newtimername]] ",
+						"[-H phasecode]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
@@ -486,9 +517,10 @@ sub usage
 		"       -u:   user name to use (default is current user)\n",
 		"       -C:   client number to use (default is user-specific)\n",
 		"       -P:   project code to use (no default)\n",
+		"       -H:   phase code to use (no default)\n",
 		"    clientnum must be a valid 3-digit code\n",
-		"    projcode must be a valid 3-character code (will be forced to ",
-				"uppercase)\n",
+		"    projcode and phasecode must be a valid 3-character code ",
+				"\n	(will be forced to uppercase)\n",
 		"    timername is ignored for -p, -e, -l, and -t\n",
 		"    newtimername is ignored for all but -n\n",
 	);
@@ -520,6 +552,7 @@ sub readfile
 	my ($timerinfo) = @_;
 
 	open(TFILE, $timerinfo->{tfile}) or return 0;
+	$timerinfo->{curtimer} = "";
 	while ( <TFILE> )
 	{
 		chomp;
@@ -527,9 +560,9 @@ sub readfile
 		my $curtimer = {};
 		$curtimer->{time} = $time;
 		$curtimer->{client} = $client;
-		$curtimer->{proj} = $proj;
-		$curtimer->{phase} = $phase;
-		$curtimer->{posted} = $posted;
+		$curtimer->{proj} = string::upper($proj);
+		$curtimer->{phase} = string::upper($phase);
+		$curtimer->{posted} = string::upper($posted);
 		$timerinfo->{timers}->{$key} = $curtimer;
 		$timerinfo->{curtimer} = $key if ($time =~ /-$/);
 	}
@@ -547,9 +580,11 @@ sub writefile
 	foreach my $timer (keys %{$timerinfo->{timers}})
 	{
 		my $timerstuff = $timerinfo->{timers}->{$timer};
+		my $phase = $timerstuff->{phase} ? $timerstuff->{phase} : "";
 		print TFILE $timer, "\t", $timerstuff->{time}, "\t",
 				$timerstuff->{client}, "\t", $timerstuff->{proj}, "\t",
-				$timerstuff->{phase}, "\t", $timerstuff->{posted}, "\n";
+				$phase, "\t", $timerstuff->{posted}, "\n";
+				#$timerstuff->{phase}, "\t", $timerstuff->{posted}, "\n";
 	}
 	close(TFILE);
 
@@ -610,9 +645,7 @@ sub get_giventimer
 	my ($function, $timerinfo) = @_;
 
 	TIMER: {
-		print "$function what timer? ($timerinfo->{giventimer})  ";
-		my $new = <STDIN>;
-		chomp $new;
+		my $new = input("$function what timer? ",$timerinfo->{giventimer});
 		if ($new =~ /\s/)
 		{
 			print STDERR "timer name can't have a space; sorry\n";
@@ -642,22 +675,7 @@ sub get_client
 
 	# got it? here we go ...
 	my $defclient;
-	if ($func ne 'n')							# anything but new name
-	{											# (probably start)
-		if (exists $giventimer->{client})		# pre-existing client first
-		{
-			$defclient = $giventimer->{client};
-		}
-		elsif ($timerinfo->{client})			# then -C option
-		{
-			$defclient = $timerinfo->{client};
-		}
-		else									# defclient from Sybase
-		{
-			$defclient = timerdata::default_client($timerinfo->{user});
-		}
-	}
-	else										# must be new name
+	if ($func eq 'n' || $func eq 'l')			# anything except new name 
 	{
 		if ($timerinfo->{client})				# -C option first
 		{
@@ -672,35 +690,72 @@ sub get_client
 			$defclient = timerdata::default_client($timerinfo->{user});
 		}
 	}
-	return $defclient if $timerinfo->{force}
-			or ($func eq 's' and exists $giventimer->{client});
+	else										# for -n, -l, etc 
+	{
+		if (exists $giventimer->{client})		# pre-existing client first
+		{
+			$defclient = $giventimer->{client};
+		}
+		elsif ($timerinfo->{client})			# then -C option
+		{
+			$defclient = $timerinfo->{client};
+		}
+		else									# defclient from Sybase
+		{
+			$defclient = timerdata::default_client($timerinfo->{user});
+		}
+	}
+	return $defclient if ($timerinfo->{force} and $func ne 'd')
+		or ($func eq 's' and exists $giventimer->{client});
 
 	my $client;
+	my $valid_clients = timerdata::query_results("
+			select c.client, c.name
+			from client c
+			where exists
+			(
+				select 1
+				from client_employee ce, employee e
+				where ce.emp = e.emp
+				and ce.client = c.client
+				and getdate() between ce.start_date and ce.end_date
+				and e.login = '$timerinfo->{user}'
+			)
+	");
 	# make a block so redo will work
 	CLIENT: {
-		print "which client is this for? ($defclient)  ";
-		$client = <STDIN>;
-		chomp $client;
-		$client = $defclient if not $client;	# use default if not specified
-		my $fullname = timerdata::client_name($client);
-		if (defined($fullname))
+		$client = 
+			input("which client is this for? (? for list)", $defclient);
+		if ($client eq "?")
 		{
-			print "illegal client number!\n" and redo CLIENT if not $fullname;
-			print "client is $client: $fullname; is this right? (y/N)  ";
+			foreach my $row (@$valid_clients)
+			{
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
+			}
+			redo CLIENT;
 		}
-		else
-		{
-			print "can't verify client number! are you sure you want to ",
-					"proceed? (y/N)  ";
-		}
-		redo CLIENT unless <STDIN> =~ /^y/i;
+		# Checks client number to be sure it's valid
+        foreach my $row (@$valid_clients)
+        {
+			if ($client eq $row->[0])
+			{
+				return $client if $timerinfo->{force}
+					or ($func eq 's' and exists $giventimer->{client});
+				my $answer = 
+					get_yn("Client is $client: $row->[1]; is this right?");
+				redo CLIENT unless $answer;
+           	    last CLIENT;
+           	}
+        }
+		print "Invalid Client! \n";
+		redo CLIENT;
 	}
 	return $client;
 }
 
 sub get_project
 {
-	my ($func, $timerinfo) = @_;
+	my ($func, $timerinfo, $client) = @_;
 	# a little shortcut here
 	my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
 
@@ -713,24 +768,9 @@ sub get_project
 	# in there ... priorities are the same
 
 	# got it? here we go ...
-	my $defproj;
-	if ($func ne 'n')							# anything but new name
+	my $defproj = "";
+	if ($func eq 'n' || $func eq 'l')           # must be new name or -l
 	{											# (probably start)
-		if (exists $giventimer->{proj})			# pre-existing project first
-		{
-			$defproj = $giventimer->{proj};
-		}
-		elsif ($timerinfo->{proj})				# then -P option
-		{
-			$defproj = $timerinfo->{proj};
-		}
-		else									# defproj from Sybase
-		{
-			# $defproj = timerdata::default_proj($timerinfo->{user});
-		}
-	}
-	else										# must be new name
-	{
 		if ($timerinfo->{proj})					# -P option first
 		{
 			$defproj = $timerinfo->{proj};
@@ -744,57 +784,160 @@ sub get_project
 			# $defproj = timerdata::default_proj($timerinfo->{user});
 		}
 	}
-	return $defproj if $timerinfo->{force}
-			or ($func eq 's' and exists $giventimer->{proj});
+	else										# not new name or -l
+	{
+		if (exists $giventimer->{proj})			# pre-existing project first
+		{
+			$defproj = $giventimer->{proj};
+		}
+		elsif ($timerinfo->{proj})				# then -P option
+		{
+			$defproj = $timerinfo->{proj};
+		}
+		else									# defproj from Sybase
+		{
+			# $defproj = timerdata::default_proj($timerinfo->{user});
+		}
+	}
+	return $defproj if ($timerinfo->{force} and $func ne 'd')
+		or ($func eq 's' and exists $giventimer->{proj});
 
 	my $proj;
-	my $valid_projs;
+	my $fullname;
+	my $valid_projects = timerdata::query_results("
+				select proj, name
+				from project
+				where client = '$client'
+				and getdate() between start_date and end_date
+	");
 	# make a block so redo will work
 	PROJ: {
-		print "which proj is this for? ($defproj)  ";
-		$proj = <STDIN>;
-		chomp $proj;
+		$proj = input("which proj is this for? (? for list)", $defproj);
 		$proj = string::upper($proj);			# project codes are all UC
-		$proj = $defproj if not $proj;			# use default if not specified
 
 		if ($proj eq "?")
 		{
-			unless (defined $valid_projs)
+			foreach my $row (@$valid_projects)
 			{
-				$valid_projs = timerdata::query_results("
-						select proj, name
-						from project
-						where client = '$giventimer->{client}'
-						and getdate() between start_date and end_date
-				");
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
 			}
-
-			if (defined $valid_projs)
-			{
-				foreach my $row (@$valid_projs)
-				{
-					print "  {", $row->[0], " - ", $row->[1], "}\n";
-				}
-			}
-
 			redo PROJ;
 		}
-
-		my $fullname = timerdata::proj_name($giventimer->{client}, $proj);
-		if (defined($fullname))
-		{
-			print "illegal project name!\n" and redo PROJ if not $fullname;
-			print "project is $proj: $fullname; is this right? (y/N)  ";
-		}
-		else
-		{
-			print "can't verify project code! are you sure you want to ",
-					"proceed? (y/N)  ";
-		}
-		redo PROJ unless <STDIN> =~ /^y/i;
+		# Checks project to be sure it's valid
+        foreach my $row (@$valid_projects)
+        {
+           	if ($proj eq $row->[0])
+           	{
+				return $proj if $timerinfo->{force}
+					or ($func eq 's' and exists $giventimer->{proj});
+				my $answer = 
+					get_yn("Project is $proj: $row->[1]; is this right?");
+				redo PROJ unless $answer;
+               	last PROJ;
+           	}
+        }
+		print "Invalid Project! \n";
+		redo PROJ;
 	}
 	return $proj;
 }
+
+
+sub get_phase
+{
+    my ($func, $timerinfo) = @_;
+    # a little shortcut here
+    my $giventimer = $timerinfo->{timers}->{$timerinfo->{giventimer}};
+
+    # uppercase anything we might have gotten from the -H switch
+    $timerinfo->{phase} = string::upper($timerinfo->{phase});
+
+    # this basically works just like get_client() (q.v.) except that
+    # there currently isn't a default phase for the employee ...
+
+    # got it? here we go ...
+
+    my $defphase;
+	if ($func eq 'n' || $func eq 'l')           # must be new name or -l
+    {                                           # (probably start)
+        if ($timerinfo->{phase})                 # -H option first
+        {
+            $defphase = $timerinfo->{phase};
+        }
+        elsif (exists $giventimer->{phase})      # then pre-existing phase
+        {
+            $defphase = $giventimer->{phase};
+        }
+        else                                    # defphase from Sybase
+        {
+            # $defphase = timerdata::default_phase($timerinfo->{user});
+        }
+    }
+    else                                        # anything but new name and -l
+    {
+        if (exists $giventimer->{phase})         # pre-existing phase first
+        {
+            $defphase = $giventimer->{phase};
+        }
+        elsif ($timerinfo->{phase})              # then -H option
+        {
+            $defphase = $timerinfo->{phase};
+        }
+        else                                    # defphase from Sybase
+        {
+            # $defphase = timerdata::default_phase($timerinfo->{user});
+        }
+    }
+    return $defphase if ($timerinfo->{force} and $func ne 'd')
+       	or ($func eq 's' and exists $giventimer->{phase});
+
+    my $phase;
+    my $valid_phases;
+
+    # make a block so redo will work
+    PHASE: {
+		$phase = input("Which phase is this for? (? for list)", $defphase);
+        $phase = string::upper($phase);          # phase codes are all UC
+
+        if ($phase eq "?")
+        {
+            unless (defined $valid_phases)
+            {
+                $valid_phases = timerdata::query_results("
+                        select phase, name
+                        from phase
+                ");
+            }
+
+            if (defined $valid_phases)
+            {
+                foreach my $row (@$valid_phases)
+                {
+                    print "  {", $row->[0], " - ", $row->[1], "}\n";
+                }
+            }
+
+            redo PHASE;
+        }
+
+        my $fullname = timerdata::phase_name($phase);
+       	if (defined($fullname))
+       	{
+          	print "illegal phase name!\n" and redo PHASE if not $fullname;
+    		return $phase if $timerinfo->{force}
+            	or ($func eq 's' and exists $giventimer->{phase});
+           	print "phase is $phase: $fullname; is this right? (y/N)  ";
+        }
+        else
+        {
+           	print "can't verify phase code! are you sure you want to ",
+               	    "proceed? (y/N)  ";
+        }
+        redo PHASE unless <STDIN> =~ /^y/i;
+    }
+    return $phase;
+}
+
 
 sub print_elapsed
 {
@@ -809,10 +952,14 @@ sub print_elapsed
 		my $hours = range::round($minutes / 60, range::ROUND_DOWN);
 		$minutes = $minutes - $hours * 60;
 		my $date = calc_date($timerinfo->{timers}->{$timer}->{time});
+		my $curtimer_marker = $timerinfo->{curtimer} && 
+				$timerinfo->{curtimer} eq $timer ? "==>" : "";
 
-		writeln(Elapsed, $timerinfo->{curtimer} eq $timer ? "==>" : "",
-				$timer, $timerinfo->{timers}->{$timer}->{client},
+		writeln(Elapsed, $curtimer_marker, $timer, 
+				$timerinfo->{timers}->{$timer}->{client},
 				$timerinfo->{timers}->{$timer}->{proj},
+				$timerinfo->{timers}->{$timer}->{phase} ?
+					",$timerinfo->{timers}->{$timer}->{phase}":"",
 				$hours, $minutes, $date,
 				$timerinfo->{timers}->{$timer}->{time} =~ m{/\d+-$}
 					? "HALF-TIMING" : "");
@@ -960,6 +1107,11 @@ sub log_to_sybase
 		my $fullname = timerdata::emp_fullname($emp);
 		print "  {Invalid employee!}\n" and redo EMP unless $fullname;
 		print "  {Employee is $fullname}\n";
+		if ($emp != timerdata::emp_number($timerinfo->{user}))
+		{
+			#delete $timerinfo->{timers};
+			$timerinfo->{user} = timerdata::login_name($emp);
+		}	
 	}
 
 	DATE: {
@@ -967,43 +1119,12 @@ sub log_to_sybase
 		print "  {Invalid date!}\n" and redo DATE unless date::isValid($date);
 	}
 
-	CLIENT: {
-		my $valid_clients = timerdata::query_results("
-				select c.client, c.name
-				from client c
-				where exists
-				(
-					select 1
-					from client_employee ce
-					where ce.emp = '$emp'
-					and ce.client = c.client
-					and '$date' between ce.start_date and ce.end_date
-				)
-			");
-		$client = input("Client number or ? for list:", $timer->{client});
-		if ($client eq "?")
-		{
-			foreach my $row (@$valid_clients)
-			{
-				print "  {", $row->[0], " - ", $row->[1], "}\n";
-			}
-			redo CLIENT;
-		}
-		# check for valid client
-		foreach my $row (@$valid_clients)
-		{
-			if ($client eq $row->[0])
-			{
-				print "  {Client is ", $row->[1], "}\n";
-				($rounding, $to_nearest) = timerdata::client_rounding($client);
-				last CLIENT;
-			}
-		}
-		print "  {Invalid client!}\n";
-		redo CLIENT;
-	}
+
+	# Get client info
+	$client = get_client($func,$timerinfo);
 
 	HOURS: {
+		($rounding, $to_nearest) = timerdata::client_rounding($client);
 		$hours = input("Hours:",
 				range::round(calc_time($timer->{time}) / 60,
 						$rounding, $to_nearest));
@@ -1014,74 +1135,17 @@ sub log_to_sybase
 				unless $hours > 0;
 	}
 
-	PROJECT: {
-		my $valid_projs = timerdata::query_results("
-				select proj, name
-				from project p
-				where client = '$client'
-				and '$date' between start_date and end_date
-				and exists
-				(
-					select 1
-					from client_employee ce
-					where ce.emp = '$emp'
-					and ce.client = p.client
-					and isnull(ce.proj, p.proj) = p.proj
-					and '$date' between ce.start_date and ce.end_date
-				)
-			");
-		$proj = input("Project or ? for list:", $timer->{proj});
-		if ($proj eq "?")
-		{
-			foreach my $row (@$valid_projs)
-			{
-				print "  {", $row->[0], " - ", $row->[1], "}\n";
-			}
-			redo PROJECT;
-		}
-		# uppercase it for 'em
-		$proj = string::upper($proj);
-		# check for valid project
-		foreach my $row (@$valid_projs)
-		{
-			print "  {Project is ", $row->[1], "}\n" and last PROJECT
-					if $proj eq $row->[0];
-		}
-		print "  {Invalid project!}\n";
-		redo PROJECT;
-	}
-
+	# Get project info
+	$proj = get_project($func, $timerinfo, $client);
+	
 	my ($phase_needed, $cliproj_needed, $comments_needed)
 			= timerdata::proj_requirements($client, $proj, $date);
 
-	PHASE: {
-		last PHASE unless $phase_needed;
-		my $valid_phases = timerdata::query_results("
-				select phase, name
-				from phase
-			");
-		$phase = input("Phase or ? for list:", $timer->{phase});
-		if ($phase eq "?")
-		{
-			foreach my $row (@$valid_phases)
-			{
-				print "  {", $row->[0], " - ", $row->[1], "}\n";
-			}
-			redo PHASE;
-		}
-		# uppercase it for 'em
-		$phase = string::upper($phase);
-		# check for valid phase
-		foreach my $row (@$valid_phases)
-		{
-			print "  {Phase is ", $row->[1], "}\n" and last PHASE
-					if $phase eq $row->[0];
-		}
-		print "  {Invalid phase!}\n";
-		redo PHASE;
-	}
+	# Get phase information
+	$phase = $phase_needed ? get_phase($func, $timerinfo) : "";
 
 	CLIPROJ: {
+		$cliproj = "";
 		last CLIPROJ unless $cliproj_needed;
 		my $valid_cliprojs = timerdata::query_results("
 				select project_id, name
@@ -1177,10 +1241,11 @@ sub db_post_timer
 
 	if (not $timer->{posted})
 	{
+		my $phase = $timer->{phase} ? $timer->{phase} : "";
 		my $result = timerdata::run_query("
 				insert timer
 				values ('$user', '$name', '$timer->{client}',
-						'$timer->{proj}', '$timer->{phase}')
+						'$timer->{proj}', '$phase')
 				go
 		");
 		# print STDERR "$result\n" and
@@ -1223,7 +1288,7 @@ sub db_delete_timer
 	");
 	return 0 unless $result =~ /\(\d+ rows? affected\)/;
 
-	my $result = timerdata::run_query("
+	$result = timerdata::run_query("
 			delete timer
 			where login = '$user'
 			and timer_name = '$name'
@@ -1234,25 +1299,25 @@ sub db_delete_timer
 	return 1;
 }
 
-sub input
-{
-	my ($prompt, $default) = @_;
-	
-	local ($|) = 1;							# autoflush stdout
-	print $prompt;
-	print " (", $default, ")" if defined($default);
-	print "  " if defined($prompt);
-
-	my $answer = <STDIN>;
-	chomp $answer;
-	return $answer ? $answer : $default;
-}
-
-sub writeln
-{
-	my ($format, @vars) = @_;
-	$format .= "\n";
-	$^A = "";
-	formline($format, @vars);
-	print $^A;
-}
+#sub input
+#{
+#	my ($prompt, $default) = @_;
+#	
+#	local ($|) = 1;							# autoflush stdout
+#	print $prompt;
+#	print " (", $default, ")" if defined($default);
+#	print "  " if defined($prompt);
+#
+#	my $answer = <STDIN>;
+#	chomp $answer;
+#	return $answer ? $answer : $default;
+#}
+#
+#sub writeln
+#{
+#	my ($format, @vars) = @_;
+#	$format .= "\n";
+#	$^A = "";
+#	formline($format, @vars);
+#	print $^A;
+#}
