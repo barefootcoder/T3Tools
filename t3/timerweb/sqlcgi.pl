@@ -2,6 +2,10 @@
 
 # $Header$
 # $Log$
+# Revision 1.3  1999/02/18 06:28:55  buddy
+# changed web base path
+# synced to work with new showreports.pl
+#
 # Revision 1.2  1999/02/18 06:16:52  buddy
 # changed to handle cookies turned into environment variables
 # now builds ksh script so can use kshlib functions as well
@@ -17,9 +21,10 @@ $cgi = new CGI;
 $script = "/tmp/sqlcgi$$.ksh";
 $basepath = "/home/httpd/sybase/timer_reports/";
 $title = "";
+$debug_string = "";
 
-print $cgi->header();
 set_environment();
+print $cgi->header();
 
 if ($ARGV[0])
 {
@@ -27,6 +32,7 @@ if ($ARGV[0])
 
 	if (create_script($file, $script))
 	{
+		print $cgi->start_html(-title=>$title);
 		if ($title)
 		{
 			print $cgi->center($cgi->h1($title)), "\n";
@@ -35,6 +41,8 @@ if ($ARGV[0])
 		print "<PRE>\n";
 		system ("ksh", "-c", $script) == 0 or die "system \@args failed: $?";
 		print "</PRE>\n";
+		# print $debug_string;
+		print $cgi->end_html();
 	}
 
 	unlink $script;
@@ -80,6 +88,22 @@ END
 		{
 			$title = $1;
 		}
+		# check for "only if this var is set" lines
+		# format: any line containing a token like this:
+		#		??var
+		# will be removed unless "var" is set; if "var" _is_ set, the
+		# "conditional" token is removed and the line is processed normally
+		if (s/\?\?(\w+)//)
+		{
+								debug("got conditional $1");
+			next unless defined $ENV{$1};
+		}
+		# check for var substitutions
+		# format: any token like this:
+		#		[var]
+		# will be replaced with the value of "var"; there can be any number
+		# of these "substitution" tokens on a given line; it is an error
+		# if "var" is not defined (but see conditional tokens, above)
 		while (/\[(.*?)\]/)
 		{
 			$var = $1;
@@ -109,4 +133,12 @@ sub error
 	print $cgi->h1("ERROR"), "\n";
 	print "<P>", $cgi->strong("Your request has the following error!");
 	print "<BR>\n", "$msg</P>\n";
+}
+
+sub debug
+{
+	my ($msg) = @_;
+
+	$msg =~ s/\n/<BR>/g;
+	$debug_string .= "<P>$msg</P>\n";
 }
