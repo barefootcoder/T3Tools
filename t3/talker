@@ -24,8 +24,9 @@ print STDERR "$0: no server refresh interval defined in ini file\n" and exit(1)
 
 # build most common messages
 my (%online, %user_status, @waiting_messages);
-my $alive_message = T3::build_message($T3::username, "", T3::LOGON_MESSAGE);
+my $logon_message = T3::build_message($T3::username, "", T3::LOGON_MESSAGE);
 my $logout_message = T3::build_message($T3::username, "", T3::LOGOFF_MESSAGE);
+my $alive_message = $logon_message;
 
 my $current_message = $alive_message;		# start out with alive message
 while (1)									# command "quit" will drop out
@@ -151,10 +152,40 @@ while (1)									# command "quit" will drop out
 				# just break out; the outer loop will recheck
 				die "breaking out";
 			}
+			elsif ($command =~ /busy (.*)\s*$/)
+			{
+				$alive_message = T3::build_message($T3::username, "",
+						T3::BUSY_MESSAGE, $1);
+				$current_message = $alive_message;
+				die "breaking out";
+			}
+			elsif ($command eq "unbusy")
+			{
+				$alive_message = $logon_message;
+				$current_message = $alive_message;
+				die "breaking out";
+			}
+			elsif ($command =~ /status (.*)\s*$/)
+			{
+				$alive_message = T3::build_message($T3::username, "",
+						T3::LOGON_MESSAGE, $1);
+				$current_message = $alive_message;
+				die "breaking out";
+			}
+			elsif ($command eq "clear status")
+			{
+				$alive_message = T3::build_message($T3::username, "",
+						T3::LOGON_MESSAGE);
+				$current_message = $alive_message;
+				die "breaking out";
+			}
 			elsif ($command eq "help")
 			{
 				print "Valid commands are:\n";
-				print "get		send [user]		refresh			help\n";
+				print "send [user]           get           "
+						. "refresh              help\n";
+				print "busy [message]        unbusy        "
+						. "status [message]     clear status\n";
 				print "quit\n";
 			}
 			elsif ($command eq "quit")
