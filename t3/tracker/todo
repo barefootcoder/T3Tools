@@ -8,16 +8,21 @@
 
 use strict;
 
-#use Barefoot::debug;
+use Barefoot::debug;
 
 use Getopt::Std;
+use Tie::IxHash;
+use Data::Dumper;
 
 use Barefoot::base;
 use Barefoot::date;
+use Barefoot::array;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
-use Barefoot::input qw<get_yn input>;
+use Barefoot::input qw<input get_yn menu_select>;
+
+use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
 
 
@@ -25,13 +30,22 @@ use Barefoot::T3::valid qw<get_parameter>;
 # CONSTANTS
 #################################
 
+use constant PRESS_RETURN => "Press return to continue . . .";
+
 
 #################################
 # FORMATS
 #################################
 
+use constant TodoListHeader =>
+"   Todo:       Description:                              CLI PRJ  Due by:\n" .
+"   ==========  ========================================  === ===  ==========";
 
-#################################';
+use constant TodoList =>
+'   @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @>>>>>>>>>';
+
+
+#################################
 # OPTIONS AND ENVIRONMENT VARS
 #################################
 
@@ -40,7 +54,10 @@ our $parminfo = {};
 if (-t STDOUT or @ARGV)
 {
 	my $opt = {};
-	getopts('', $opt);
+	getopts('fh', $opt) or usage();
+	$parminfo->{noconfirm} = defined $opt->{f};
+
+	usage() if defined $opt->{h};
 }
 else
 {
@@ -48,14 +65,110 @@ else
 
 
 #################################
-# CHECK FOR ERRORS
+# PSEUDO-GLOBAL VARIABLES
 #################################
 
+our (@todo_list, %todo_index);
+
+our %menu_list;
+tie %menu_list, 'Tie::IxHash',
+(
+	"Add a task"			=>		\&add_todo,
+	"Cancel a task"			=>		\&cancel_todo,
+	"Complete a task"		=>		\&complete_todo,
+	"Quit program"			=>		sub { exit },
+);
 
 
 #################################
 # main()
 #################################
+
+initialize();
+
+# infinite loop for menu and actions
+while (true)
+{
+	show_todos();
+	my @menu_choices = keys %menu_list;
+	my $command = menu_select("Choose:", @menu_choices);
+	$menu_list{ $menu_choices[$command] }->();
+}
+
+
+#################################
+# MENU COMMAND SUBROUTINES
+#################################
+
+
+sub add_todo
+{
+	my $new_todo = {};
+
+	$new_todo->{name} = input("Short codename for the item:");
+	$new_todo->{descr} = input("Brief description of the task:");
+	$new_todo->{due} = input(
+			"When task is due:",
+			date::today(), 
+			{
+				VALID		=>	\&date::isValid,
+				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
+			}
+	);
+
+	# need to save results in object, not parminfo
+	my $opts = { SAVE_IN_OBJECT => 1 };
+	get_parameter("client", $parminfo, $new_todo, $opts);
+	get_parameter("project", $parminfo, $new_todo, $opts);
+
+	push @todo_list, $new_todo and sync_lists();
+	writefile();
+}
+
+
+sub cancel_todo
+{
+	my $index = get_existing_todo("cancel");
+
+	unless (defined $index)
+	{
+		print "No such task!\n";
+		input(PRESS_RETURN);
+		return;
+	}
+
+	print "A cancelled todo task is gone forever!!\n";
+	if (get_yn("Are you sure you want to do this?"))
+	{
+		my $old_todo = splice @todo_list, $index, 1;
+		sync_lists();
+		save_history($parminfo->{history}, $parminfo->{user}, "cancel",
+				fields($old_todo));
+		writefile();
+	}
+}
+
+
+sub complete_todo
+{
+	my $index = get_existing_todo("complete");
+
+	unless (defined $index)
+	{
+		print "No such task!\n";
+		input(PRESS_RETURN);
+		return;
+	}
+
+	if (get_yn("Are you definitely ready to mark this task completed?"))
+	{
+		my $old_todo = splice @todo_list, $index, 1;
+		sync_lists();
+		save_history($parminfo->{history}, $parminfo->{user}, "complete",
+				fields($old_todo));
+		writefile();
+	}
+}
 
 
 #################################
@@ -64,6 +177,11 @@ else
 
 sub usage
 {
+	error(0, "usage is:\n",
+			"    todo [-h | -f]\n",
+			"       -h: this help message\n",
+			"       -f: don't ask for confirmations\n",
+	);
 }
 
 
@@ -83,9 +201,113 @@ sub error
 		exit 0;
 	}
 	else
+=cut
 	{
 		print STDERR "$progname: ", @messages, "\n";
 		exit $exitcode;
 	}
-=cut
+}
+
+
+sub initialize
+{
+	$parminfo->{user} = t3_username();
+
+	($parminfo->{filename}, $parminfo->{history})
+			= t3_filenames("todo", $parminfo->{user});
+
+	readfile();
+}
+
+
+sub readfile
+{
+	open(IN, $parminfo->{filename}) or die("can't read todo file");
+	while ( <IN> )
+	{
+		chomp;
+
+		my $todo = {};
+		(fields($todo)) = split("\t");
+		push @todo_list, $todo;
+	}
+	close(IN);
+
+	sync_lists();
+}
+
+
+sub writefile
+{
+	open(OUT, ">$parminfo->{filename}") or die("can't write todo file");
+	foreach my $todo (@todo_list)
+	{
+		print OUT
+				join("\t", fields($todo)), "\n";
+	}
+	close(OUT);
+}
+
+
+# this keeps %todo_index sync'ed up with @todo_list.  you have to call
+# this function yourself every time you modify @todo_list.
+
+sub sync_lists
+{
+	%todo_index = map { $todo_list[$_]->{name} => $_ } 0..$#todo_list;
+}
+
+
+# this looks very esoteric, but it just encapsulates a single place where
+# a todo item can be broken into its various components.  by having this
+# function, all the fields will always be in the same order, and since the
+# sub is marked lvalue and returns a slice, you can assign to it too.
+# (Warning! default context for lvalue subs in Perl is scalar, so this is
+# not going to work:
+#		fields($todo) = split("\t");
+# it ought to give you a warning.  proper syntax is this:
+#		(fields($todo)) = split("\t");
+# don't shoot us; we didn't make the rules.)
+
+sub fields : lvalue
+{
+	@{$_[0]}{ qw<name descr client project due> };
+}
+
+
+sub show_todos
+{
+	if (@todo_list)
+	{
+		print "\n", TodoListHeader, "\n";
+		foreach my $todo (@todo_list)
+		{
+			writeln(TodoList, fields($todo));
+		}
+		print "\n";
+	}
+	else
+	{
+		print "\n\tYou have no items in your todo list.\n\n";
+	}
+}
+
+
+sub get_existing_todo
+{
+	my ($operation) = @_;
+
+	my $name = input("What is the name of the task you want to $operation?");
+	return exists $todo_index{$name} ? $todo_index{$name} : undef;
+}
+
+
+sub save_history
+{
+	my ($file, $user, $command, @fields) = @_;
+
+	open(HIST, ">>$file") or die("can't open history file $file");
+	print HIST join("\t", $ENV{USER}, date::today(), $command, $user,
+			@fields), "\n";
+	close(HIST);
 }
