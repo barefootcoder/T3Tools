@@ -8,5 +8,11 @@ use Barefoot::input qw(input);
 my $user = $ARGV[0];
 $user = input("user to log off?") unless defined($user);
 
+if (!`t3_who | grep $user`)
+{
+	print STDERR "$0: user $user doesn't appear to be logged in\n";
+	exit(2);
+}
+
 T3::initialize($::ENV{HOME});
 T3::send_message(T3::build_message($user, "", T3::LOGOFF_MESSAGE));
