@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.10  1999/10/07 18:59:34  buddy
+# fixed bug with redo CLIENT when prompting for client number
+#
 # Revision 1.9  1999/09/05 05:12:38  buddy
 # added check against client_employee table to verify client for log entry
 #
@@ -399,11 +402,17 @@ if ($func eq 't')					# total timers by client
 		$clients{$client}->{total} += $hours;
 	}
 
+	my $grand_total = 0;
 	foreach my $client (keys %clients)
 	{
 		writeln($::Totals, $client, timerdata::client_name($client),
 				$clients{$client}->{total});
+		$grand_total += $clients{$client}->{total};
 	}
+
+	# print total totals
+	print "=" x length($::Totals), "\n";
+	writeln($::Totals, "", "Grand Total", $grand_total);
 }
 
 if ($func eq 'r')					# run the logger program (currently can't)
