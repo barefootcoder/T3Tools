@@ -19,7 +19,7 @@ use constant MLINE_FORMAT => 'Test: ^<<<<<<<<<<<<<<<<<<&'
 use constant MLINE_FORMAT_RESULT => "Test: this is a test of\n"
 		. "      some very long text\n      that even has some\n"
 		. "      embedded newlines in\n      it.  hopefully this\n"
-		. "      will work. \n\n";
+		. "      will work.\n";
 
 my $mline_text = <<END;
 this is a test of some very long text that even has some embedded newlines
@@ -35,11 +35,25 @@ test_format("multiline format test",
 
 # test writeln()
 my $testfile = "format.tst";
-open(TEST, ">$testfile") or die("can't create file for testing");
 select TEST;
+
+open(TEST, ">$testfile") or die("can't create file for testing");
 writeln(SIMPLE_FORMAT, qw<A B C>, 12.345);
 close(TEST);
-test_format("writeln test", `cat $testfile`, SIMPLE_FORMAT_RESULT . "\n");
+test_format("writeln ^ test", `cat $testfile`, SIMPLE_FORMAT_RESULT . "\n");
+
+open(TEST, ">$testfile") or die("can't create file for testing");
+writeln('~~^' . '<' x 20, $mline_text);
+close(TEST);
+test_format("writeln test", scalar `cat $testfile`, <<END);
+  this is a test of
+  some very long text
+  that even has some
+  embedded newlines in
+  it.  hopefully this
+  will work.
+END
+
 unlink($testfile);
 select STDOUT;
 
@@ -69,7 +83,8 @@ sub test_format
 
 	unless ($formatted eq $expected)
 	{
-		print STDERR "$msg: wanted $expected, got $formatted\n" if DEBUG >= 2;
+		print STDERR "$msg: wanted [[$expected]], got [[$formatted]]\n"
+				if DEBUG >= 2;
 		die("failed $msg");
 	}
 }
