@@ -11,9 +11,13 @@ use strict;
 # use Barefoot::debug;							# comment out for production
 
 use Getopt::Std;
+use Time::localtime;
 use Barefoot::date;
 use Barefoot::input qw(input);
+use Barefoot::T3;
 
+# where message box files are found
+use constant TALKERPATH => T3::config_param('TalkerDir');
 
 my $opt = {};
 getopts('lo:n:', $opt);
@@ -22,32 +26,33 @@ my $older_than = $opt->{o};
 my $newer_than = $opt->{n};
 
 my %users;
-open(LOG, "/var/log/httpd/access_log") or die("can't open server log");
-while ( <LOG> )
+my $users_roll_filename = TALKERPATH . "/users.roll";
+open(ROLL, $users_roll_filename) or die("can't open user list");
+while ( <ROLL> )
 {
-	if ( /talker_server/ and /status="IM(ON|BUSY)"/ )
+	my ($from) = /from="(.*?)"/;
+	my $user_touch_file = TALKERPATH . "/" . $from . ".active";
+
+	if (-e $user_touch_file)
 	{
-		my ($from) = /from="(.*?)"/;
-		$users{$from} = $_;
+		my $days = -M $user_touch_file;
+		my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size,
+			$atime, $mtime, $ctime, $blksize, $blocks) 
+				= stat (_);
+
+		my $minutes = $days * 24 * 60;
+		$users{$from} = "$minutes##" . ctime($mtime);
 	}
 }
-close(LOG);
-
-foreach my $user (keys %users)
-{
-	$_ = $users{$user};
-	my ($date, $time) = /\[(.*?):(.*?) .*?\]/;
-	my $secs = date::dateTimeSeconds($date, $time);
-	$users{$user} = "$secs##$date $time";
-}
+close(ROLL);
 
 foreach my $user (sort { $users{$a} <=> $users{$b} } keys %users)
 {
 	my $datetime = $users{$user};
 	# print "    $datetime\n";
 	$datetime =~ s/^(.*?)##//;
-	next if $older_than and $1 > time() - $older_than * 60;
-	next if $newer_than and $1 < time() - $newer_than * 60;
+	next if $older_than and $1 < $older_than;
+	next if $newer_than and $1 > $newer_than;
 	print "$user";
 	print ": $datetime" unless $list_only;
 	print "\n";
