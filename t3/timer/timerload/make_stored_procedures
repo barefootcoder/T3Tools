@@ -3,6 +3,11 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.2  1999/10/28 14:18:20  buddy
+# removed stuff relegated to make_rates
+# added handling for training rates
+# various bug fixes
+#
 # Revision 1.1  1999/09/01 17:52:13  buddy
 # Initial revision
 #
@@ -91,9 +96,9 @@ run_query -S$server -U$user -D$destdb <<-END
 		-- while we're here, may as well zero out the log entries
 		-- attached to training projects
 		update #emp_comm
-		set billrate = 0
+		set billrate = 0, payrate = 0
 		from #emp_comm ec, project p, project_type pt
-		where ec.source_tbl != 'training_class'
+		where ec.source_tbl not in ('training_class', 'training work')
 		and ec.client = p.client
 		and ec.proj = p.proj
 		and p.proj_type = pt.proj_type
@@ -316,15 +321,20 @@ run_query -S$server -U$user -D$destdb <<-END
 		-- employee commission based on *all* work done for the
 		-- corresponding project ... so let's get those entries now
 		-- (we use a special source_tbl value so we can find them later)
+		-- since you don't know the total profit until the training
+		-- project is officially done, we'll skip any rows where the
+		-- project is "open" (i.e., the end_date is still END_OF_TIME)
 		insert #emp_comm
-			(source_tbl, source_id, emp, client, proj, date, hours)
-		select 'training work', l.id, l.emp, l.client, l.proj, l.date, l.hours
+			(source_tbl, source_id, emp, client, proj, date, hours, billrate)
+		select 'training work', l.id, l.emp, l.client, l.proj, l.date,
+				l.hours, 0.0
 		from log l, project p, project_type pt
 		where l.client = p.client
 		and l.proj = p.proj
 		and p.proj_type = pt.proj_type
 		and pt.use_training_rates = 1
 		and l.date between p.start_date and p.end_date
+		and p.end_date != $END_OF_TIME
 		and exists
 		(
 			select 1
