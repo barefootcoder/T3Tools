@@ -65,6 +65,8 @@ my $debug_user;
 ($debug_user) = $ENV{SCRIPT_FILENAME} =~ m@/([^/]*?)test/@ if DEBUG;
 
 $title = 'TIMER Reports';
+$scripturlpath = "/cgi-bin/timer/scripts";
+$scriptpath = "/home/httpd$scripturlpath"; 
 $basepath = DEBUG ? "/proj/$debug_user/t3/timerweb/reports"
 		: "/home/httpd/sybase/timer_reports";
 
@@ -102,8 +104,11 @@ text_form();
 print "<HR>\n";
 
 my %report_groups;
+my $admin = is_admin_user();
 
 debug($cgi->a({-href=>"test.cgi"}, "test"));
+
+# Read Report Directory
 for $file ( < $basepath/* > )
 {
 	$basefile = $file;
@@ -140,6 +145,39 @@ for $file ( < $basepath/* > )
 	}
 }
 
+
+# Read Script Directory
+for $file ( < $scriptpath/* > )
+{
+	$basefile = $file;
+	$basefile =~ s?^$scriptpath/??;
+	my ($group, $alt_params);
+
+	open(FILE, $file) or next;
+	while ( <FILE> )
+	{
+		if ( /#\s*SORT GROUP:\s*(.*)\s*/ )
+		{
+			$group = $1;
+			if (not exists $report_groups{$group})
+			{
+				$report_groups{$group} = ();
+			}
+		}
+
+		if ( /#\s*TITLE:\s*(.*)\s*/ )
+		{
+										debug("report is $1");
+			my $report = {};
+			$report->{file} = $basefile;
+			$report->{title} = $1;
+			$report->{params} = "script";
+			push @{$report_groups{$group}}, $report;
+		}
+
+	}
+}
+
 print "<multicol cols=3>\n";
 foreach my $group (keys %report_groups)
 {
@@ -149,7 +187,11 @@ foreach my $group (keys %report_groups)
 	foreach my $report (sort {$a->{title} cmp $b->{title}}
 			@{$report_groups{$group}})
 	{
-		if ($report->{params})
+		if ($report->{params} eq "script")
+		{
+			print $cgi->a({-href=>"$scripturlpath/$report->{file}?
+					admin=$admin"}, $report->{title}), "<BR>\n";
+		} elsif ($report->{params})
 		{
 			print $cgi->a({-href=>"sqlcgi.pl?sqlfile=$report->{file}&"
 					. "$report->{params}"}, $report->{title}), "<BR>\n";
