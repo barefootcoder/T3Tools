@@ -236,8 +236,8 @@ sub insert_log
 
 	my $query = "
 			insert time_log
-				(	emp, client, proj, phase, cliproj, date, hours, comments,
-					create_user, create_date
+				(	emp, client, proj, phase, cliproj, log_date, hours,
+					comments, create_user, create_date
 				)
 			values
 			(	$emp, $client, $proj, $phase, $cliproj, $date, $hours,
@@ -299,7 +299,7 @@ sub this_week_totals
 			-- string beforehand
 
 			select t.login, t.timer_name, t.client, t.proj, t.phase,
-					max($end) "date", $rounded_hours{U} "hours"
+					max($end) "timer_date", $rounded_hours{U} "hours"
 			into #timer_totals
 			from timer t, timer_chunk tc, client c
 			where t.login = '$user'
@@ -336,31 +336,32 @@ sub this_week_totals
 
 			-- get all times for outstanding timers
 			insert pay_amount
-				(log_source, log_id, emp, client, proj, phase, date, hours,
-						requires_payment, requires_billing)
-			select 'timer', 0, e.emp, tt.client, tt.proj, tt.phase, tt.date,
-					tt.hours, pt.requires_payment, pt.requires_billing
+				(log_source, log_id, emp, client, proj, phase, pay_date,
+						hours, requires_payment, requires_billing)
+			select 'timer', 0, e.emp, tt.client, tt.proj, tt.phase,
+					tt.timer_date, tt.hours, pt.requires_payment,
+					pt.requires_billing
 			from #timer_totals tt, employee e, project p, project_type pt
 			where tt.login = e.login
 			and tt.client = p.client
 			and tt.proj = p.proj
-			and tt.date between p.start_date and p.end_date
+			and tt.timer_date between p.start_date and p.end_date
 			and p.proj_type = pt.proj_type
 
 			-- get any time that has already been logged for "this week"
 			insert pay_amount
-				(log_source, log_id, emp, client, proj, phase, date, hours,
-						requires_payment, requires_billing)
+				(log_source, log_id, emp, client, proj, phase, log_date,
+						hours, requires_payment, requires_billing)
 			select tl.log_source, tl.log_id, tl.emp, tl.client,
-					tl.proj, tl.phase, tl.date, tl.hours,
+					tl.proj, tl.phase, tl.log_date, tl.hours,
 					pt.requires_payment, pt.requires_billing
 			from time_log tl, employee e, project p, project_type pt
 			where tl.emp = e.emp
 			and e.login = '$user'
-			and tl.date between '$monday' and dateadd(day, 6, '$monday')
+			and tl.log_date between '$monday' and dateadd(day, 6, '$monday')
 			and tl.client = p.client
 			and tl.proj = p.proj
-			and tl.date between p.start_date and p.end_date
+			and tl.log_date between p.start_date and p.end_date
 			and p.proj_type = pt.proj_type
 
 			-- figure out pay amounts
