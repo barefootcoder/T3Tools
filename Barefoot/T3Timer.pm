@@ -10,12 +10,13 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_timer_info do_timer_command readfile this_week_totals
+@EXPORT_OK = qw<get_timer_info do_timer_command this_week_totals
 		insert_time_log>;
 
 
-use POSIX qw<strftime>;
 use Storable;
+use Data::Dumper;
+use POSIX qw<strftime>;
 
 use Barefoot::base;
 use Barefoot::file;
@@ -27,7 +28,7 @@ use Barefoot::DataStore;
 use Barefoot::config_file;
 
 use Barefoot::T3::base;
-use Barefoot::T3::Timer qw<timer_command calc_date calc_time>;
+use Barefoot::T3::Timer qw<timer_command readfile calc_date calc_time>;
 
 
 # Timer constants
@@ -88,42 +89,46 @@ sub processMessage
 
 sub get_timer_info
 {
-	my ($timername, $timerinfo) = @_;
+	my ($timername, $parminfo) = @_;
 
-	setuptimer($timername, $timerinfo);
-	readfile($timerinfo);
+	setup_params($timername, $parminfo);
+	my $timers = readfile($parminfo->{user});
 
 	# try to find a more reasonable default timer
-	if ($timerinfo->{giventimer} eq FALLBACK_TIMER)
+	if ($parminfo->{timer} eq FALLBACK_TIMER)
 	{
-		if ($timerinfo->{curtimer})
+		if ($timers->{T3::CURRENT_TIMER})
 		{
 			# if there's a current timer, use that
-			$timerinfo->{giventimer} = $timerinfo->{curtimer};
+			$parminfo->{timer} = $timers->{T3::CURRENT_TIMER};
 		}
-		elsif (keys %{$timerinfo->{timers}} == 1)
+		elsif (keys %$timers == 1)
 		{
 			# if there's only 1 timer, use that
-			$timerinfo->{giventimer} = (keys %{$timerinfo->{timers}})[0];
+			# note: when each is called in a scalar context (such as below),
+			# it returns the "next" key (in this case, there's only 1 key)
+			$parminfo->{timer} = each %$timers;
 		}
 		# if none of those work, you're stuck with FALLBACK_TIMER
 	}
 
 	try
 	{
-		$timerinfo->{connected} = test_connection($timerinfo);
+		$parminfo->{connected} = test_connection();
 	}
 	catch
 	{
 		print STDERR "can't connect to DataStore: $_\n" if DEBUG >= 3;
-		$timerinfo->{connected} = false;
+		$parminfo->{connected} = false;
 	};
+
+	return $timers;
 }
 
 
 sub do_timer_command
 {
-	my ($command, $timerinfo) = @_;
+	my ($command, $parminfo, $timers) = @_;
 
 =comment
 	# save command in case later functions need it
@@ -135,96 +140,20 @@ sub do_timer_command
 			if $timerinfo->{halftime} and $command ne 'START';
 	$timer_commands{$command}->($timerinfo);
 =cut
-	timer_command($command, $timerinfo);
+	#print Dumper($timerinfo->{timers});
+	timer_command($command, $parminfo, $timers);
 }
 
 
-sub setuptimer						# Set up
+sub setup_params		# fill in some parameters if they're not there already
 {
-	my ($timername, $timerinfo) = @_;
+	my ($timername, $parminfo) = @_;
 
-    $timerinfo->{timers} = {};
+    $parminfo->{timer} = $timername || FALLBACK_TIMER;
 
-    $timerinfo->{giventimer} = $timername || FALLBACK_TIMER;
-
-	$timerinfo->{user} = t3_username() unless $timerinfo->{user};
-
-	($timerinfo->{tfile}, $timerinfo->{hfile})
-			= t3_filenames(TIMER => $timerinfo->{user});
+	$parminfo->{user} = t3_username() unless $parminfo->{user};
 
 	return true;
-}
-
-
-# ------------------------------------------------------------
-# File manipulation Procedures
-# ------------------------------------------------------------
-
-
-sub readfile
-{
-	my ($timerinfo) = @_;
-
-	open(TFILE, $timerinfo->{tfile}) or die("can't read timer file");
-	$timerinfo->{curtimer} = "";
-	while ( <TFILE> )
-	{
-		chomp;
-		my $curtimer = {};
-		(timer_fields($curtimer)) = split("\t", $_, -1);
-		$timerinfo->{timers}->{$curtimer->{name}} = $curtimer;
-		$timerinfo->{curtimer} = $curtimer->{name}
-				if ($curtimer->{time} =~ /-$/);
-	}
-	close(TFILE);
-}
-
-
-sub writefile
-{
-	my ($timerinfo) = @_;
-	print STDERR "entering writefile function\n" if DEBUG >= 5;
-
-=comment
-	# don't really care whether this succeeds or not
-	try
-	{
-		print STDERR "in try block\n" if DEBUG >= 5;
-		# save_to_db($timerinfo);
-	}
-	catch
-	{
-		print "returning from catch block\n" if DEBUG >= 5;
-		return;					# from catch block
-	};
-	print STDERR "made it past exception block\n" if DEBUG >= 5;
-=cut
-
-	print STDERR "going to print to file $timerinfo->{tfile}\n" if DEBUG >= 3;
-	open(TFILE, ">$timerinfo->{tfile}") or die("can't write to timer file");
-	foreach my $timerstuff (values %{$timerinfo->{timers}})
-	{
-		$timerstuff->{phase} ||= "";
-		$timerstuff->{todo_link} ||= "";
-		print TFILE join("\t", timer_fields($timerstuff)), "\n";
-	}
-	close(TFILE);
-}
-
-
-sub save_history
-{
-	my ($timerinfo, $command) = @_;
-	my $timerstuff = $timerinfo->{timers}->{$timerinfo->{giventimer}};
-
-	open(HIST, ">>$timerinfo->{hfile}") or die("couldn't open history file");
-	print HIST join("\t",
-			$timerinfo->{user}, $ENV{USER}, $command,
-			$timerinfo->{giventimer}, $timerstuff->{time},
-			$timerstuff->{client}, $timerstuff->{project},
-			$timerstuff->{phase},
-		), "\n";
-	close(HIST);
 }
 
 
@@ -235,7 +164,6 @@ sub save_history
 
 sub test_connection
 {
-	my ($timerinfo) = @_;
 	print STDERR "Entered test_connection\n" if DEBUG >= 4;
 
 	my $test_query = &t3->do(" select 1 ");
