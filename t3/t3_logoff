@@ -1,0 +1,13 @@
+#! /usr/bin/perl
+
+use strict;
+
+use Barefoot::input qw(input);
+
+use T3;
+
+my $user = $ARGV[0];
+$user = input("user to log off?") unless defined($user);
+
+T3::initialize($::ENV{HOME});
+T3::send_message(T3::build_message($user, "", T3::LOGOFF_MESSAGE));
