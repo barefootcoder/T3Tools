@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.8  1999/07/13 19:44:05  mike
+# Fixed "no timer active" bug
+#
 # Revision 1.7  1999/07/09 19:01:27  mike
 # Fixed active timer bug and added "working..." for when comments are being entered
 #
@@ -512,14 +515,14 @@ sub get_giventimer
 {
 	my ($function, $timerinfo) = @_;
 
-	{
+	TIMER: {
 		print "$function what timer? ($timerinfo->{giventimer})  ";
 		my $new = <STDIN>;
 		chomp $new;
 		if ($new =~ /\s/)
 		{
 			print STDERR "timer name can't have a space; sorry\n";
-			redo;
+			redo TIMER;
 		}
 		$timerinfo->{giventimer} = $new if $new;
 	}
@@ -579,8 +582,8 @@ sub get_client
 			or ($func eq 's' and exists $giventimer->{client});
 
 	my $client;
-	# make a(n unnamed) block so redo will work
-	{
+	# make a block so redo will work
+	CLIENT {
 		print "which client is this for? ($defclient)  ";
 		$client = <STDIN>;
 		chomp $client;
@@ -588,7 +591,7 @@ sub get_client
 		my $fullname = timerdata::client_name($client);
 		if (defined($fullname))
 		{
-			print "illegal client number!\n" and redo if not $fullname;
+			print "illegal client number!\n" and redo CLIENT if not $fullname;
 			print "client is $client: $fullname; is this right? (y/N)  ";
 		}
 		else
@@ -596,7 +599,7 @@ sub get_client
 			print "can't verify client number! are you sure you want to ",
 					"proceed? (y/N)  ";
 		}
-		redo unless <STDIN> =~ /^y/i;
+		redo CLIENT unless <STDIN> =~ /^y/i;
 	}
 	return $client;
 }
@@ -680,6 +683,22 @@ sub log_to_sybase
 
 	my ($emp, $client, $rounding, $date, $hours, $proj, $phase,
 			$cliproj, $comments);
+	
+	# please note that the order you ask for the data elements in is
+	# *very* important ... the following things are true:
+	#	you have to do employee before you do client
+	#	you have to do date before you do client
+	#	you have to do date before you do project
+	# 	you have to do client before you do hours
+	#	you have to do client before you do project
+	#	you have to do client before you do phase
+	#	you have to do client before you do cliproj
+	#	you have to do client before you do comments
+	#	you have to do project before you do phase
+	#	you have to do project before you do cliproj
+	#	you have to do project before you do comments
+	# based on this, there is not a whole lot you can do differently in
+	# the order chosen below, so DON'T MUCK WITH IT!
 
 	# a bunch of anonymous blocks for purposes of redo
 	# (well, they're called "anonymous" even tho they're named ... go figure)
@@ -687,30 +706,53 @@ sub log_to_sybase
 		$emp = input("Employee number:",
 				timerdata::emp_number($timerinfo->{user}));
 		my $fullname = timerdata::emp_fullname($emp);
-		print "  {Invalid employee!}\n" and redo unless $fullname;
+		print "  {Invalid employee!}\n" and redo EMP unless $fullname;
 		print "  {Employee is $fullname}\n";
-	}
-
-	CLIENT: {
-		$client = input("Client number:", $timer->{client});
-		my $fullname = timerdata::client_name($client);
-		print "  {Invalid client!}\n" and redo unless $fullname;
-		print "  {Client is $fullname}\n";
-		$rounding = timerdata::client_rounding($client);
 	}
 
 	DATE: {
 		$date = input("Date:", calc_date($timer->{time}));
 		my ($mon, $day, $year) = split(?/|-?, $date);
-		print "  {Invalid date!}\n" and redo unless date::isValid($date);
+		print "  {Invalid date!}\n" and redo DATE unless date::isValid($date);
+	}
+
+	CLIENT: {
+		my $valid_clients = timerdata::query_results("
+				select c.client, c.name
+				from client c, client_employee ce
+				where ce.emp = '$emp'
+				and ce.client = c.client
+				and '$date' between ce.start_date and ce.end_date
+			");
+		$client = input("Client number or ? for list:", $timer->{client});
+		if ($client eq "?")
+		{
+			foreach my $row (@$valid_clients)
+			{
+				print "  {", $row->[0], " - ", $row->[1], "}\n";
+			}
+			redo CLIENT;
+		}
+		# check for valid project
+		foreach my $row (@$valid_clients)
+		{
+			if ($client eq $row->[0])
+			{
+				print "  {Client is ", $row->[1], "}\n";
+				$rounding = timerdata::client_rounding($client);
+				last CLIENT;
+			}
+		}
+		print "  {Invalid client!}\n";
+		redo CLIENT;
 	}
 
 	HOURS: {
 		$hours = input("Hours:",
 				round(calc_time($timer->{time}) / 60, $rounding, .25));
-		print "  {Hours must divisible by .25}\n" and redo
+		print "  {Hours must divisible by .25}\n" and redo HOURS
 				unless $hours == round($hours, $::OFF, .25);
-		print "  {Hours must be greater than zero}\n" and redo
+		print "  {Hours must be greater than zero}\n" and redo HOURS
 				unless $hours > 0;
 	}
 
@@ -728,7 +770,7 @@ sub log_to_sybase
 			{
 				print "  {", $row->[0], " - ", $row->[1], "}\n";
 			}
-			redo;
+			redo PROJECT;
 		}
 		# uppercase it for 'em
 		$proj = string::upper($proj);
@@ -739,7 +781,7 @@ sub log_to_sybase
 					if $proj eq $row->[0];
 		}
 		print "  {Invalid project!}\n";
-		redo;
+		redo PROJECT;
 	}
 
 	my ($phase_needed, $cliproj_needed, $comments_needed)
@@ -758,7 +800,7 @@ sub log_to_sybase
 			{
 				print "  {", $row->[0], " - ", $row->[1], "}\n";
 			}
-			redo;
+			redo PHASE;
 		}
 		# uppercase it for 'em
 		$phase = string::upper($phase);
@@ -769,7 +811,7 @@ sub log_to_sybase
 					if $phase eq $row->[0];
 		}
 		print "  {Invalid phase!}\n";
-		redo;
+		redo PHASE;
 	}
 
 	CLIPROJ: {
@@ -786,7 +828,7 @@ sub log_to_sybase
 			{
 				print "  {", $row->[0], " - ", $row->[1], "}\n";
 			}
-			redo;
+			redo CLIPROJ;
 		}
 		# uppercase it for 'em
 		$cliproj = string::upper($cliproj);
@@ -796,7 +838,7 @@ sub log_to_sybase
 			last CLIPROJ if $cliproj eq $row->[0];
 		}
 		print "  {Invalid client project ID!}\n";
-		redo;
+		redo CLIPROJ;
 	}
 
 	COMMENTS: {
@@ -812,8 +854,10 @@ sub log_to_sybase
 		while ($comments =~ s/^\s+$//) {};	# no completely blank lines
 		while ($comments =~ s/^\n//) {};	# no extra newlines in front
 		$comments =~ s/\s*\n+\s*$//;		# none at the end either
-		print "  {You must have comments}\n\n" and redo if not $comments;
-		print "  {Comments too long!}\n\n" and redo if length($comments) > 255;
+		print "  {You must have comments}\n\n" and redo COMMENTS
+				if not $comments;
+		print "  {Comments too long!}\n\n" and redo COMMENTS
+				if length($comments) > 255;
 	}
 
 	print "working.....\n";
