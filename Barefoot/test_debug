@@ -16,4 +16,11 @@ BEGIN
 			unless $@ =~ /^DEBUG already defined/;
 }
 
+package test2;
+BEGIN
+{
+	die("debug didn't set higher level for value: $@")
+			unless eval "use Barefoot::debug(2); DEBUG;" == 2;
+}
+
 print "ALL TESTS PASSED\n";
