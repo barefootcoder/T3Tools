@@ -175,6 +175,28 @@ create_table("salary_amount",
 );
 
 
+# sales_comm_amount
+
+create_table("sales_comm_amount",
+	[
+		[ "profit_id",				"unique_id",		"NOT NULL" ],
+		[ "pay_type",				"char(1)",			"NOT NULL" ],
+		[ "pay_to",					"internal_id",		"NOT NULL" ],
+		[ "name",					"description",		"NULL" ],
+		[ "client_id",				"internal_id",		"NOT NULL" ],
+		[ "proj_id",				"internal_id",		"NULL" ],
+		[ "commission_percent",		"percentage",		"NOT NULL" ],
+		[ "amount",					"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"public",
+		},
+	]
+);
+
+
 ######################
 # SUBS               #
 ######################
