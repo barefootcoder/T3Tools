@@ -3,6 +3,9 @@
 # For RCS:
 # $Date$
 # $Log$
+# Revision 1.1  2000/09/16 03:11:50  buddy
+# Initial revision
+#
 #
 # $Id$
 # $Revision$
@@ -746,6 +749,24 @@ run_query -S$server -U$user -D$destdb <<-END
 	create unique index cliproj
 	on class_log (client, proj, date)
 	on index_seg
+	go
+
+
+	-- commission_modifier
+
+	print "making commission_modifier"
+	go
+
+	$(overwrite_table commission_modifier "
+		emp					internal_id		NOT NULL,
+		comm_type			type_id			NOT NULL,
+		pay_type			char(1)			NOT NULL,
+		modifier			percentage 		NOT NULL,
+		start_date			datetime		NOT NULL,
+		end_date 			datetime		NOT NULL
+	")
+
+	grant insert,update on commission_modifier to $admin_users
 	go
 
 
