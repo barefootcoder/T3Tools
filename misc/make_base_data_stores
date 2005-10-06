@@ -1,0 +1,20 @@
+#! /usr/bin/perl -w
+
+# For CVS:
+# $Date: $
+# $Id: $
+# $Revision: $
+
+use strict;
+
+use Barefoot::DataStore;
+
+
+print STDERR "You probably have to run this script as root.\n";
+
+my $server = "lexx";
+my $sa = DataStore->create("${server}_sa",
+		connect_string		=>	"dbi:Sybase:server=$server;database=master",
+		server				=>	$server,
+		user				=>	"sa",
+);
