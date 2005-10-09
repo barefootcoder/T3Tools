@@ -1,10 +1,10 @@
-#! /usr/local/bin/perl -w
+#! /usr/local/bin/perl
 
 # For CVS:
-# $Date$
+# $Date: 2003/11/18 00:57:20 $
 #
-# $Id$
-# $Revision$
+# $Id: cvsdir.pm,v 1.1 2003/11/18 00:57:20 buddy Exp $
+# $Revision: 1.1 $
 
 ###########################################################################
 #
@@ -30,10 +30,12 @@ package cvs;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 
-use constant WORKING_DIR => "/proj/" .
-		scalar(exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER});
+use constant WORKING_DIR => '/home/' .
+		scalar(exists $ENV{REMOTE_USER} ? $ENV{REMOTE_USER} : $ENV{USER}) .
+		'/proj/T3';
 
 
 ###########################
