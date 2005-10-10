@@ -1,10 +1,10 @@
 #! /usr/local/bin/perl
 
 # For RCS:
-# $Date$
+# $Date: 2003/11/18 04:58:37 $
 #
-# $Id$
-# $Revision$
+# $Id: DataStore.pm,v 1.15 2003/11/18 04:58:37 buddy Exp $
+# $Revision: 1.15 $
 
 ###########################################################################
 #
@@ -66,6 +66,17 @@ our $base_types =
 							money		=>	'number(19,4)',
 							text		=>	'varchar2(2000)',
 						},
+		mysql		=>	{
+							money		=>	'decimal(17,2)',
+							boolean		=>	'bool',
+						},
+};
+
+our $column_attributes =
+{
+		mysql		=>	{
+							identity	=>	'not null auto_increment',
+						},
 };
 
 our $constants =
@@ -77,6 +88,10 @@ our $constants =
 		Oracle		=>	{
 							BEGINNING_OF_TIME	=>	"01-JAN-0001",
 							END_OF_TIME			=>	"31-DEC-9999",
+						},
+		mysql		=>	{
+							BEGINNING_OF_TIME	=>	"1000-01-01",
+							END_OF_TIME			=>	"9999-12-31",
 						},
 };
 
@@ -99,9 +114,20 @@ our $funcs =
 							drop_index		=>	sub { "drop index $_[1]" },
 							place_on		=>	sub { "tablespace $_[0]" },
 						},
+		mysql		=>	{
+							curdate			=>	sub { "curdate()" },
+							ifnull			=>	sub { "ifnull($_[0], $_[1])" },
+							drop_index		=>	sub {
+													"drop index $_[1] on $_[0]"
+												},
+							# no way to really implement this one AFAIK
+							place_on		=>	sub { '' },
+						},
 };
 
 our $procs = {};				# we don't use this, but someone else might
+
+our %_query_cache;				# this is only used by _transform_query
 
 1;
 
@@ -141,7 +167,8 @@ sub _login
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
 		# this is okay, as they will be ignored by RDBMSes they don't apply to
-		# print STDERR "connecting via: $this->{config}->{connect_string}\n";
+		print STDERR "connecting via: $this->{config}->{connect_string}\n"
+				if DEBUG >= 4;
 		$this->{dbh} = DBI->connect($this->{config}->{connect_string},
 				$this->{user}, $passwd,
 				{
@@ -152,6 +179,7 @@ sub _login
 				});
 		croak("can't connect to data store as user $this->{user}")
 				unless $this->{dbh};
+		print STDERR "successfully connected\n" if DEBUG >= 5;
 
 		if (exists $this->{initial_commands})
 		{
@@ -204,6 +232,9 @@ sub _transform_query
 	my @vars = ();
 	my $calc_funcs = {};
 
+	print STDERR "at top of transform: ",
+			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+
 	# it's a bad idea to allow queries while the data store is modified.
 	# the biggest reason is that the result set returned by do() contains
 	# a reference to the data store, so if the result sets remain in scope
@@ -220,150 +251,191 @@ sub _transform_query
 				. "run commit_configs()");
 	}
 
-	print STDERR "about to check for curly braces in query $query\n"
-			if DEBUG >= 3;
-	# this outer if protects queries with no substitutions from paying
-	# the cost for searching for the various types of sub's
-	if ($query =~ /{/)	# if you want % to work in vi, you need a } here
+	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
+	print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
+	# variables and constants
+	while ($query =~ / { (\w+) } /x)
 	{
-		$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
+		my $variable = $&;
+		my $varname = $1;
 
-		# alias translations
-		while ($query =~ / {\@ (\w+) } /x)
+		my $value;
+		if (exists $temp_vars{$varname})
 		{
-			my $alias = $&;
-			my $alias_name = $1;
-			my $table_name = $this->{config}->{aliases}->{$alias_name};
-			croak("unknown alias: $alias_name") unless $table_name;
-			$query =~ s/$alias/$table_name/g;
+			# temp_vars override previously defined vars
+			$value = $temp_vars{$varname};
+		}
+		elsif (exists $this->{vars}->{$varname})
+		{
+			$value = $this->{vars}->{$varname};
+		}
+		else
+		{
+			croak("variable/constant unknown: $varname");
 		}
 
-		# schema translations
-		while ($query =~ / {~ (\w+) } \. /x)
+		# if we're being called in a list context, we should use
+		# placeholders and return the var values
+		# if being called in a scalar context, do a literal
+		# substitution of the var value into the query
+		if (wantarray)
 		{
-			my $schema = $&;
-			my $schema_name = $1;
-			my $translation = $this->{schema_translation}->($schema_name);
-			# print STDERR "schema: $schema, s name: $schema_name, ";
-			# print STDERR "translation: $translation\n";
-			$query =~ s/$schema/$translation/g;
+			# can*not* do a global sub here!
+			# that would throw off the order (and number, FTM) of @vars
+			$query =~ s/$variable/\?/;
+			push @vars, $value;
 		}
-
-		print STDERR "about to check for functions in $query\n" if DEBUG >= 5;
-		# function calls
-		while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
+		else
 		{
-			my $function = quotemeta($&);
-			my $func_name = $1;
-			my @args = ();
-			@args = split(/,\s*/, $2) if $2;
-
-			print STDERR "translating function $func_name\n" if DEBUG >= 4;
-			croak("no translation scheme defined")
-					unless exists $this->{config}->{translation_type};
-			my $func_table = $funcs->{$this->{config}->{translation_type}};
-			croak("unknown translation function: $func_name")
-					unless exists $func_table->{$func_name};
-
-			my $func_output = $func_table->{$func_name}->(@args);
-			$query =~ s/$function/$func_output/g;
-		}
-
-		print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
-		# variables and constants
-		while ($query =~ / { (\w+) } /x)
-		{
-			my $variable = $&;
-			my $varname = $1;
-
-			my $value;
-			if (exists $temp_vars{$varname})
-			{
-				# temp_vars override previously defined vars
-				$value = $temp_vars{$varname};
-			}
-			elsif (exists $this->{vars}->{$varname})
-			{
-				$value = $this->{vars}->{$varname};
-			}
-			else
-			{
-				croak("variable/constant unknown: $varname");
-			}
-
-			# if we're being called in a list context, we should use
-			# placeholders and return the var values
-			# if being called in a scalar context, do a literal
-			# substitution of the var value into the query
-			if (wantarray)
-			{
-				# can*not* do a global sub here!
-				# that would throw off the order (and number, FTM) of @vars
-				$query =~ s/$variable/\?/;
-				push @vars, $value;
-			}
-			else
-			{
-				$query =~ s/$variable/$value/g;
-			}
-		}
-
-		print STDERR "about to check for calc cols in $query\n" if DEBUG >= 5;
-		# calculated columns
-		while ($query =~ / { \* (.*?) \s* = \s* (.*?) } /sx)
-		{
-			my $field_spec = quotemeta($&);
-			my $calc_col = $1;
-			my $calculation = $2;
-			print STDERR "found a calc column: $calc_col = $calculation\n"
-					if DEBUG >= 4;
-			print STDERR "going to replace <<$field_spec>> with "
-					. "<<1 as \"*$calc_col\">> in query <<$query>>\n"
-					if DEBUG >= 5;
-
-			while ($calculation =~ /%(\w+)/)
-			{
-				my $col_ref = $1;
-				my $spec = quotemeta($&);
-
-				print STDERR "found col ref in calc: $col_ref\n" if DEBUG >= 4;
-				print STDERR qq/going to sub $spec with /,
-						qq/\$_[0]->col("$col_ref")\n/ if DEBUG >= 5;
-				$calculation =~ s/$spec/\$_[0]->col("$col_ref")/g;
-			}
-
-			while ($calculation =~ /\$([a-zA-Z]\w+)/)
-			{
-				my $varname = $1;
-				my $spec = quotemeta($&);
-
-				$calculation =~ s/$spec/\${\$_[0]}->{vars}->{$varname}/g;
-			}
-
-			print STDERR "going to evaluate calc func: sub { $calculation }\n"
-					if DEBUG >= 2;
-			my $calc_function = eval "sub { $calculation }";
-			croak("illegal syntax in calculated column: $field_spec ($@)")
-					if $@;
-			$calc_funcs->{$calc_col} = $calc_function;
-
-			$query =~ s/$field_spec/1 as "*$calc_col"/g;
-			print STDERR "after calc col subst, query is <<$query>>\n"
-					if DEBUG >= 5;
+			$query =~ s/$variable/$value/g;
 		}
 	}
 
-	print STDERR "current query:\n$query\n" if DEBUG >= 4;
-	print "DataStore current query:\n$query\n" if $this->{show_queries};
+	my $sth;		# statement handle for us to return at the end of it all
+
+	# check to see if we have this query cached
+	# note: the "raw" query isn't quite raw: it's the query after variable
+	# substitutions (only).  variables could change, but it's assumed that
+	# aliases, schema names, etc, will NOT change.  you're going to get
+	# funky results if you try to change them in the middle of querying.
+	my $raw_query = $query;
+	# do *not* return a cached statement handle that is still active!
+	# this could screw up pathological cases
+	if (exists $_query_cache{$raw_query}
+			and not $_query_cache{$raw_query}->{Active})
+	{
+		$sth = $_query_cache{$raw_query};
+		print "DataStore current query:\n  cached version of\n$query\n"
+				if $this->{show_queries};
+	}
+	else											# do it the hard way
+	{
+		print STDERR "about to check for curly braces in query $query\n"
+				if DEBUG >= 3;
+		# this outer if protects queries with no substitutions from paying
+		# the cost for searching for the various types of sub's
+		if ($query =~ /{/)	# if you want % to work in vi, you need a } here
+		{
+
+			# alias translations
+			while ($query =~ / {\@ (\w+) } /x)
+			{
+				my $alias = $&;
+				my $alias_name = $1;
+				my $table_name = $this->{config}->{aliases}->{$alias_name};
+				croak("unknown alias: $alias_name") unless $table_name;
+				$query =~ s/$alias/$table_name/g;
+			}
+
+			# schema translations
+			while ($query =~ / {~ (\w+) } \. /x)
+			{
+				my $schema = $&;
+				my $schema_name = $1;
+				my $translation = $this->{schema_translation}->($schema_name);
+				# print STDERR "schema: $schema, s name: $schema_name, ";
+				# print STDERR "translation: $translation\n";
+				$query =~ s/$schema/$translation/g;
+			}
+
+			print STDERR "about to check for functions in $query\n"
+					if DEBUG >= 5;
+			# function calls
+			while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
+			{
+				my $function = quotemeta($&);
+				my $func_name = $1;
+				my @args = ();
+				@args = split(/,\s*/, $2) if $2;
+
+				print STDERR "translating function $func_name\n" if DEBUG >= 4;
+				croak("no translation scheme defined")
+						unless exists $this->{config}->{translation_type};
+				my $func_table = $funcs->{$this->{config}->{translation_type}};
+				croak("unknown translation function: $func_name")
+						unless exists $func_table->{$func_name};
+
+				my $func_output = $func_table->{$func_name}->(@args);
+				$query =~ s/$function/$func_output/g;
+			}
+
+			print STDERR "about to check for calc cols in $query\n"
+					if DEBUG >= 5;
+			# calculated columns
+			while ($query =~ / { \* (.*?) \s* = \s* (.*?) } /sx)
+			{
+				my $field_spec = quotemeta($&);
+				my $calc_col = $1;
+				my $calculation = $2;
+				print STDERR "found a calc column: $calc_col = $calculation\n"
+						if DEBUG >= 4;
+				print STDERR "going to replace <<$field_spec>> with "
+						. "<<1 as \"*$calc_col\">> in query <<$query>>\n"
+						if DEBUG >= 5;
+
+				while ($calculation =~ /%(\w+)/)
+				{
+					my $col_ref = $1;
+					my $spec = quotemeta($&);
+
+					print STDERR "found col ref in calc: $col_ref\n"
+							if DEBUG >= 4;
+					print STDERR qq/going to sub $spec with /,
+							qq/\$_[0]->col("$col_ref")\n/ if DEBUG >= 5;
+					$calculation =~ s/$spec/\$_[0]->col("$col_ref")/g;
+				}
+
+				while ($calculation =~ /\$([a-zA-Z]\w+)/)
+				{
+					my $varname = $1;
+					my $spec = quotemeta($&);
+
+					$calculation =~ s/$spec/\${\$_[0]}->{vars}->{$varname}/g;
+				}
+
+				print STDERR "going to evaluate calc func: ",
+						"sub { $calculation }\n" if DEBUG >= 2;
+				my $calc_function = eval "sub { $calculation }";
+				croak("illegal syntax in calculated column: $field_spec ($@)")
+						if $@;
+				$calc_funcs->{$calc_col} = $calc_function;
+
+				$query =~ s/$field_spec/1 as "*$calc_col"/g;
+				print STDERR "after calc col subst, query is <<$query>>\n"
+						if DEBUG >= 5;
+			}
+		}
+
+		print STDERR "after transform:\n$query\n" if DEBUG >= 4;
+		print "DataStore current query:\n$query\n" if $this->{show_queries};
+
+	print STDERR "before preparing query: ",
+			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+
+		$sth = $this->{dbh}->prepare($query);
+		unless ($sth)
+		{
+			$this->{last_err} = $this->{dbh}->errstr();
+			print STDERR "prepare bombed: $this->{last_err}\n" if DEBUG >= 5;
+			return wantarray ? () : undef;
+		}
+		print STDERR "successfully prepared query\n" if DEBUG >= 5;
+
+		# cache the sth for next time
+		$_query_cache{$raw_query} = $sth;
+	}
+
+	print STDERR "at bottom of transform: ",
+			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
 
 	if (wantarray)
 	{
-		return ($query, $calc_funcs, @vars);
+		return ($sth, $calc_funcs, @vars);
 	}
 	else
 	{
 		carp("calculated columns are being lost") if %$calc_funcs;
-		return $query;
+		return $sth;
 	}
 }
 
@@ -399,6 +471,7 @@ sub get_password
 {
 	my ($find_server, $find_user) = @_;
 	my $pwfile = "$ENV{HOME}/" . PASSWORD_FILE;
+	print STDERR "password file is $pwfile\n" if DEBUG >= 4;
 
 	croak("must have a $pwfile file in your home directory")
 			unless -e $pwfile;
@@ -415,10 +488,14 @@ sub get_password
 		if ($server eq $find_server and $user eq $find_user)
 		{
 			close(PW);
+			print STDERR "get_password: returning password $pass\n"
+					if DEBUG >= 4;
 			return $pass;
 		}
 	}
 	close(PW);
+
+	print STDERR "get_password: couldn't find password\n" if DEBUG >= 4;
 	return undef;
 }
 
@@ -451,11 +528,12 @@ sub open
 	$this->{modified} = false;
 	$this->{show_queries} = false;
 
-	# _dump_attribs($this, "in open");
+	_dump_attribs($this, "in open") if DEBUG >= 5;
 
 	bless $this, $class;
 	$this->_login();
-	# print STDERR "this is a ", ref $this, " for ds $data_store_name\n";
+	print STDERR "this is a ", ref $this, " for ds $data_store_name\n"
+			if DEBUG >= 4;
 	return $this;
 }
 
@@ -550,22 +628,12 @@ sub show_queries
 
 sub do
 {
-	# temp_vars not needed here; just pass thru to _transform_query below
-	my ($this, $query) = @_;
-	my (@vars, $calc_funcs);
+	# query etc not needed here; just pass thru to _transform_query below
+	my ($this) = @_;
 
 	# handle substitutions
 	# (note & form of sub call, which just passes our args through w/o copying)
-	($query, $calc_funcs, @vars) = &_transform_query;
-	print STDERR "after transform, query is:\n$query\n" if DEBUG >= 4;
-
-	my $sth = $this->{dbh}->prepare($query);
-	unless ($sth)
-	{
-		$this->{last_err} = $this->{dbh}->errstr();
-		return undef;
-	}
-	print STDERR "successfully prepared query\n" if DEBUG >= 5;
+	my ($sth, $calc_funcs, @vars) = &_transform_query or return undef;
 
 	my $rows = $sth->execute(@vars);
 	unless ($rows)
@@ -707,17 +775,7 @@ sub append_table
 	my $columns = join(',', @colnames);
 	my $placeholders = join(',', ("?") x scalar(@colnames));
 	my $query = "insert $table ($columns) values ($placeholders)";
-	$query = $this->_transform_query($query);
-	print STDERR "query is: $query\n" if DEBUG >= 3;
-
-	# now prepare it
-	my $sth = $this->{dbh}->prepare($query);
-	unless ($sth)
-	{
-		$this->{last_err} = $this->{dbh}->errstr();
-		return undef;
-	}
-	print STDERR "query prepared successfully\n" if DEBUG >= 5;
+	my $sth = $this->_transform_query($query) or return undef;
 
 	foreach my $row (@$data)
 	{
@@ -759,10 +817,12 @@ sub overwrite_table
 
 	return false unless $table_name and $columns and @$columns;
 
+	my $pk;
 	my $column_list = "(";
 	foreach my $col (@$columns)
 	{
-		my ($name, $type, $nulls) = @$col;
+		my ($name, $type, $attributes) = @$col;
+		$attributes = lc($attributes);
 
 		# translate user-defined types
 		if (exists $this->{config}->{user_types})
@@ -780,17 +840,35 @@ sub overwrite_table
 			$type = $trans_table->{$type} if exists $trans_table->{$type};
 		}
 
+		# identity columns have to generate primary keys
+		if ($attributes eq 'identity')
+		{
+			croak("can't have multiple IDENTITY columns") if $pk;
+			$pk = $name;
+		}
+
+		# translate attributes
+		if (exists $this->{config}->{translation_type})
+		{
+			my $trans_table = $column_attributes->{
+					$this->{config}->{translation_type}
+			};
+			$attributes = $trans_table->{$attributes} if exists $trans_table->{$attributes};
+		}
+
 		$column_list .= ", " if length($column_list) > 1;
-		$column_list .= "$name $type $nulls";
+		$column_list .= "$name $type $attributes";
 	}
+	$column_list .= ", primary key ($pk)" if $pk;
 	$column_list .= ")";
+	print STDERR "final column list is $column_list\n" if DEBUG >= 3;
 
 	if ($this->do("select 1 from $table_name where 1 = 0"))
 	{
-		return false unless $this->do("drop table $table_name");
+		$this->do("drop table $table_name") or return false;
 	}
-	return false unless $this->do("create table $table_name $column_list");
-	return false unless $this->do("grant select on $table_name to public");
+	$this->do("create table $table_name $column_list") or return false;
+	$this->do("grant select on $table_name to public") or return false;
 
 	return true;
 }
