@@ -868,7 +868,7 @@ sub overwrite_table
 		$this->do("drop table $table_name") or return false;
 	}
 	$this->do("create table $table_name $column_list") or return false;
-	$this->do("grant select on $table_name to public") or return false;
+	#$this->do("grant select on $table_name to public") or return false;
 
 	return true;
 }
