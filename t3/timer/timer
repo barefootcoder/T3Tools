@@ -9,7 +9,7 @@
 use strict;
 use warnings;
 
-use Barefoot::debug;
+#use Barefoot::debug(1);
 
 use CGI;
 use Getopt::Std;
