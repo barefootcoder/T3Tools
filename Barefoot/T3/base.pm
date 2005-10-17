@@ -1,10 +1,10 @@
-#! /usr/local/bin/perl -w
+#! /usr/local/bin/perl
 
 # For CVS:
-# $Date$
+# $Date: 2003/11/17 22:41:52 $
 #
-# $Id$
-# $Revision$
+# $Id: base.pm,v 1.11 2003/11/17 22:41:52 buddy Exp $
+# $Revision: 1.11 $
 
 ###########################################################################
 #
@@ -35,6 +35,7 @@
 package T3;
 
 use strict;
+use warnings;
 
 use Barefoot::base;
 
