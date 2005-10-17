@@ -1,10 +1,10 @@
-#! /usr/local/bin/perl -w
+#! /usr/local/bin/perl
 
 # For RCS:
-# $Date$
+# $Date: 2003/01/06 04:57:35 $
 #
-# $Id$
-# $Revision$
+# $Id: valid.pm,v 1.5 2003/01/06 04:57:35 buddy Exp $
+# $Revision: 1.5 $
 
 ###########################################################################
 #
@@ -27,6 +27,7 @@ package Barefoot::T3::valid;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
@@ -83,8 +84,11 @@ our %valid_function =
 sub get_parameter
 {
 	my ($parmname, $parminfo, $objinfo, $opts) = @_;
-	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n"
-			if DEBUG >= 4;
+	if (DEBUG >= 4)
+	{
+		print STDERR "parminfo: ", Dumper($parminfo), "\n";
+		print STDERR "wantarray is ", defined wantarray ? wantarray : "undef", "\n";
+	}
 
 	my $parm = "";					# set to empty in case we bail out early
 	my $valid_parms = {};
@@ -136,7 +140,7 @@ sub get_parameter
 		croak("can't determine valid list for $parmname")
 				unless exists $valid_function{$parmname};
 		$valid_parms = $valid_function{$parmname}->($parminfo);
-		print Dumper($valid_parms), "\n" if DEBUG >= 4;
+		print STDERR "valid_parms: ", Dumper($valid_parms), "\n" if DEBUG >= 4;
 		
 		# at this point, parm will act as our default
 		# need to save it in case user enters "?", then we can put it back
@@ -205,16 +209,11 @@ sub get_parameter
 sub valid_employees
 {
 	my $res = &t3->do("
-			select e.emp_id, pe.first_name, pe.last_name
-			from {~timer}.employee e, {~t3}.person pe
+			select distinct e.emp_id, pe.first_name, pe.last_name
+			from {~timer}.employee e, {~t3}.person pe, {~timer}.client_employee ce
 			where e.person_id = pe.person_id
-			and exists
-			(
-				select 1
-				from {~timer}.client_employee ce
-				where e.emp_id = {&ifnull ce.emp_id, e.emp_id}
-				and {&curdate} between ce.start_date and ce.end_date
-			)
+			and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
+			and {&curdate} between ce.start_date and ce.end_date
 	");
 	die("valid employees query failed:", &t3->last_error()) unless $res;
 
@@ -230,27 +229,24 @@ sub valid_employees
 sub valid_clients
 {
 	my ($emp, $date) = @_;
-	$date = $date ? "'$date'" : "{&curdate}";
 
-	my $res = &t3->do("
-			select c.client_id, c.name
-			from {~timer}.client c
-			where exists
-			(
-				select 1
-				from {~timer}.employee e, {~timer}.client_employee ce
-				where e.emp_id = '$emp'
-				and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
-				and c.client_id = ce.client_id
-				and $date between ce.start_date and ce.end_date
-			)
-	");
+	my $date_fld = $date ? '{date}' : '{&curdate}';
+	my $res = &t3->do(qq{
+			select distinct c.client_id, c.name
+			from {~timer}.client c, {~timer}.employee e, {~timer}.client_employee ce
+			where e.emp_id = {emp}
+			and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
+			and c.client_id = ce.client_id
+			and $date_fld between ce.start_date and ce.end_date
+	},
+		emp => $emp, date => $date,
+	);
 	die("valid clients query failed:", &t3->last_error()) unless $res;
 
 	my $clients = {};
 	while ($res->next_row())
 	{
-		# print STDERR "valid cli: ", $res->col(0), " => ", $res->col(1), "\n";
+		print STDERR "valid cli: ", $res->col(0), " => ", $res->col(1), "\n" if DEBUG >= 5;
 		$clients->{$res->col(0)} = $res->col(1);
 	}
 	return $clients;
@@ -260,28 +256,25 @@ sub valid_clients
 sub valid_projects
 {
 	my ($emp, $client, $date) = @_;
-	$date = $date ? "'$date'" : "{&curdate}";
 
-	my $res = &t3->do("
-			select p.proj_id, p.name
-			from {~timer}.project p
-			where p.client_id = '$client'
-			and $date between p.start_date and p.end_date
-			and exists
+	my $date_fld = $date ? '{date}' : '{&curdate}';
+	my $res = &t3->do(qq{
+			select distinct p.proj_id, p.name
+			from {~timer}.project p, {~timer}.employee e, {~timer}.client_employee ce
+			where p.client_id = {client}
+			and $date_fld between p.start_date and p.end_date
+			and e.emp_id = {emp}
+			and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
+			and p.client_id = ce.client_id
+			and
 			(
-				select 1
-				from {~timer}.employee e, {~timer}.client_employee ce
-				where e.emp_id = '$emp'
-				and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
-				and p.client_id = ce.client_id
-				and
-				(
-					p.proj_id = ce.proj_id
-					or ce.proj_id is NULL
-				)
-				and $date between ce.start_date and ce.end_date
+				p.proj_id = ce.proj_id
+				or ce.proj_id is NULL
 			)
-	");
+			and $date_fld between ce.start_date and ce.end_date
+	},
+		emp => $emp, client => $client, date => $date,
+	);
 	die("valid projects query failed:", &t3->last_error()) unless $res;
 
 	my $projects = {};
