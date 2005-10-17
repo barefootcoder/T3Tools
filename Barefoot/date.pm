@@ -1,10 +1,10 @@
 #! /usr/local/bin/perl -w
 
 # For CVS:
-# $Date$
+# $Date: 2003/06/25 21:10:03 $
 #
-# $Id$
-# $Revision$
+# $Id: date.pm,v 1.11 2003/06/25 21:10:03 buddy Exp $
+# $Revision: 1.11 $
 
 ###########################################################################
 #
@@ -127,10 +127,12 @@ package date;
 #	mm/dd/yyyy
 #	dd/Mon/yy
 #	dd/Mon/yyyy
+#	yyyy/mm/dd
 #	mm-dd-yy
 #	mm-dd-yyyy
 #	dd-Mon-yy
 #	dd-Mon-yyyy
+#	yyyy-mm-dd
 #	yyyymmdd			(such as is returned by sortableString())
 #	Mon dd yyyy
 #	Mon dd yyyy 12:00AM	(such as is returned by Sybase)
@@ -180,6 +182,12 @@ sub _date_parse
 			# this already returns zero-based for month
 			$mon = $MonNumbers{uc($mon_abbrev)};
 		}
+		elsif ($mon > 1000)
+		{
+			# must be yyyy/mm/dd type format
+			($year, $mon, $day) = ($mon, $day, $year);
+			--$mon;							# timegm expects zero-based
+		}
 		else
 		{
 			--$mon;							# timegm expects zero-based
@@ -226,7 +234,8 @@ sub mdy
 {
 	my ($day, $mon, $year) = (localtime $_[0])[3..5];
 	$year += 1900, ++$mon;
-	return "$mon/$day/$year";
+	#return "$mon/$day/$year";
+	return "$year-$mon-$day";
 }
 
 
