@@ -12,9 +12,9 @@ use Barefoot::DataStore;
 
 print STDERR "You probably have to run this script as root.\n";
 
-my $server = "lexx";
+my $server = "kimahri";
 my $sa = DataStore->create("${server}_sa",
-		connect_string		=>	"dbi:Sybase:server=$server;database=master",
+		connect_string		=>	"DBI:mysql:server=$server",
 		server				=>	$server,
-		user				=>	"sa",
+		user				=>	"root",
 );

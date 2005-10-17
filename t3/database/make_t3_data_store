@@ -1,9 +1,9 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 # For RCS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2003/11/18 00:09:05 $
+# $Id: make_t3_data_store,v 1.5 2003/11/18 00:09:05 buddy Exp $
+# $Revision: 1.5 $
 
 # create data store and database for T3 scripts
 #
@@ -16,6 +16,7 @@
 #		(in your ~/.dbpasswd file)
 
 use strict;
+use warnings;
 
 #use Barefoot::debug;						# comment out for production
 
@@ -28,19 +29,14 @@ use Barefoot::DataStore;
 use Barefoot::input qw<get_yn>;
 
 
-my $server = "lexx";
-my $user = "sa";
+my $server = "kimahri";
+my $user = "root";
 my $destdb = "t3test";
 my $dstore = "t3test";
 
 my $data_device = "data1";
 my $idx_device = "idx1";
 my $log_device = "log1";
-
-# the following line needs to match the equivalent line in make_timer
-my $admin_users = "christy,wayne,buddy";
-my $non_admin_users = "guest,apache,marcus,gcallah";
-my $schema_users = "t3,timer,talker,tracker,reporting";
 
 my $opt = {};
 getopts("S:U:D:s:h", $opt);
@@ -62,7 +58,7 @@ my $sa = DataStore->open("${server}_sa", $user);
 
 
 # check for pre-existence of the database
-my $dbexists_query = "select name from sysdatabases where name = '$destdb'";
+my $dbexists_query = "show databases like '$destdb'";
 my $db_exists = $sa->do($dbexists_query);
 if ($db_exists->next_row())
 {
@@ -78,38 +74,10 @@ if ($db_exists->next_row())
 }
 
 print "creating database now\n";
-open(RQ, "|run_query -S$server -U$user -Dmaster")
-		or die("can't pipe to run_query");
-print RQ <<END;
-
-	-- create the database
-
-	print "creating the database"
-	;
-
+my $create_res = $sa->do(qq{
 	create database $destdb
-		on $data_device = 100,
-			$idx_device = 25
-		log on $log_device = 35
-	;
-	sp_dboption $destdb, 'trunc log on chkpt', true
-	;
-
-	use $destdb
-	;
-	sp_addsegment index_seg, $destdb, $idx_device
-	;
-	checkpoint
-	;
-
-	print "adding users"
-	;
-	@{[add_users($admin_users)]}
-	@{[add_users($non_admin_users)]}
-	@{[add_users($schema_users)]}
-
-END
-close(RQ);
+});
+die("create database of $destdb failed") unless $create_res;
 # don't bother to check $?; isql always returns some funky value
 
 # double check existence via data store
@@ -138,13 +106,13 @@ unless ($caught)
 }
 
 my $t3 = DataStore->create($dstore,
-		connect_string		=>	"dbi:Sybase:server=$server;database=$destdb",
+		connect_string		=>	"dbi:mysql:server=$server;database=$destdb",
 		server				=>	$server,
 		user				=>	$user,
-		translation_type	=>	'Sybase',
+		translation_type	=>	'mysql',
 );
 
-$t3->configure_type(unique_id => 'numeric(6,0)');
+$t3->configure_type(unique_id => 'int');
 $t3->configure_type(type_id => 'char(1)');
 $t3->configure_type(internal_id => 'char(3)');
 $t3->configure_type(external_id => 'char(10)');
@@ -152,9 +120,9 @@ $t3->configure_type(description => 'varchar(30)');
 $t3->configure_type(username => 'varchar(20)');
 $t3->configure_type(table_name => 'varchar(30)');
 $t3->configure_type(comments_text => 'varchar(255)');
-$t3->configure_type(percentage => 'numeric(5,2)');
+$t3->configure_type(percentage => 'decimal(5,2)');
 
-$t3->configure_schema_translation('"$_[0]."');
+$t3->configure_schema_translation('"$_[0]_"');
 
 print "data store $dstore created\n";
 
@@ -163,20 +131,3 @@ print "data store $dstore created\n";
 # SUBS               #
 ######################
 
-# split comma-separated list of users and return adduser commands
-sub add_users
-{
-	my $code = "";
-	foreach (split(",", $_[0]))
-	{
-		$code .= "
-			if exists ( select 1 from sysusers where name = '$_' )
-				execute sp_dropuser $_
-			;
-			sp_adduser $_
-			;
-		";
-	}
-	# print STDERR $code;
-	return $code;
-}

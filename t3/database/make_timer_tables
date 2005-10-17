@@ -1,9 +1,9 @@
 #! /usr/bin/perl -w
 
 # For RCS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2003/11/18 00:11:32 $
+# $Id: make_timer_tables,v 1.6 2003/11/18 00:11:32 buddy Exp $
+# $Revision: 1.6 $
 
 # create tables for TIMER
 #
@@ -19,9 +19,10 @@ use Barefoot::exception;
 use Barefoot::DataStore;
 
 
-my $user = "sa";
+my $user = "root";
 my $dstore = "t3test";
-my $admin_users = "christy,wayne,buddy";
+my $admin_users = "buddy";
+my $all_users = "buddy,jon";
 
 my $opt = {};
 getopts("s:U:h", $opt);
@@ -458,7 +459,7 @@ create_table("referral_commission",
 		[ "pay_type",		"char(1)",			"NOT NULL" ],
 		[ "pay_to",			"internal_id",		"NOT NULL" ],
 		[ "emp_id",			"internal_id",		"NOT NULL" ],
-		[ "commission",		"smallmoney",		"NOT NULL" ],
+		[ "commission",		"money",			"NOT NULL" ],
 		[ "start_date",		"date",				"NOT NULL" ],
 		[ "end_date",		"date",				"NOT NULL" ],
 	],
@@ -488,11 +489,6 @@ create_table("invoice",
 		[ "chgdate",			"date",			"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"invoice_id",
-			cols	=>	"invoice_id",
-		},
 		{
 			type	=>	"unique index",
 			name	=>	"invoice_num",
@@ -533,11 +529,6 @@ create_table("payroll",
 	[
 		{
 			type	=>	"unique index",
-			name	=>	"payroll_id",
-			cols	=>	"payroll_id",
-		},
-		{
-			type	=>	"unique index",
 			name	=>	"payroll_start",
 			cols	=>	"period_start, check_date",
 		},
@@ -571,11 +562,6 @@ create_table("commission_payment",
 		[ "chgdate",		"date",				"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"commpay_id",
-			cols	=>	"payment_id",
-		},
 		{
 			type	=>	"index",
 			name	=>	"commpay_paidon",
@@ -613,11 +599,6 @@ create_table("time_log",
 	],
 	[
 		{
-			type	=>	"unique index",
-			name	=>	"timelog_id",
-			cols	=>	"log_id",
-		},
-		{
 			type	=>	"index",
 			name	=>	"timelog_empcli",
 			cols	=>	"emp_id, client_id, proj_id",
@@ -634,7 +615,7 @@ create_table("time_log",
 		},
 		{
 			type	=>	"grant insert",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 		{
 			type	=>	"grant update",
@@ -664,11 +645,6 @@ create_table("materials_log",
 		[ "chgdate",		"date",				"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"matlog_id",
-			cols	=>	"log_id",
-		},
 		{
 			type	=>	"index",
 			name	=>	"matlog_cliproj",
@@ -700,11 +676,6 @@ create_table("class_log",
 		[ "chgdate",		"date",				"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"clalog_id",
-			cols	=>	"log_id",
-		},
 		{
 			type	=>	"unique index",
 			name	=>	"clalog_cliproj",
@@ -754,11 +725,6 @@ create_table("commission",
 		[ "chgdate",		"date",				"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"comm_id",
-			cols	=>	"commission_id",
-		},
 		{
 			type	=>	"unique index",
 			name	=>	"comm_payto",
@@ -922,11 +888,11 @@ create_table("timer",
 		},
 		{
 			type	=>	"grant insert",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 		{
 			type	=>	"grant delete",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -950,11 +916,11 @@ create_table("timer_chunk",
 		},
 		{
 			type	=>	"grant insert",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 		{
 			type	=>	"grant delete",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );

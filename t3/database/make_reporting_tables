@@ -1,9 +1,9 @@
 #! /usr/bin/perl -w
 
 # For RCS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2003/11/18 00:09:43 $
+# $Id: make_reporting_tables,v 1.3 2003/11/18 00:09:43 buddy Exp $
+# $Revision: 1.3 $
 
 # create reporting tables for T3
 
@@ -15,8 +15,9 @@ use Barefoot::exception;
 use Barefoot::DataStore;
 
 
-my $user = "sa";
+my $user = "root";
 my $dstore = "t3test";
+my $all_users = "buddy,jon";
 
 my $opt = {};
 getopts("s:U:h", $opt);
@@ -68,7 +69,7 @@ create_table("pay_amount",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -97,7 +98,34 @@ create_table("profit_item",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
+		},
+	]
+);
+
+
+# profit_client
+# a slightly more compact version of the profit_item table (w/ margin)
+
+create_table("profit_client",
+	[
+		[ "client_id",			"internal_id",		"NOT NULL" ],
+		[ "proj_id",			"internal_id",		"NULL" ],
+		[ "start_date",			"date",				"NOT NULL" ],
+		[ "end_date",			"date",				"NOT NULL" ],
+		[ "units",				"numeric(6,2)",		"NOT NULL" ],
+		[ "total_price",		"money",			"NOT NULL" ],
+		[ "total_cost",			"money",			"NOT NULL" ],
+		[ "sales_commission",	"money",			"NOT NULL" ],
+		[ "ref_commission",		"money",			"NOT NULL" ],
+		[ "emp_commission",		"money",			"NOT NULL" ],
+		[ "simple_profit",		"money",			"NOT NULL" ],
+		[ "margin",				"percentage",		"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -130,7 +158,7 @@ create_table("time_log_profit",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -149,7 +177,7 @@ create_table("insurance_amount",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -169,7 +197,7 @@ create_table("salary_amount",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
 		},
 	]
 );
@@ -191,7 +219,74 @@ create_table("sales_comm_amount",
 	[
 		{
 			type	=>	"grant all",
-			users	=>	"public",
+			users	=>	"$all_users",
+		},
+	]
+);
+
+
+# referral_comm_amount
+
+create_table("referral_comm_amount",
+	[
+		[ "profit_id",				"unique_id",		"NOT NULL" ],
+		[ "pay_type",				"char(1)",			"NOT NULL" ],
+		[ "pay_to",					"internal_id",		"NOT NULL" ],
+		[ "name",					"description",		"NULL" ],
+		[ "emp_id",					"internal_id",		"NOT NULL" ],
+		[ "hours",					"numeric(5,2)",		"NOT NULL" ],
+		[ "commission",				"money",			"NOT NULL" ],
+		[ "amount",					"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"$all_users",
+		},
+	]
+);
+
+
+# employee_comm_amount
+
+create_table("employee_comm_amount",
+	[
+		[ "profit_id",				"unique_id",		"NOT NULL" ],
+		[ "pay_type",				"char(1)",			"NOT NULL" ],
+		[ "pay_to",					"internal_id",		"NOT NULL" ],
+		[ "name",					"description",		"NULL" ],
+		[ "comm_date",				"date",				"NOT NULL" ],
+		[ "pay_to_employee",		"money",			"NOT NULL" ],
+		[ "total_pay",				"money",			"NOT NULL" ],
+		[ "amount",					"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"$all_users",
+		},
+	]
+);
+
+
+# employee_comm_amount
+
+create_table("admin_comm_amount",
+	[
+		[ "admin_comm",				"internal_id",		"NOT NULL" ],
+		[ "pay_type",				"char(1)",			"NOT NULL" ],
+		[ "pay_to",					"internal_id",		"NOT NULL" ],
+		[ "name",					"description",		"NULL" ],
+		[ "comm_start_date",		"date",				"NOT NULL" ],
+		[ "comm_end_date",			"date",				"NOT NULL" ],
+		[ "commission_percent",		"percentage",		"NOT NULL" ],
+		[ "simple_profit",			"money",			"NOT NULL" ],
+		[ "amount",					"money",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"grant all",
+			users	=>	"$all_users",
 		},
 	]
 );

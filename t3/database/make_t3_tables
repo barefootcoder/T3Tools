@@ -1,13 +1,14 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 # For RCS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2002/06/12 20:50:12 $
+# $Id: make_t3_tables,v 1.2 2002/06/12 20:50:12 buddy Exp $
+# $Revision: 1.2 $
 
 # create base tables for T3
 
 use strict;
+use warnings;
 
 use Getopt::Std;
 
@@ -15,7 +16,7 @@ use Barefoot::exception;
 use Barefoot::DataStore;
 
 
-my $user = "sa";
+my $user = "root";
 my $dstore = "t3test";
 
 my $opt = {};
@@ -56,13 +57,6 @@ create_table("person",
 		[ "last_name",		"varchar(20)",		"NOT NULL" ],
 		[ "company_name",	"varchar(30)",		"NULL" ],
 	],
-	[
-		{
-			type	=>	"unique index",
-			name	=>	"person_id",
-			cols	=>	"person_id",
-		},
-	]
 );
 
 
@@ -77,11 +71,6 @@ create_table("workgroup_user",
 		[ "end_date",		"date",				"NULL" ],
 	],
 	[
-		{
-			type	=>	"unique index",
-			name	=>	"wuser_id",
-			cols	=>	"wuser_id",
-		},
 		{
 			type	=>	"unique index",
 			name	=>	"nickname",

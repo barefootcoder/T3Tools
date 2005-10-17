@@ -1,9 +1,9 @@
 #! /usr/bin/perl -w
 
 # For CVS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2003/03/23 20:07:36 $
+# $Id: build_t3_aliases,v 1.1 2003/03/23 20:07:36 buddy Exp $
+# $Revision: 1.1 $
 
 # create aliases for T3 data store
 
@@ -15,7 +15,7 @@ use Barefoot::exception;
 use Barefoot::DataStore;
 
 
-my $user = "sa";
+my $user = "root";
 my $dstore = "t3test";
 
 my $opt = {};
@@ -73,18 +73,15 @@ sub make_aliases
 	# first, get all table names for this schema
 	my $res = $t3->do("
 
-			select o.name
-			from sysobjects o, sysusers u
-			where o.uid = u.uid
-			and o.type = 'U'
-			and u.name = '$schema'
+			show tables like '${schema}_%'
 
 	");
 	die("can't get table names for schema $schema") unless defined $res;
 
 	while ($res->next_row())
 	{
-		my $table_name = $res->col('name');
+		my $table_name = $res->col(0);
+		$table_name =~ s/^${schema}_//;
 
 		if (exists $current{$table_name})
 		{
@@ -98,8 +95,8 @@ sub make_aliases
 		}
 		else
 		{
-			$t3->configure_alias($table_name, "$schema.$table_name");
-			$current{$table_name} = "$schema.$table_name";
+			$t3->configure_alias($table_name, "${schema}_$table_name");
+			$current{$table_name} = "${schema}_$table_name";
 		}
 	}
 
