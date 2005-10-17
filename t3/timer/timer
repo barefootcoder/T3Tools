@@ -1,14 +1,15 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 # For RCS:
-# $Date$
+# $Date: 2003/03/25 23:37:52 $
 #
-# $Id$
-# $Revision$
+# $Id: timer,v 1.38 2003/03/25 23:37:52 buddy Exp $
+# $Revision: 1.38 $
 
 use strict;
+use warnings;
 
-#use Barefoot::debug(1);
+use Barefoot::debug;
 
 use CGI;
 use Getopt::Std;
@@ -20,12 +21,13 @@ use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw<get_yn input>;
-use Barefoot::T3Timer qw<get_timer_info do_timer_command this_week_totals>;
+use Barefoot::T3Timer qw<get_timer_info do_timer_command>;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
-use Barefoot::T3::Timer qw<calc_date calc_time test_connection>;
 use Barefoot::T3::db_get qw<client_rounding proj_requirements>;
+use Barefoot::T3::Timer qw<calc_date calc_time test_connection
+		this_week_totals>;
 
 
 #################################
@@ -58,10 +60,14 @@ use constant Log =>
 use constant Log_Comments =>
 	'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
+BEGIN { print STDERR "passed all use's\n" if DEBUG >= 5; }
+
 
 #################################
 # OPTIONS AND ENVIRONMENT VARS
 #################################
+
+print STDERR "about to begin execution\n" if DEBUG >= 5;
 
 our $parminfo = {};
 our $timers = {};
@@ -132,6 +138,8 @@ else
 
 
 usage() unless $command;
+
+print STDERR "survived args and error checks\n" if DEBUG >= 5;
 
 
 #################################
@@ -320,6 +328,8 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 
 if ($command eq 'TOTAL')					# total timers by client
 {
+	print STDERR "about to start TOTAL routine\n" if DEBUG >= 5;
+
 	unless (test_connection())
 	{
 		print STDERR "The data store is not accessible. Action canceled.\n";
@@ -327,7 +337,7 @@ if ($command eq 'TOTAL')					# total timers by client
 	}
 
 	# get totals for this weeks timers
-	my ($totals, $bad_proj) = this_week_totals($parminfo->{user});
+	my ($totals, $bad_proj) = this_week_totals($parminfo->{user}, $timers);
 	error(4, "can't get totals out of database") unless defined $totals;
 	error(4, "can't get bad project rows") unless defined $bad_proj;
 
@@ -624,6 +634,7 @@ sub gather_log_info
 
 	# a shortcut
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
+	print STDERR "$log_timer timer: ", Dumper($timer) if DEBUG >= 2;
 
 	my ($emp_id, $emp_fullname, $client, $client_name, $rounding, $to_nearest,
 			$date, $hours, $project, $project_name, $phase, $phase_name,
@@ -665,7 +676,7 @@ sub gather_log_info
 	HOURS: {
 		($rounding, $to_nearest) = client_rounding($client);
 
-#print "$_ => $timer->{$_}\n" foreach keys %$timer;
+#print STDERR "$_ => $timer->{$_}\n" foreach keys %$timer;
 
 		$hours = input("Hours:",
 				$timer ? range::round(calc_time($timer->{time}) / 60,
@@ -726,6 +737,7 @@ sub gather_log_info
 	);
 	writeln(Log_Comments, $comments);
 
+	<STDIN>;
 	unless (get_yn("\n\nis everything okay?"))
 	{
 		print "\n  {Try to log this timer out again later.}\n";
