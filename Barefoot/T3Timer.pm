@@ -10,8 +10,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_timer_info do_timer_command this_week_totals
-		insert_time_log>;
+@EXPORT_OK = qw<get_timer_info do_timer_command insert_time_log>;
 
 
 use Storable;
@@ -152,9 +151,9 @@ sub setup_params		# fill in some parameters if they're not there already
 # ------------------------------------------------------------
 
 
+=comment
 sub this_week_totals
 {
-=comment
 	my ($user) = @_;
 
 	# we'll have to do the rounding in three goes for the three types
@@ -306,9 +305,9 @@ sub this_week_totals
 	");
 
 	return ($totals, $bad_proj);
-=cut
-	die("this weeks totals function not yet implemented");
+	#die("this weeks totals function not yet implemented");
 }
+=cut
 
 
 # ------------------------------------------------------------
