@@ -506,6 +506,9 @@ END
 			{
 				local $SIG{INT} = sub { die("user interrupt") };
 				$parminfo->{timer} = $timer;
+				$parminfo->{client} = undef;
+				$parminfo->{project} = undef;
+				$parminfo->{phase} = undef;
 				print_and_gather($timer);
 				do_timer_command('DONE', $parminfo, $timers);
 			};
