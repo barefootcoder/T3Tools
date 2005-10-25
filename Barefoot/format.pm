@@ -1,10 +1,10 @@
 #! /usr/local/bin/perl
 
 # For CVS:
-# $Date$
+# $Date: 2003/04/11 02:56:33 $
 #
-# $Id$
-# $Revision$
+# $Id: format.pm,v 1.9 2003/04/11 02:56:33 buddy Exp $
+# $Revision: 1.9 $
 
 ###########################################################################
 #
@@ -231,7 +231,7 @@ sub swrite
 				# by Date::Format, these are stored in the %date_fmt hash
 				my $format = $_;
 				$format =~ s/($DATE_FMT_PART)/$date_fmt{$1}/eg;
-				print STDERR "translated $_ into $format\n" if DEBUG >= 2;
+				print STDERR "translated $_ into $format\n" if DEBUG >= 3;
 
 				# now put a generic format in the format string and
 				# the results of Date::Format in the variable list
@@ -244,18 +244,17 @@ sub swrite
 		}
 
 		my $template = join('', @pieces);
-		print STDERR "template is [[$template]]\n" if DEBUG >= 2;
+		print STDERR "template is [[$template]]\n" if DEBUG >= 3;
 		if ($pos > $startpos)
 		{
-			print STDERR "formline with vars from $startpos to ",
-					$pos - 1, "\n" if DEBUG >= 3;
+			print STDERR "formline with vars from $startpos to ", $pos - 1, "\n" if DEBUG >= 3;
 			formline($template, @vars[$startpos..$pos-1]);
 		}
 		else
 		{
 			$^A .= $template;
 		}
-		print STDERR "after format, accum is [[$^A]]\n" if DEBUG >= 2;
+		print STDERR "after format, accum is [[$^A]]\n" if DEBUG >= 3;
 	}
 
 	return $^A;
@@ -266,7 +265,7 @@ sub writeln
 	my $format = shift;
 	my $terminator = $\ || "\n";
 	$format .= $terminator unless $format =~ /$terminator\Z/;
-	print STDERR "new format is [[$format]]\n" if DEBUG >= 2;
+	print STDERR "new format is [[$format]]\n" if DEBUG >= 3;
 	print swrite($format, @_);
 }
 

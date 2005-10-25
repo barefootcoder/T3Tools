@@ -96,10 +96,9 @@ sub get_parameter
 	TRY:							# try several things to figure out just
 	{								# what the parameter's value should be
 
-		# database default is lowest priority (based on dispatch table;
-		# if we don't have such a function, better barf)
-		croak("can't determine default value for $parmname")
-				unless exists $db_default{$parmname};
+		# database default is lowest priority (based on dispatch table; if we don't have such a function,
+		# better barf)
+		croak("can't determine default value for $parmname") unless exists $db_default{$parmname};
 		$parm = $db_default{$parmname}->($parminfo);
 		print "after db default, parm is $parm\n" if DEBUG >= 3;
 
@@ -133,10 +132,9 @@ sub get_parameter
 
 		last TRY if $parminfo->{force};
 
-		# get list of valid values (based on dispatch table;
-		# if we don't have such a function, better barf)
-		# (note that this has to be done after figuring the database default,
-		# because that might set up some values we need here)
+		# get list of valid values (based on dispatch table; if we don't have such a function, better barf)
+		# (note that this has to be done after figuring the database default, because that might set up some
+		# values we need here)
 		croak("can't determine valid list for $parmname")
 				unless exists $valid_function{$parmname};
 		$valid_parms = $valid_function{$parmname}->($parminfo);
