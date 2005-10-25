@@ -81,6 +81,8 @@ my $command_strings = {
 	r	=>	"RENAME",
 	b	=>	"BREAKDOWN",
 	t	=>	"TOTAL",
+	L	=>	"LOGALL",
+	i	=>	"COPYINFO",
 	'@'	=>	"PARSE",
 };
 our ($cgi, $command, $workgroup);
@@ -90,7 +92,7 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcprbtfhu:C:P:H:@:', $opt) or usage();
+	getopts('sedlcpribLtfhu:C:P:H:@:', $opt) or usage();
 	$parminfo->{force} = defined $opt->{f};
 	$parminfo->{noconfirm} = defined $opt->{f};
 	$parminfo->{halftime} = defined $opt->{h};
@@ -102,7 +104,7 @@ if (-t STDOUT or @ARGV)
 
 	$parminfo->{newtimer} = $ARGV[1];
 
-	foreach my $copt ( qw<s e d l c p r b t @> )
+	foreach my $copt ( qw<s e d l c i p r b L t @> )
 	{
 		if (exists $opt->{$copt})
 		{
@@ -267,13 +269,28 @@ if ($command eq 'RENAME')					# new name for a timer
 		get_timer_parameter("client");
 		get_timer_parameter("project");
 
-		my ($phase_needed, $tracking_needed, $comments_needed) = 
+		my ($phase_needed, $tracking_needed, $comments_needed) =
 				proj_requirements(
 					$parminfo->{client}, $parminfo->{project},
 					calc_date(time)
 				);
 
 		get_timer_parameter("phase") if $phase_needed;
+	}
+}
+
+if ($command eq 'COPYINFO')
+{
+	if (!$parminfo->{force})
+	{
+		print_elapsed($parminfo, $timers);
+		get_giventimer("copy info for", $parminfo);
+	}
+
+	if (not $parminfo->{newtimer} or not $parminfo->{force})
+	{
+		my $defname = $parminfo->{newtimer};
+		$parminfo->{newtimer} = input("name for the new timer?", $defname);
 	}
 }
 
@@ -380,7 +397,7 @@ if ($command eq 'LOG')					# log time directly to the DB
 		print STDERR "The data store is not accessible. Action canceled.\n";
 		exit;
 	}
-	
+
 	gather_log_info();
 }
 
@@ -391,7 +408,7 @@ if ($command eq 'DONE')					# done with a timer
 		print STDERR "The data store is not accessible. Action canceled.\n";
 		exit;
 	}
-	
+
 	if (!$parminfo->{force})
 	{
 		print_elapsed($parminfo, $timers);
@@ -404,21 +421,141 @@ if ($command eq 'DONE')					# done with a timer
 		error(1, "no such timer as $giventimer");
 	}
 
-	my $thistimer = $timers->{$giventimer};
-	my $minutes = calc_time($thistimer->{time});
-	my $hours = range::round($minutes / 60, range::ROUND_DOWN),
-	my $date = calc_date($thistimer->{time});
-	my $client = $thistimer->{client};
-	print "\ntotal time is $minutes mins ($hours hrs ", $minutes - $hours * 60,
-		" mins) on $date for $client\n";
-	print "please remember this in case there is a problem!\n\n";
-	if (!$parminfo->{force})
+	print_and_gather($giventimer);
+}
+
+if ($command eq 'LOGALL')
+{
+	# HACK! this hardcoding, plus the idea that they have to be quarterly, should be changed
+	# to allow a more configurable interface
+	my %quarterly = ( log => 1, 'timer-fixes' => 1 );
+
+	# HACK! ditto this
+	my $log_timername = 'log';
+
+	print_elapsed($parminfo, $timers);
+	print <<END;
+
+this will log out all your timers for the week, giving you the opportunity to
+save them.  any timers whose names end in '-nw' are assumed to be time for the
+upcoming week, and will not be logged out, although they will be renamed to
+lose the '-nw' once they can be.  during this time a timer called '$log_timername'
+will automatically be started for you.  note: if you want to give up logging
+out a timer while you're in the middle of it, you can safely hit CTRL-C.  you
+will be given an opportunity to retry the logout, cancel the timer, or just
+move on.  pressing CTRL-C when _not_ in the middle of logging out a timer
+exits the program as you would expect.  note2: if you have to exit before
+you've logged out all timers, you can run timer -L again, and it will mostly
+pick up where it left off, except that it will think that all the timers you
+told it to save for next week are last week's timers, only empty; don't worry
+too much about that, though, since you will still have the opportunity to
+resave them if you want to.
+END
+	if (!$parminfo->{noconfirm})
 	{
-		print "press return to continue ...\n";
-		<STDIN>;
+		exit unless get_yn("are you sure you want to continue?");
 	}
 
-	gather_log_info($giventimer);
+	unless (test_connection())
+	{
+		print STDERR "The data store is not accessible. Action canceled.\n";
+		exit;
+	}
+
+	unless ($timers->{T3::CURRENT_TIMER} eq $log_timername)
+	{
+		# HACK! these are hardcoded for now; should be changed to pull from a config file or something
+		local $parminfo->{timer} = $log_timername;
+		local $parminfo->{client} = 'TG';
+		local $parminfo->{project} = 'LOG';
+		local $parminfo->{phase} = 'ADM';
+		do_timer_command('START', $parminfo, $timers);
+	}
+
+	TIMER: foreach my $timer (sort keys %$timers)
+	{
+		next if $timer =~ /^:/;					# special markers; not real timers
+		next if $timer =~ /-nw/;				# timers for next week started early
+		next if $timer =~ /-save/;				# timers saved from a previous timer -L
+		next if exists $quarterly{$timer};		# not time to log these out yet
+
+		# shortcut
+		my $thistimer = $timers->{$timer};
+
+		my $minutes = calc_time($thistimer->{time});
+		if ($minutes == 0)
+		{
+			unless (get_yn("\n\ntimer $timer has no time logged this week; save it?"))
+			{
+				$parminfo->{timer} = $timer;
+				do_timer_command('CANCEL', $parminfo, $timers);
+			}
+			next;
+		}
+
+		unless (exists $timers->{$timer . '-nw'} or exists $timers->{$timer . '-save'})
+		{
+			$parminfo->{timer} = $timer;
+			$parminfo->{newtimer} = $timer . '-save';
+			do_timer_command('COPYINFO', $parminfo, $timers);
+		}
+
+		# log out the timer (done)
+		LOG: {
+			eval
+			{
+				local $SIG{INT} = sub { die("user interrupt") };
+				$parminfo->{timer} = $timer;
+				print_and_gather($timer);
+				do_timer_command('DONE', $parminfo, $timers);
+			};
+
+			if (exists $timers->{$timer})			# logging out failed for some reason
+			{
+				redo LOG if get_yn("\n\nlogging of timer $timer failed; retry?");
+				if (get_yn("\ndo you want to cancel this timer?"))
+				{
+					$parminfo->{timer} = $timer;
+					do_timer_command('CANCEL', $parminfo, $timers);
+					last LOG;
+				}
+
+				if (exists $timers->{$timer . '-save'})
+				{
+					$parminfo->{timer} = $timer . '-save';
+					do_timer_command('CANCEL', $parminfo, $timers);
+				}
+
+				next TIMER;
+			}
+		}
+
+		my $saved_timer = $timer . '-nw';
+		unless (exists $timers->{$saved_timer})
+		{
+			$saved_timer = $timer . '-save';
+			$saved_timer = '' unless exists $timers->{$saved_timer};
+		}
+		if ($saved_timer)
+		{
+			if ($saved_timer =~ /-nw$/ or get_yn("\nsave this timer for next week?"))
+			{
+				$parminfo->{timer} = $saved_timer;
+				$parminfo->{newtimer} = $timer;
+				do_timer_command('RENAME', $parminfo, $timers);
+			}
+			else
+			{
+				$parminfo->{timer} = $saved_timer;
+				do_timer_command('CANCEL', $parminfo, $timers);
+			}
+		}
+
+		print_elapsed($parminfo, $timers);
+	}
+
+	# commands have been performed; just exit now
+	exit;
 }
 
 if ($command eq 'PARSE')			# special flag for use by other processes
@@ -459,8 +596,10 @@ sub usage
 		"       -d:   done with a timer\n",
 		"       -c:   cancel a timer\n",
 		"       -r:   rename/change info for a timer\n",
+		"       -i:   copy info for a timer (copies all but actual time worked)\n",
 		"       -e:   show elapsed time for all timers\n",
 		"       -l:   log time directly to database\n",
+		"       -L:   log out all current timers, optionally saving their info\n",
 		"       -b:   break down a timer's portions\n",
 		"       -t:   total for all timers this week (by client)\n",
 		"       -f:   force (ignore all confirmations)\n",
@@ -561,10 +700,12 @@ sub print_elapsed
 
 	#print Dumper($timers);
 	print "\nTIMERS FOR $parminfo->{user}:\n";
-	while (my ($tname, $timer) = each %$timers)
+	foreach my $tname (sort keys %$timers)
 	{
 		# ignore tags
 		next if substr($tname, 0, 1) eq ':';
+
+		my $timer = $timers->{$tname};
 
 		my $minutes = calc_time($timer->{time});
 		my $hours = range::round($minutes / 60, range::ROUND_DOWN);
@@ -624,6 +765,28 @@ sub print_parsable
 }
 
 
+sub print_and_gather
+{
+	my ($giventimer) = @_;
+
+	my $thistimer = $timers->{$giventimer};
+	my $minutes = calc_time($thistimer->{time});
+	my $hours = range::round($minutes / 60, range::ROUND_DOWN),
+	my $date = calc_date($thistimer->{time});
+	my $client = $thistimer->{client};
+	print "\ntimer: $giventimer\n";
+	print "total time is $minutes mins ($hours hrs ", $minutes - $hours * 60, " mins) on $date for $client\n";
+	print "please remember this in case there is a problem!\n\n";
+	if (!$parminfo->{noconfirm})
+	{
+		print "press return to continue ...\n";
+		<STDIN>;
+	}
+
+	gather_log_info($giventimer);
+}
+
+
 sub gather_log_info
 {
 	my ($log_timer) = @_;
@@ -656,7 +819,7 @@ sub gather_log_info
 	# the order chosen below, so DON'T MUCK WITH IT!
 
 	($emp_id, $emp_fullname) = get_timer_parameter("employee");
-	
+
 	# $parminfo->{user} may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
@@ -676,32 +839,23 @@ sub gather_log_info
 	HOURS: {
 		($rounding, $to_nearest) = client_rounding($client);
 
-#print STDERR "$_ => $timer->{$_}\n" foreach keys %$timer;
-
-		$hours = input("Hours:",
-				$timer ? range::round(calc_time($timer->{time}) / 60,
-						$rounding, $to_nearest) : 0);
+		$hours = input("Hours:", $timer ? range::round(calc_time($timer->{time}) / 60, $rounding, $to_nearest) : 0);
 		print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
-				unless $hours == range::round($hours,
-					range::ROUND_OFF, $to_nearest);
-		print "  {Hours must be greater than zero}\n" and redo HOURS
-				unless $hours > 0;
+				unless $hours == range::round($hours, range::ROUND_OFF, $to_nearest);
+		print "  {Hours must be greater than zero}\n" and redo HOURS unless $hours > 0;
 	}
 	$parminfo->{hours} = $hours;
 
 	# Get project info
 	($project, $project_name) = get_timer_parameter("project");
 
-	my ($phase_needed, $tracking_needed, $comments_needed)
-			= proj_requirements($client, $project, $date);
+	my ($phase_needed, $tracking_needed, $comments_needed) = proj_requirements($client, $project, $date);
 
 	# Get phase information
-	($phase, $phase_name) = $phase_needed
-			? get_timer_parameter("phase") : (undef, "");
+	($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
 	$parminfo->{phase} = $phase;
 
-	($tracking, $tracking_name) = $tracking_needed ?
-			get_timer_parameter("client tracking code") : (undef, "");
+	($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("client tracking code") : (undef, "");
 	$parminfo->{tracking} = $tracking;
 
 	COMMENTS: {
@@ -709,19 +863,16 @@ sub gather_log_info
 		last unless $comments_needed;
 		print "\nEnter comments below (maximum 255 chars):\n";
 		print "  (255 chars is a little over 3 lines if your screen is 80\n";
-		print "   columns wide and you don't hit RETURN at all (which you ",
-				"shouldn't))\n";
-		print "Enter ^D (control-D) on a line by itself to finish the ",
-				"comments.\n";
+		print "   columns wide--or almost exactly two lines if your screen is\n";
+		print "   125 columns wide--and you don't hit RETURN at all (which you shouldn't))\n";
+		print "Enter ^D (control-D) on a line by itself to finish the comments.\n";
 		local ($/) = undef;
 		$comments = input();
-		while ($comments =~ s/^\s+$//) {};	# no completely blank lines
-		while ($comments =~ s/^\n//) {};	# no extra newlines in front
-		$comments =~ s/\s*\n+\s*$//;		# none at the end either
-		print "  {You must have comments}\n\n" and redo COMMENTS
-				if not $comments;
-		print "  {Comments too long!}\n\n" and redo COMMENTS
-				if length($comments) > 255;
+		while ($comments =~ s/^\s+$//) {};				# no completely blank lines
+		while ($comments =~ s/^\n//) {};				# no extra newlines in front
+		$comments =~ s/\s*\n+\s*$//;					# none at the end either
+		print "  {You must have comments}\n\n" and redo COMMENTS if not $comments;
+		print "  {Comments too long!}\n\n" and redo COMMENTS if length($comments) > 255;
 	}
 	$parminfo->{comments} = $comments;
 
@@ -737,13 +888,11 @@ sub gather_log_info
 	);
 	writeln(Log_Comments, $comments);
 
-	<STDIN>;
+	<STDIN>;					# HACK! don't know why this is necessary
 	unless (get_yn("\n\nis everything okay?"))
 	{
-		print "\n  {Try to log this timer out again later.}\n";
-		exit 1;
+		die("\n  {Try to log this timer out again later.}\n");
 	}
 
-	print STDERR "parms after gather_log_info: ", Dumper($parminfo)
-			if DEBUG >= 4;
+	print STDERR "parms after gather_log_info: ", Dumper($parminfo) if DEBUG >= 4;
 }

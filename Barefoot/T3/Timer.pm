@@ -34,6 +34,7 @@ use vars qw<@EXPORT_OK>;
 
 use Date::Parse;
 use Date::Format;
+use Storable qw< dclone >;
 
 use Barefoot::base;
 use Barefoot::range;
@@ -52,6 +53,7 @@ our %timer_commands =
 	LIST		=>	\&list,
 	RENAME		=>	\&rename,
 	LOG			=>	\&log_time,
+	COPYINFO	=>	\&copy_info,
 );
 
 
@@ -799,6 +801,7 @@ sub cancel                   # cancel a timer
 {
 	my ($opts, $timers) = @_;
 	my $timersent = $opts->{timer};
+	print STDERR "cancelling timer $timersent\n" if DEBUG >= 2;
 
 	# make sure timer to cancel really exists
    	unless (exists $timers->{$timersent})
@@ -899,26 +902,82 @@ sub rename                   # new name for a timer
 		$timers->{$oldname}->{name} = $newname;
 		# copy old to new
         $timers->{$newname} = $timers->{$oldname};
-		# delete new
+		# delete old
         delete $timers->{$oldname};
     }
 
     # change other parameters
 	# (not checking these against database)
-    $timers->{$newname}->{client} = $opts->{client} if $opts->{client};
-    $timers->{$newname}->{project} = $opts->{project} if $opts->{project};
-    $timers->{$newname}->{phase} = $opts->{phase} if $opts->{phase};
+	foreach (qw< client project phase >)
+	{
+		$timers->{$newname}->{$_} = $opts->{$_} if $opts->{$_};
+	}
 
 	# timer should be marked unposted so changes can go to database
 	$timers->{$newname}->{posted} = false;
 
 	# switch current timer marker if renaming current timer
     $timers->{T3::CURRENT_TIMER} = $newname
-			if exists $timers->{T3::CURRENT_TIMER}
-					and $timers->{T3::CURRENT_TIMER} eq $oldname;
+			if exists $timers->{T3::CURRENT_TIMER} and $timers->{T3::CURRENT_TIMER} eq $oldname;
 
 	# need to write the file
 	return true;
+}
+
+
+sub copy_info				# copy a timer
+{
+	my ($opts, $timers) = @_;
+	print STDERR "trying to copy info $opts->{timer} => $opts->{newtimer}\n" if DEBUG >= 2;
+
+    # just a shortcut here
+    my $source = $opts->{timer};
+    unless (exists $timers->{$source})
+    {
+		die("Can't copy; no such timer");
+    }
+
+    if (not $opts->{newtimer})
+    {
+		die("New name not specified");
+    }
+
+    my $dest = $opts->{newtimer};
+
+	# can't copy to same name as an existing timer, of course
+	if (exists $timers->{$dest})
+	{
+		die("That timer already exists");
+	}
+
+	# copy old to new
+	$timers->{$dest} = dclone($timers->{$source});
+	# change name attribute
+	$timers->{$dest}->{name} = $dest;
+	# remove the actual time
+	$timers->{$dest}->{time} = '';
+
+	# allow command-line overrides
+	foreach (qw< client project phase >)
+	{
+		$timers->{$dest}->{$_} = $opts->{$_} if $opts->{$_};
+	}
+
+	# timer should be marked unposted so changes can go to database
+	$timers->{$dest}->{posted} = false;
+
+	# if currently timing for the source, start timing for the destination instead
+    if ($timers->{T3::CURRENT_TIMER} eq $source)
+	{
+		# just hand off to start function
+		$opts->{timer} = $dest;
+		return start($opts, $timers);
+	}
+	else
+	{
+		# need to write the file
+		return true;
+	}
 }
 
 
