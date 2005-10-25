@@ -97,7 +97,7 @@ if (-t STDOUT or @ARGV)
 	$parminfo->{noconfirm} = defined $opt->{f};
 	$parminfo->{halftime} = defined $opt->{h};
 	$parminfo->{user} = $opt->{u};
-	$parminfo->{client} = $opt->{C};
+	$parminfo->{client} = string::upper($opt->{C});
 	$parminfo->{project} = string::upper($opt->{P});
 	$parminfo->{phase} = string::upper($opt->{H});
 	$parminfo->{parse_fmt} = $opt->{'@'};
@@ -588,9 +588,8 @@ sub usage
 {
 	error(0,
 		"incorrect usage; usage is:\n",
-		"    timer -{s|p|d|c|r|e|l|b|t} [-fh] [-u user] [-C clientnum] ",
-						"[-P projcode] [timername [newtimername]] ",
-						"[-H phasecode]\n",
+		"    timer -{s|p|d|c|r|i|e|l|L|b|t} [-fh] [-u user] [-C clientcode] [-P projcode] [-H phasecode] " .
+						"[timername [newtimername]]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
@@ -608,11 +607,10 @@ sub usage
 		"       -C:   client number to use (default is user-specific)\n",
 		"       -P:   project code to use (no default)\n",
 		"       -H:   phase code to use (no default)\n",
-		"    clientnum must be a valid 3-digit code\n",
-		"    projcode and phasecode must be a valid 3-character code ",
-				"\n	(will be forced to uppercase)\n",
-		"    timername is ignored for -p, -e, -l, and -t\n",
-		"    newtimername is ignored for all but -r\n",
+		"    clientcode, projcode, and phasecode must be a valid 3-character code (will be forced to uppercase)\n",
+		"    timername is ignored for -p, -e, -l, -L, and -t\n",
+		"    timername for other functions defaults to the running timer, if any\n",
+		"    newtimername is ignored for all but -r and -i\n",
 	);
 }
 
