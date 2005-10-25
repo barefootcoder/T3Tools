@@ -187,8 +187,7 @@ sub get_parameter
 	}
 
 	# save the value we got
-	# default is to save in $parminfo, but can also save in $objinfo
-	# if $opts specifies this
+	# default is to save in $parminfo, but can also save in $objinfo if $opts specifies this
 	$parminfo->{$parmname} = $parm;
 	if ($opts->{SAVE_IN_OBJECT})
 	{
@@ -196,8 +195,7 @@ sub get_parameter
 	}
 
 	print Dumper($valid_parms), "\n" if DEBUG >= 4;
-	print wantarray ?  "will return ($parm, $valid_parms->{$parm})"
-			: "will return $parm", "\n" if DEBUG >= 3;
+	print wantarray ?  "will return ($parm, $valid_parms->{$parm})" : "will return $parm", "\n" if DEBUG >= 3;
 
 	# if force was specified, you'll get ($parm, undef)
 	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
