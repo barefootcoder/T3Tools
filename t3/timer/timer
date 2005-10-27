@@ -25,7 +25,7 @@ use Barefoot::T3Timer qw<get_timer_info do_timer_command>;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
-use Barefoot::T3::db_get qw<client_rounding proj_requirements>;
+use Barefoot::T3::db_get qw<one_datum client_rounding proj_requirements>;
 use Barefoot::T3::Timer qw<calc_date calc_time test_connection
 		this_week_totals>;
 
@@ -42,10 +42,16 @@ use Barefoot::T3::Timer qw<calc_date calc_time test_connection
 use constant Elapsed =>
 	'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
+=comment
 use constant Totals =>
 	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  $@##.##  total: @##.## hours';
 use constant Totals_No_Rates =>
 	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
+=cut
+use constant Totals_Header =>
+	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
+use constant Totals =>
+	'    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
 
 use constant Log =>
 	'
@@ -353,6 +359,7 @@ if ($command eq 'TOTAL')					# total timers by client
 		exit;
 	}
 
+=comment
 	# get totals for this weeks timers
 	my ($totals, $bad_proj) = this_week_totals($parminfo->{user}, $timers);
 	error(4, "can't get totals out of database") unless defined $totals;
@@ -372,8 +379,7 @@ if ($command eq 'TOTAL')					# total timers by client
 
 		if (not defined $rate)
 		{
-			writeln(Totals_No_Rates, $client,
-					"ERROR! No rate defined", $hours);
+			writeln(Totals_No_Rates, $client, "ERROR! No rate defined", $hours);
 		}
 		else
 		{
@@ -385,6 +391,46 @@ if ($command eq 'TOTAL')					# total timers by client
 	# print total totals
 	print "=" x length(Totals), "\n";
 	writeln(Totals_No_Rates, "", "Grand Total", $grand_total);
+=cut
+
+	my %clients;
+	my %projects;
+	my $totals = {};
+
+	foreach (values %$timers)
+	{
+		next unless ref $_ eq 'HASH';
+
+		my $client = $_->{client} || '???';
+		my $proj = $_->{project} || '???';
+
+		unless (exists $totals->{$client})
+		{
+			$clients{$client} = eval { one_datum("select name from {~timer}.client where client_id = '$client'") } || '???';
+			$totals->{$client} = {};
+		}
+		unless (exists $totals->{$client}->{$proj})
+		{
+			$projects{$proj} = eval { one_datum("select name from {~timer}.project where proj_id = '$proj'") } || '???';
+			$totals->{$client}->{$proj} = 0;
+		}
+
+		my $mins = calc_time($_->{time});
+		$totals->{$client}->{$proj} += rounded_time($client, $_->{time});
+		$totals->{$client}->{':TOTAL'} += rounded_time($client, $_->{time});
+	}
+
+	foreach my $client (sort keys %$totals)
+	{
+		my $total_hrs = delete $totals->{$client}->{':TOTAL'};
+		print "-" x length(Totals_Header), "\n";
+		writeln(Totals_Header, $client, $clients{$client}, $total_hrs);
+
+		foreach my $proj (sort keys %{$totals->{$client}})
+		{
+			writeln(Totals, $proj, $projects{$proj}, $totals->{$client}->{$proj});
+		}
+	}
 
 	# all done
 	exit;
@@ -766,6 +812,23 @@ sub print_parsable
 }
 
 
+sub rounded_time
+{
+	my ($client, $time) = @_;
+	print STDERR "rounded_time: $client, $time\n";
+
+	my $hours = calc_time($time) / 60;
+
+	my ($rounding, $to_nearest);
+	if (eval { ($rounding, $to_nearest) = client_rounding($client) })
+	{
+		$hours = range::round($hours, $rounding, $to_nearest);
+		print STDERR "rounding time for client $client: $rounding to $to_nearest, result $hours\n";
+	}
+	return $hours;
+}
+
+
 sub print_and_gather
 {
 	my ($giventimer) = @_;
@@ -800,9 +863,8 @@ sub gather_log_info
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
 	print STDERR "$log_timer timer: ", Dumper($timer) if DEBUG >= 2;
 
-	my ($emp_id, $emp_fullname, $client, $client_name, $rounding, $to_nearest,
-			$date, $hours, $project, $project_name, $phase, $phase_name,
-			$tracking, $tracking_name, $comments);
+	my ($emp_id, $emp_fullname, $client, $client_name, $rounding, $to_nearest, $date, $hours, $project, $project_name,
+			$phase, $phase_name, $tracking, $tracking_name, $comments);
 
 	# please note that the order you ask for the data elements in is
 	# *very* important ... the following things are true:
