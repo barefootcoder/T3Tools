@@ -209,8 +209,7 @@ if ($command eq 'START')					# start a timer
 	{
 		if (test_connection())
 		{
-			print STDERR "given timer doesn't exist, getting new values\n"
-					if DEBUG >= 5;
+			print STDERR "given timer doesn't exist, getting new values\n" if DEBUG >= 5;
 			get_timer_parameter("client");
 			get_timer_parameter("project");
 
@@ -250,8 +249,7 @@ if ($command eq 'CANCEL')					# cancel a timer
 		get_giventimer("cancel", $parminfo);
 
 		print STDERR "warning! a cancelled timer is gone forever!\n";
-		print STDERR "are you sure you want to cancel timer ",
-				$parminfo->{timer}, "?  (y/N) ";
+		print STDERR "are you sure you want to cancel timer ", $parminfo->{timer}, "?  (y/N) ";
 		exit unless <STDIN> =~ /^y/i;
 	}
 }
@@ -815,7 +813,7 @@ sub print_parsable
 sub rounded_time
 {
 	my ($client, $time) = @_;
-	print STDERR "rounded_time: $client, $time\n";
+	print STDERR "rounded_time: $client, $time\n" if DEBUG >= 4;
 
 	my $hours = calc_time($time) / 60;
 
@@ -823,7 +821,7 @@ sub rounded_time
 	if (eval { ($rounding, $to_nearest) = client_rounding($client) })
 	{
 		$hours = range::round($hours, $rounding, $to_nearest);
-		print STDERR "rounding time for client $client: $rounding to $to_nearest, result $hours\n";
+		print STDERR "rounding time for client $client: $rounding to $to_nearest, result $hours\n" if DEBUG >= 4;
 	}
 	return $hours;
 }
