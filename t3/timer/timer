@@ -14,6 +14,8 @@ use warnings;
 use CGI;
 use Getopt::Std;
 use Data::Dumper;
+use File::HomeDir;
+use Config::General;
 
 use Barefoot::base;
 use Barefoot::date;
@@ -26,13 +28,15 @@ use Barefoot::T3Timer qw<get_timer_info do_timer_command>;
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw<get_parameter>;
 use Barefoot::T3::db_get qw<one_datum client_rounding proj_requirements>;
-use Barefoot::T3::Timer qw<calc_date calc_time test_connection
-		this_week_totals>;
+use Barefoot::T3::Timer qw<calc_date calc_time test_connection this_week_totals>;
 
 
 #################################
 # CONSTANTS
 #################################
+
+use constant RC_FILE => "$~{$ENV{'USER'}}/.t3rc";
+my $RC = read_rc();
 
 
 #################################
@@ -394,10 +398,13 @@ if ($command eq 'TOTAL')					# total timers by client
 	my %clients;
 	my %projects;
 	my $totals = {};
+	my $min_time = rc_param(TOTAL => 'mintime');
+	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
 	foreach (values %$timers)
 	{
 		next unless ref $_ eq 'HASH';
+		next if exists $ignore_timers{$_->{name}};
 
 		my $client = $_->{client} || '???';
 		my $proj = $_->{project} || '???';
@@ -413,9 +420,10 @@ if ($command eq 'TOTAL')					# total timers by client
 			$totals->{$client}->{$proj} = 0;
 		}
 
-		my $mins = calc_time($_->{time});
-		$totals->{$client}->{$proj} += rounded_time($client, $_->{time});
-		$totals->{$client}->{':TOTAL'} += rounded_time($client, $_->{time});
+		my $mins = rounded_time($client, $_->{time});
+		$mins = $min_time if calc_time($_->{time}) > 0 and $mins < $min_time;
+		$totals->{$client}->{$proj} += $mins;
+		$totals->{$client}->{':TOTAL'} += $mins;
 	}
 
 	foreach my $client (sort keys %$totals)
@@ -680,6 +688,39 @@ sub error
 	{
 		print STDERR "$progname: ", @messages, "\n";
 		exit $exitcode;
+	}
+}
+
+
+sub read_rc
+{
+	my %rc;
+	%rc = ParseConfig(RC_FILE) if -r RC_FILE;
+	return \%rc;
+}
+
+sub rc_param
+{
+	my ($command, $key) = @_;
+
+	return undef unless exists $RC->{$command};
+	return undef unless exists $RC->{$command}->{$key};
+	return $RC->{$command}->{$key};
+}
+
+sub rc_list
+{
+	my ($command, $key) = @_;
+
+	return () unless exists $RC->{$command};
+	return () unless exists $RC->{$command}->{$key};
+	if (ref $RC->{$command}->{$key} eq 'ARRAY')
+	{
+		return @{$RC->{$command}->{$key}};
+	}
+	else
+	{
+		return ($RC->{$command}->{$key});
 	}
 }
 
