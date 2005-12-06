@@ -398,7 +398,7 @@ if ($command eq 'TOTAL')					# total timers by client
 	my %clients;
 	my %projects;
 	my $totals = {};
-	my $min_time = rc_param(TOTAL => 'mintime');
+	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
 	foreach (values %$timers)
