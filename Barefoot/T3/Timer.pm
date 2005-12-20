@@ -103,7 +103,7 @@ sub timer_command
 	if ($timer_commands{$command}->($opts, $timers))
 	{
 		print STDERR "about to write file\n" if DEBUG >= 5;
-		writefile($opts->{user}, $timers);
+		writefile($opts->{user}, $timers, $opts->{backup_rotate});
 		print STDERR "back from writing file\n" if DEBUG >= 5;
 	}
 }
@@ -138,14 +138,15 @@ sub readfile
 
 sub writefile
 {
-	my ($user, $timers) = @_;
+	my ($user, $timers, $backup_rotate) = @_;
 	print STDERR "entering writefile function\n" if DEBUG >= 5;
 
 	# don't really care whether this succeeds or not
 	try
 	{
 		print STDERR "in try block\n" if DEBUG >= 5;
-		save_to_db($user, $timers);
+		# turned off temporarily until this can be fixed
+		#save_to_db($user, $timers);
 	}
 	catch
 	{
@@ -156,6 +157,15 @@ sub writefile
 
 	my $tfile = T3::base_filename(TIMER => $user);
 	print STDERR "going to print to file $tfile\n" if DEBUG >= 3;
+
+	while ($backup_rotate)
+	{
+		my $rfile = "$tfile.$backup_rotate";
+		my $prev_rfile = --$backup_rotate ? "$tfile.$backup_rotate" : $tfile;
+		unlink $rfile if -e $rfile;
+		rename $prev_rfile, $rfile if -e $prev_rfile;
+	}
+
 	open(TFILE, ">$tfile") or die("can't write to timer file");
 	while (my ($name, $timer) = each %$timers)
 	{
