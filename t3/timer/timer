@@ -143,6 +143,8 @@ else
 	print $cgi->header('text/plain');
 }
 
+$parminfo->{'backup_rotate'} = rc_param(ALL => 'BackupRotation');
+
 
 #################################
 # CHECK FOR ERRORS
