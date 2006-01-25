@@ -455,7 +455,7 @@ if ($command eq 'AVERAGE')
 		}
 		$last_date = $end;
 
-		my $breakout_total = $breakout{$_} ? sprintf("$breakout: %4.2f", $breakout{$_}) : '';
+		my $breakout_total = $breakout{$_} ? sprintf("$breakout: %5.2f", $breakout{$_}) : '';
 
 		writeln(Totals_Weekly, $_, $weeks{$_}, $breakout_total);
 		$alltime += $weeks{$_};
