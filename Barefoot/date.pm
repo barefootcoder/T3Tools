@@ -232,7 +232,7 @@ sub isValid
 
 sub mdy
 {
-	my ($day, $mon, $year) = (localtime $_[0])[3..5];
+	my ($day, $mon, $year) = (gmtime $_[0])[3..5];
 	$year += 1900, ++$mon;
 	#return "$mon/$day/$year";
 	return "$year-$mon-$day";
@@ -391,8 +391,9 @@ sub period_name
 
 	my $start = incDays($epoch, $period_num * $period_len);
 	my $end = incDays($start, $period_len - 1);
+	print STDERR "period_name: start is $start, end is $end\n" if DEBUG >= 3;
 
-	return mdy($start) . " - " . mdy($end);
+	return mdy(scalar(_date_parse($start))) . " - " . mdy(scalar(_date_parse($end)));
 }
 
 
