@@ -18,22 +18,23 @@ use File::HomeDir;
 use Config::General;
 
 use Barefoot::base;
-use Barefoot::date;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
-use Barefoot::input qw<get_yn input>;
-use Barefoot::T3Timer qw<get_timer_info do_timer_command>;
+use Barefoot::input qw< get_yn input >;
+use Barefoot::date epoch => '2003-12-29';
+use Barefoot::T3Timer qw< get_timer_info do_timer_command >;
 
 use Barefoot::T3::base;
-use Barefoot::T3::valid qw<get_parameter>;
-use Barefoot::T3::db_get qw<one_datum client_rounding proj_requirements>;
-use Barefoot::T3::Timer qw<calc_date calc_time test_connection this_week_totals>;
+use Barefoot::T3::valid qw <get_parameter >;
+use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
+use Barefoot::T3::Timer qw <calc_date calc_time test_connection this_week_totals >;
 
 
 #################################
 # CONSTANTS
 #################################
+
 
 use constant RC_FILE => "$~{$ENV{'USER'}}/.t3rc";
 my $RC = read_rc();
@@ -43,19 +44,22 @@ my $RC = read_rc();
 # FORMATS
 #################################
 
+
 use constant Elapsed =>
 	'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
-=comment
-use constant Totals =>
-	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  $@##.##  total: @##.## hours';
-use constant Totals_No_Rates =>
-	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
-=cut
+
 use constant Totals_Header =>
 	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
 use constant Totals =>
 	'    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
+
+
+use constant Totals_Weekly =>
+	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<               total: @##.## hours';
+use constant Average_Weekly =>
+	'AVERAGE WEEKLY TIME:                                @##.## hours';
+
 
 use constant Log =>
 	'
@@ -93,6 +97,7 @@ my $command_strings = {
 	t	=>	"TOTAL",
 	L	=>	"LOGALL",
 	i	=>	"COPYINFO",
+	a	=>	"AVERAGE",
 	'@'	=>	"PARSE",
 };
 our ($cgi, $command, $workgroup);
@@ -102,7 +107,7 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcpribLtfhu:C:P:H:@:', $opt) or usage();
+	getopts('sedlcpribLtafhu:C:P:H:@:', $opt) or usage();
 	$parminfo->{force} = defined $opt->{f};
 	$parminfo->{noconfirm} = defined $opt->{f};
 	$parminfo->{halftime} = defined $opt->{h};
@@ -114,11 +119,11 @@ if (-t STDOUT or @ARGV)
 
 	$parminfo->{newtimer} = $ARGV[1];
 
-	foreach my $copt ( qw<s e d l c i p r b L t @> )
+	foreach my $copt ( qw <s e d l c i p r b L t a @ > )
 	{
 		if (exists $opt->{$copt})
 		{
-			error(2, "you must specify exactly one command (s,e,d,l,c,p,r,b)")
+			error(2, "you must specify exactly one command (s,e,d,l,c,i,p,r,b,L,t,a)")
 					if defined $command;
 			$command = $command_strings->{$copt};
 			# print STDERR "defined command as $command\n";
@@ -444,6 +449,41 @@ if ($command eq 'TOTAL')					# total timers by client
 	exit;
 }
 
+if ($command eq 'AVERAGE')
+{
+	unless (test_connection())
+	{
+		print STDERR "The data store is not accessible. Action canceled.\n";
+		exit;
+	}
+
+	my $emp_id = get_emp_id($parminfo->{'user'});
+	print STDERR "average: emp_id is $emp_id\n" if DEBUG >= 2;
+	my $logs = get_logs($emp_id);
+	print STDERR "average: got ", scalar(@$logs), " total logs back\n" if DEBUG >= 3;
+
+	my %weeks;
+	foreach (@$logs)
+	{
+		my $period = date::period_name(date::period_num($_->{'log_date'}, 7), 7);
+		$weeks{$period} += $_->{'hours'};
+		print STDERR "$_->{'log_date'} ($period)     $_->{'hours'}\n" if DEBUG >= 4;
+	}
+
+	my $alltime = 0;
+	foreach (sort keys %weeks)
+	{
+		writeln(Totals_Weekly, $_, $weeks{$_});
+		$alltime += $weeks{$_};
+	}
+
+	print "=" x length(Totals_Weekly), "\n";
+	writeln(Average_Weekly, range::round($alltime / scalar(keys %weeks), range::ROUND_OFF, .25));
+
+	# all done
+	exit;
+}
+
 if ($command eq 'LOG')					# log time directly to the DB
 {
 	unless (test_connection())
@@ -645,7 +685,7 @@ sub usage
 {
 	error(0,
 		"incorrect usage; usage is:\n",
-		"    timer -{s|p|d|c|r|i|e|l|L|b|t} [-fh] [-u user] [-C clientcode] [-P projcode] [-H phasecode] " .
+		"    timer -{s|p|d|c|r|i|e|l|L|b|t|a} [-fh] [-u user] [-C clientcode] [-P projcode] [-H phasecode] " .
 						"[timername [newtimername]]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
@@ -658,6 +698,7 @@ sub usage
 		"       -L:   log out all current timers, optionally saving their info\n",
 		"       -b:   break down a timer's portions\n",
 		"       -t:   total for all timers this week (by client)\n",
+		"       -a:   totals by week with weekly average\n",
 		"       -f:   force (ignore all confirmations)\n",
 		"       -h:   half-time timing (while watching movies, etc)\n",
 		"       -u:   user name to use (default is current user)\n",
@@ -758,23 +799,19 @@ sub get_timer_parameter
 	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{timer}};
 
-	# this is somewhat complicated.  we need to figure out what the
-	# proper thing (client, project, or phase) should be, and then use
-	# it as the default.  now, we have three possible places to get this
-	# info from: the default for this user (from the database; get_parameter
-	# knows how to retrieve that), the thing already set (for a pre-existing
-	# timer; this comes from objinfo), or the thing specified on the command
-	# line (if specified at all; this comes from parminfo).  for most cases,
-	# the priority is: command line, pre-existing, default.  for the start
-	# command, however, a pre-existing parameter can't be changed if it
-	# exists, so we use it and exit.	also, if -f (force) was specified
-	# (that flag is in parminfo), we can quit right there.
+	# this is somewhat complicated.  we need to figure out what the proper thing (client, project, or phase)
+	# should be, and then use it as the default.  now, we have three possible places to get this info from:
+	# the default for this user (from the database; get_parameter knows how to retrieve that), the thing
+	# already set (for a pre-existing timer; this comes from objinfo), or the thing specified on the command
+	# line (if specified at all; this comes from parminfo).  for most cases, the priority is: command line,
+	# pre-existing, default.  for the start command, however, a pre-existing parameter can't be changed if it
+	# exists, so we use it and exit.	also, if -f (force) was specified (that flag is in parminfo), we can
+	# quit right there.
 
 	# got it? here we go ...
 
 	my $opts = {};
-	# this will keep people from being able to change parameters if the
-	# command is "start"
+	# this will keep people from being able to change parameters if the command is "start"
 	$opts->{RESTRICT_CHANGES} = true if $command eq 'START';
 
 	return get_parameter($parmname, $parminfo, $objinfo, $opts);

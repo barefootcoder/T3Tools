@@ -1,10 +1,10 @@
 #! /usr/local/bin/perl -w
 
 # For RCS:
-# $Date$
+# $Date: 2003/01/05 20:18:29 $
 #
-# $Id$
-# $Revision$
+# $Id: db_get.pm,v 1.4 2003/01/05 20:18:29 buddy Exp $
+# $Revision: 1.4 $
 
 ###########################################################################
 #
@@ -30,8 +30,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<one_datum get_emp_id default_client client_rounding
-		proj_requirements phase_list>;
+@EXPORT_OK = qw <one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
 
 use Barefoot::DataStore;
 
@@ -105,17 +104,18 @@ sub proj_requirements
 	my ($client, $proj, $date) = @_;
 	# print STDERR "client: $client, proj: $proj\n";
 
-	my $res = &t3->do("
-			select pt.requires_phase, pt.requires_tracking,
-					pt.requires_comments
-			from {~timer}.project p, {~timer}.project_type pt
-			where p.client_id = '$client'
-			and p.proj_id = '$proj'
-			and '$date' between p.start_date and p.end_date
-			and p.project_type = pt.project_type
-	");
-	die("project requirements query failed:", &t3->last_error())
-			unless $res;
+	my $res = &t3->do(q{
+		select pt.requires_phase, pt.requires_tracking,
+				pt.requires_comments
+		from {~timer}.project p, {~timer}.project_type pt
+		where p.client_id = {client}
+		and p.proj_id = {proj}
+		and {date} between p.start_date and p.end_date
+		and p.project_type = pt.project_type
+	},
+		client => $client, proj => $proj, $date => $date,
+	);
+	die("project requirements query failed:", &t3->last_error()) unless $res;
 
 	if ($res->next_row())
 	{
@@ -130,10 +130,11 @@ sub proj_requirements
 
 sub phase_list
 {
-	my $res = &t3->do("
-			select ph.phase_id, ph.name
-			from {~timer}.phase ph
-	");
+	my $res = &t3->do(q{
+		select ph.phase_id, ph.name
+		from {~timer}.phase ph
+	},
+	);
 	die("phase list query failed:", &t3->last_error()) unless $res;
 
 	my $phases = {};
@@ -142,6 +143,24 @@ sub phase_list
 		$phases->{$res->col(0)} = $res->col(1);
 	}
 	return $phases;
+}
+
+
+sub get_logs
+{
+	my ($emp_id) = @_;
+
+	my $data = &t3->load_data(q{
+		select l.log_date, l.hours
+		from {~timer}.time_log l
+		where l.emp_id = {emp}
+		order by l.log_date
+	},
+		emp => $emp_id,
+	);
+	die("get logs query failed:", &t3->last_error()) unless $data;
+
+	return $data;
 }
 
 
