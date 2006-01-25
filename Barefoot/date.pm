@@ -235,7 +235,7 @@ sub mdy
 	my ($day, $mon, $year) = (gmtime $_[0])[3..5];
 	$year += 1900, ++$mon;
 	#return "$mon/$day/$year";
-	return "$year-$mon-$day";
+	return sprintf("%04d-%02d-%02d", $year, $mon, $day);
 }
 
 
