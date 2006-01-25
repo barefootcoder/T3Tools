@@ -56,9 +56,9 @@ use constant Totals =>
 
 
 use constant Totals_Weekly =>
-	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<               total: @##.## hours';
+	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<          total: @##.## hours     @<<<<<<<<<<<';
 use constant Average_Weekly =>
-	'AVERAGE WEEKLY TIME:                                @##.## hours';
+	'AVERAGE WEEKLY TIME:                           @##.## hours';
 
 
 use constant Log =>
@@ -368,40 +368,6 @@ if ($command eq 'TOTAL')					# total timers by client
 		exit;
 	}
 
-=comment
-	# get totals for this weeks timers
-	my ($totals, $bad_proj) = this_week_totals($parminfo->{user}, $timers);
-	error(4, "can't get totals out of database") unless defined $totals;
-	error(4, "can't get bad project rows") unless defined $bad_proj;
-
-	my $grand_total = 0;
-	foreach my $error (@$bad_proj)
-	{
-		my ($client, $hours) = @$error;
-
-		writeln(Totals_No_Rates, $client, "ERROR! Invalid project", $hours);
-		$grand_total += $hours;
-	}
-	foreach my $total (@$totals)
-	{
-		my ($client, $client_name, $rate, $hours) = @$total;
-
-		if (not defined $rate)
-		{
-			writeln(Totals_No_Rates, $client, "ERROR! No rate defined", $hours);
-		}
-		else
-		{
-			writeln(Totals, $client, $client_name, $rate, $hours);
-		}
-		$grand_total += $hours;
-	}
-
-	# print total totals
-	print "=" x length(Totals), "\n";
-	writeln(Totals_No_Rates, "", "Grand Total", $grand_total);
-=cut
-
 	my %clients;
 	my %projects;
 	my $totals = {};
@@ -462,18 +428,36 @@ if ($command eq 'AVERAGE')
 	my $logs = get_logs($emp_id);
 	print STDERR "average: got ", scalar(@$logs), " total logs back\n" if DEBUG >= 3;
 
-	my %weeks;
+	my $breakout = rc_param(AVERAGE => 'breakout') || '';
+
+	my (%weeks, %breakout);
 	foreach (@$logs)
 	{
 		my $period = date::period_name(date::period_num($_->{'log_date'}, 7), 7);
 		$weeks{$period} += $_->{'hours'};
 		print STDERR "$_->{'log_date'} ($period)     $_->{'hours'}\n" if DEBUG >= 4;
+
+		if ($_->{'proj_id'} eq $breakout)
+		{
+			$breakout{$period} += $_->{'hours'};
+		}
 	}
 
 	my $alltime = 0;
+	my $last_date = undef;
 	foreach (sort keys %weeks)
 	{
-		writeln(Totals_Weekly, $_, $weeks{$_});
+		my ($start, $end) = split(' - ');
+		if ($last_date)
+		{
+			print "!!!!!!!!!!!!!!!   WARNING!  SKIPPED WEEK(S)!   !!!!!!!!!!!!!!!\n"
+					unless $start eq date::incDays($last_date, 1);
+		}
+		$last_date = $end;
+
+		my $breakout_total = $breakout{$_} ? sprintf("$breakout: %4.2f", $breakout{$_}) : '';
+
+		writeln(Totals_Weekly, $_, $weeks{$_}, $breakout_total);
 		$alltime += $weeks{$_};
 	}
 
