@@ -113,7 +113,7 @@ sub proj_requirements
 		and {date} between p.start_date and p.end_date
 		and p.project_type = pt.project_type
 	},
-		client => $client, proj => $proj, $date => $date,
+		client => $client, proj => $proj, date => $date,
 	);
 	die("project requirements query failed:", &t3->last_error()) unless $res;
 
@@ -151,7 +151,7 @@ sub get_logs
 	my ($emp_id) = @_;
 
 	my $data = &t3->load_data(q{
-		select l.log_date, l.hours
+		select l.proj_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
 		order by l.log_date
