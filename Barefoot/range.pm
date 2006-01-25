@@ -1,9 +1,9 @@
 #! /usr/local/bin/perl
 
 # For RCS:
-# $Date$
-# $Id$
-# $Revision$
+# $Date: 2002/05/19 23:46:34 $
+# $Id: range.pm,v 1.5 2002/05/19 23:46:34 buddy Exp $
+# $Revision: 1.5 $
 
 ###########################################################################
 #
@@ -34,6 +34,8 @@ package range;
 use strict;
 
 use Carp;
+
+use Barefoot::base;
 
 
 # constants for round()
@@ -89,6 +91,7 @@ sub round
 	my ($number, $whichway, $towhat) = @_;
 	$whichway = ROUND_OFF if !defined $whichway;
 	$towhat = 1 if !$towhat;
+	print STDERR "round: rounding $number $whichway to nearest $towhat\n" if DEBUG >= 3;
 
 	croak("illegal rounding type") unless exists $_rounding_types{$whichway};
 
