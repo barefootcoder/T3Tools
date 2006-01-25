@@ -976,18 +976,10 @@ sub copy_info				# copy a timer
 	# timer should be marked unposted so changes can go to database
 	$timers->{$dest}->{posted} = false;
 
-	# if currently timing for the source, start timing for the destination instead
-    if ($timers->{T3::CURRENT_TIMER} eq $source)
-	{
-		# just hand off to start function
-		$opts->{timer} = $dest;
-		return start($opts, $timers);
-	}
-	else
-	{
-		# need to write the file
-		return true;
-	}
+	# why copy the timer info unless you need to start that timer?
+	# just hand off to start function
+	$opts->{timer} = $dest;
+	return start($opts, $timers);
 }
 
 
