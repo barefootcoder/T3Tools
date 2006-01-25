@@ -37,12 +37,9 @@ die("today's date is wrong") unless date::today() eq $date_cmd;
 
 
 # test incDays a bit
-die("increment zero test failed") unless
-		date::mdy(date::dateTimeSeconds(date::incDays(date::today(), 0)))
-				eq date::today();
+die("increment zero test failed") unless date::incDays(date::today(), 0) eq date::today();
 my $four_days_ago = date::dateTimeSeconds(date::today()) - 4 * 24 * 60 * 60;
 my $inc_to_now = date::incDays($four_days_ago, 4);
-$inc_to_now = date::mdy(date::dateTimeSeconds($inc_to_now));
 unless ($inc_to_now eq date::today())
 {
 	print "incDays returned $inc_to_now\n" if DEBUG >= 2;

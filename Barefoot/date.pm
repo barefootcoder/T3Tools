@@ -254,11 +254,7 @@ sub incDays
 	$secs += ($inc * 24 * 60 * 60);		# increment seconds by that many days
 	print STDERR "seconds after increment:  $secs\n" if DEBUG >= 3;
 
-	my ($day, $mon, $year) = (gmtime $secs)[3..5];
-	$year += 1900, ++$mon;
-	print STDERR "incDays: new date is $mon/$day/$year\n" if DEBUG >= 2;
-
-	return $year . string::lpad($mon, 2, 0) . string::lpad($day, 2, 0);
+	return mdy($secs);
 }
 
 
@@ -393,7 +389,7 @@ sub period_name
 	my $end = incDays($start, $period_len - 1);
 	print STDERR "period_name: start is $start, end is $end\n" if DEBUG >= 3;
 
-	return mdy(scalar(_date_parse($start))) . " - " . mdy(scalar(_date_parse($end)));
+	return "$start - $end";
 }
 
 
