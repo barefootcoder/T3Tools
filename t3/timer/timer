@@ -12,6 +12,7 @@ use warnings;
 #use Barefoot::debug(1);
 
 use CGI;
+use File::Copy;
 use Getopt::Std;
 use Data::Dumper;
 use File::HomeDir;
@@ -504,6 +505,13 @@ if ($command eq 'DONE')					# done with a timer
 
 if ($command eq 'LOGALL')
 {
+	# since LOGALL does so much to the timer file, and does it in such tiny increments, it's a good idea to
+	# just save a complete backup of everything before we start
+	my $tfile = T3::base_filename(TIMER => $parminfo->{'user'});
+	my $backup = "$tfile.preLog";
+	unlink $backup if -e $backup;
+	copy($tfile, $backup);
+
 	# HACK! this hardcoding, plus the idea that they have to be quarterly, should be changed
 	# to allow a more configurable interface
 	my %quarterly = ( log => 1, 'timer-fixes' => 1 );
@@ -654,6 +662,14 @@ catch
 {
 	error(3, $_);
 };
+
+if ($command eq 'COPYINFO')
+{
+	# why copy a timer's info unless you also wanted to start it?
+	# info is copied, let's just start it now
+	$parminfo->{'timer'} = $parminfo->{'newtimer'};
+	do_timer_command('START', $parminfo, $timers);
+}
 
 unless ( $command eq 'LOG' )
 {

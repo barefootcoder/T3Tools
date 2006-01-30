@@ -976,10 +976,8 @@ sub copy_info				# copy a timer
 	# timer should be marked unposted so changes can go to database
 	$timers->{$dest}->{posted} = false;
 
-	# why copy the timer info unless you need to start that timer?
-	# just hand off to start function
-	$opts->{timer} = $dest;
-	return start($opts, $timers);
+	# need to write the file
+	return true;
 }
 
 
