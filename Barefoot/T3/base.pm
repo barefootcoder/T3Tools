@@ -89,8 +89,8 @@ our $cfg_file = config_file->read(T3::CONFIG_FILE);
 
 sub config
 {
-	# just return lookup of current workgroup and first argument
-    return $cfg_file->lookup($workgroup, $_[0]);
+	# just return lookup of current workgroup and all args
+    return $cfg_file->lookup($workgroup, @_);
 }
 
 
