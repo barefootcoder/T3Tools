@@ -15,8 +15,10 @@ use CGI;
 use File::Copy;
 use Getopt::Std;
 use Data::Dumper;
+use Perl6::Slurp;
 use File::HomeDir;
 use Config::General;
+use File::Temp qw<tempfile>;
 
 use Barefoot::base;
 use Barefoot::range;
@@ -165,6 +167,8 @@ print STDERR "survived args and error checks\n" if DEBUG >= 5;
 #################################
 # main()
 #################################
+
+$| = 1;
 
 
 # get the basics for our $timers collection
@@ -858,6 +862,8 @@ sub print_parsable
 	my $user = $parminfo->{user};
 	while (my ($tname, $timer) = each %$timers)
 	{
+		next if $tname =~ /^:/;					# special markers; not real timers
+
 		print "$tname\n" and next if $parminfo->{parse_fmt} eq 't';
 
 		my $client = $timer->{client};
@@ -1002,16 +1008,7 @@ sub gather_log_info
 	COMMENTS: {
 		$comments = undef;
 		last unless $comments_needed;
-		print "\nEnter comments below (maximum 255 chars):\n";
-		print "  (255 chars is a little over 3 lines if your screen is 80\n";
-		print "   columns wide--or almost exactly two lines if your screen is\n";
-		print "   125 columns wide--and you don't hit RETURN at all (which you shouldn't))\n";
-		print "Enter ^D (control-D) on a line by itself to finish the comments.\n";
-		local ($/) = undef;
-		$comments = input();
-		while ($comments =~ s/^\s+$//) {};				# no completely blank lines
-		while ($comments =~ s/^\n//) {};				# no extra newlines in front
-		$comments =~ s/\s*\n+\s*$//;					# none at the end either
+		$comments = get_comment();
 		print "  {You must have comments}\n\n" and redo COMMENTS if not $comments;
 		print "  {Comments too long!}\n\n" and redo COMMENTS if length($comments) > 255;
 	}
@@ -1029,11 +1026,51 @@ sub gather_log_info
 	);
 	writeln(Log_Comments, $comments);
 
-	<STDIN>;					# HACK! don't know why this is necessary
 	unless (get_yn("\n\nis everything okay?"))
 	{
 		die("\n  {Try to log this timer out again later.}\n");
 	}
 
 	print STDERR "parms after gather_log_info: ", Dumper($parminfo) if DEBUG >= 4;
+}
+
+
+sub get_comment
+{
+	my $header = <<END;
+		Enter comments below (maximum 255 chars):
+		  (255 chars is a little over 3 lines if your screen is 80
+		   columns wide--or almost exactly two lines if your screen is
+		   125 columns wide--and you don't hit RETURN at all (which you shouldn't))
+END
+	$header =~ s/^\t+//mg;
+	my $comments = '';
+
+	if (my $editor = rc_param(LOG => 'editor'))
+	{
+		my ($fh, $tmpfile) = tempfile();
+		my $separator = "=" x 80;
+		print $fh "\n$separator\n";
+		print $fh $header;
+		system($editor, $tmpfile);
+		$comments = slurp $tmpfile;
+		$comments =~ s/\n${separator}.*$//s;
+	}
+	else
+	{
+		print "\n$header";
+		print "Enter ^D (control-D) on a line by itself to finish the comments.\n";
+		local ($/) = undef;
+		$comments = input();
+
+		<STDIN>;					# HACK! don't know why this is necessary
+	}
+
+	$comments =~ s/^\s+$//mg;							# no completely blank lines
+	$comments =~ s/^\s*\n+\s*//;						# no extra newlines in front
+	$comments =~ s/\s*\n+\s*$//;						# none at the end either
+
+	print STDERR "comments are: $comments\n" and <STDIN> if DEBUG >= 4;
+
+	return $comments;
 }
