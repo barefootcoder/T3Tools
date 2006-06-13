@@ -1,12 +1,13 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 # For CVS:
-# $Date$
+# $Date: 2003/06/26 18:05:57 $
 #
-# $Id$
-# $Revision$
+# $Id: todo,v 1.7 2003/06/26 18:05:57 buddy Exp $
+# $Revision: 1.7 $
 
 use strict;
+use warnings;
 
 #use Barefoot::debug(1);
 
