@@ -1,11 +1,5 @@
 #! /usr/local/bin/perl
 
-# For CVS:
-# $Date: 2003/11/17 22:41:52 $
-#
-# $Id: base.pm,v 1.11 2003/11/17 22:41:52 buddy Exp $
-# $Revision: 1.11 $
-
 ###########################################################################
 #
 # Barefoot::T3::base
@@ -18,8 +12,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -67,7 +62,7 @@ use constant TEST_WORKGROUP => 'TestCompany';
 # tag names
 # tags are special members of a list of T3 objects (e.g., timers, todo tasks)
 # they are denoted by beginning with a colon
-# (this is consequently illegal for the "normal" names of T3 objects
+# (this is consequently illegal for the "normal" names of T3 objects)
 
 use constant CURRENT_TIMER => ':CURRENT';
 
@@ -201,8 +196,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
-@EXPORT = qw<t3 t3_config t3_username t3_filenames t3_pipename t3_create_pipe
-		timer_fields todo_fields>;
+@EXPORT = qw<t3 t3_config t3_username t3_filenames t3_pipename t3_create_pipe timer_fields todo_fields>;
 
 use POSIX qw<mkfifo>;
 

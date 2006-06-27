@@ -1,10 +1,4 @@
-#! /usr/local/bin/perl -w
-
-# For RCS:
-# $Date: 2003/01/05 20:18:29 $
-#
-# $Id: db_get.pm,v 1.4 2003/01/05 20:18:29 buddy Exp $
-# $Revision: 1.4 $
+#! /usr/local/bin/perl
 
 ###########################################################################
 #
@@ -17,8 +11,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -27,10 +22,11 @@ package Barefoot::T3::db_get;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw <one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
+@EXPORT_OK = qw < one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
 
 use Barefoot::DataStore;
 

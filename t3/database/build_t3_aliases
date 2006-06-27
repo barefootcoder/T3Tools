@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 # For CVS:
 # $Date: 2003/03/23 20:07:36 $
@@ -8,6 +8,7 @@
 # create aliases for T3 data store
 
 use strict;
+use warnings;
 
 use Getopt::Std;
 

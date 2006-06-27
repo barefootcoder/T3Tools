@@ -17,8 +17,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -31,8 +32,7 @@ use warnings;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_parameter valid_employees valid_clients valid_projects
-		valid_trackings>;
+@EXPORT_OK = qw< get_parameter valid_employees valid_clients valid_projects valid_trackings >;
 
 use Carp;
 use Data::Dumper;

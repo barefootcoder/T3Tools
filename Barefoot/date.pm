@@ -1,10 +1,4 @@
-#! /usr/local/bin/perl -w
-
-# For CVS:
-# $Date: 2003/06/25 21:10:03 $
-#
-# $Id: date.pm,v 1.11 2003/06/25 21:10:03 buddy Exp $
-# $Revision: 1.11 $
+#! /usr/local/bin/perl
 
 ###########################################################################
 #
@@ -16,8 +10,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 1999-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -26,6 +21,7 @@ package date;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Carp;
 use Time::Local;
