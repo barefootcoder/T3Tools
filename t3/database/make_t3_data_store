@@ -119,6 +119,7 @@ $t3->configure_type(external_id => 'char(10)');
 $t3->configure_type(description => 'varchar(30)');
 $t3->configure_type(username => 'varchar(20)');
 $t3->configure_type(table_name => 'varchar(30)');
+$t3->configure_type(short_name => 'varchar(30)');
 $t3->configure_type(comments_text => 'varchar(255)');
 $t3->configure_type(percentage => 'decimal(5,2)');
 
