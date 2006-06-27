@@ -1,9 +1,4 @@
-#! /usr/bin/perl -w
-
-# For RCS:
-# $Date: 2003/11/18 00:11:32 $
-# $Id: make_timer_tables,v 1.6 2003/11/18 00:11:32 buddy Exp $
-# $Revision: 1.6 $
+#! /usr/bin/perl
 
 # create tables for TIMER
 #
@@ -12,6 +7,7 @@
 # TIMER for general release
 
 use strict;
+use warnings;
 
 use Getopt::Std;
 
@@ -484,9 +480,9 @@ create_table("invoice",
 		[ "invoice_billdate",	"date",			"NOT NULL" ],
 		[ "invoice_paydate",	"date",			"NULL" ],
 		[ "create_user",		"username",		"NOT NULL" ],
-		[ "create_date",		"date",			"NOT NULL" ],
+		[ "create_date",		"datetime,"		"NOT NULL" ],
 		[ "chguser",			"username",		"NULL" ],
-		[ "chgdate",			"date",			"NULL" ],
+		[ "chgdate",			"datetime,"		"NULL" ],
 	],
 	[
 		{
@@ -522,9 +518,9 @@ create_table("payroll",
 		[ "overhead_amount",	"money",		"NULL" ],
 		[ "check_date",			"date",			"NULL" ],
 		[ "create_user",		"username",		"NOT NULL" ],
-		[ "create_date",		"date",			"NOT NULL" ],
+		[ "create_date",		"datetime,"		"NOT NULL" ],
 		[ "chguser",			"username",		"NULL" ],
-		[ "chgdate",			"date",			"NULL" ],
+		[ "chgdate",			"datetime,"		"NULL" ],
 	],
 	[
 		{
@@ -557,9 +553,9 @@ create_table("commission_payment",
 		[ "check_date",		"date",				"NOT NULL" ],
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -593,9 +589,9 @@ create_table("time_log",
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "payroll_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -640,9 +636,9 @@ create_table("materials_log",
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -666,14 +662,14 @@ create_table("class_log",
 		[ "num_students",	"tinyint",			"NOT NULL" ],
 		[ "num_breaks",		"tinyint",			"NULL" ],
 		[ "log_date",		"date",				"NOT NULL" ],
-		[ "start_time",		"date",				"NOT NULL" ],
-		[ "end_time",		"date",				"NOT NULL" ],
+		[ "start_time",		"datetime,"			"NOT NULL" ],
+		[ "end_time",		"datetime,"			"NOT NULL" ],
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -720,9 +716,9 @@ create_table("commission",
 		[ "amount",			"money",			"NULL" ],
 		[ "payment_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -775,9 +771,9 @@ create_table("salary_bank",
 		[ "bank_amount",	"money",			"NOT NULL" ],
 		[ "payroll_id",		"unique_id",		"NOT NULL" ],
 		[ "create_user",	"varchar(20)",		"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"varchar(20)",		"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
@@ -830,9 +826,9 @@ create_table("insurance_rate",
 		[ "start_date",			"date",			"NOT NULL" ],
 		[ "end_date",			"date",			"NOT NULL" ],
 		[ "create_user",		"varchar(20)",	"NOT NULL" ],
-		[ "create_date",		"date",			"NOT NULL" ],
+		[ "create_date",		"datetime,"		"NOT NULL" ],
 		[ "chguser",			"varchar(20)",	"NULL" ],
-		[ "chgdate",			"date",			"NULL" ],
+		[ "chgdate",			"datetime,"		"NULL" ],
 	],
 	[
 		{
@@ -852,9 +848,9 @@ create_table("insurance_contribution",
 		[ "payroll_id",		"unique_id",		"NULL" ],
 		[ "amount",			"money",			"NOT NULL" ],
 		[ "create_user",	"varchar(20)",		"NOT NULL" ],
-		[ "create_date",	"date",				"NOT NULL" ],
+		[ "create_date",	"datetime,"			"NOT NULL" ],
 		[ "chguser",		"varchar(20)",		"NULL" ],
-		[ "chgdate",		"date",				"NULL" ],
+		[ "chgdate",		"datetime,"			"NULL" ],
 	],
 	[
 		{
