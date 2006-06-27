@@ -21,8 +21,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -44,6 +45,9 @@ use Barefoot::DataStore::DataSet;
 use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
 
 use constant PASSWORD_FILE => '.dbpasswd';
+
+my $HASH_PH = qr/(?:\(\s*)?\Q???\E(?:\s*\))?/;
+my $ARR_PH = $HASH_PH;
 
 
 # load_table is just an alias for load_data
@@ -228,12 +232,17 @@ sub _make_schema_trans
 sub _transform_query
 {
 	my $this = shift;
+
+	# pull out any hash or array placeholders (a.k.a. "non-scalar placeholders")
+	my @ns_placeholders;
+	for (0..$#_) { push @ns_placeholders, $_[$_] and splice @_, $_, 1 if ref $_[$_] };
+	print STDERR "built ns_placeholders with ", scalar(@ns_placeholders), " elements\n" if DEBUG >= 4;
+
 	my ($query, %temp_vars) = @_;
 	my @vars = ();
 	my $calc_funcs = {};
 
-	print STDERR "at top of transform: ",
-			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+	print STDERR "at top of transform: ", $this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
 
 	# it's a bad idea to allow queries while the data store is modified.
 	# the biggest reason is that the result set returned by do() contains
@@ -254,40 +263,44 @@ sub _transform_query
 	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
 	print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
 	# variables and constants
-	while ($query =~ / { (\w+) } /x)
+	while ($query =~ / { (\w+) } | (values) \s+ $HASH_PH /iox)
 	{
-		my $variable = $&;
-		my $varname = $1;
+		if ($1)															# just a variable
+		{
+			my $variable = $&;
+			my $varname = $1;
 
-		my $value;
-		if (exists $temp_vars{$varname})
-		{
-			# temp_vars override previously defined vars
-			$value = $temp_vars{$varname};
-		}
-		elsif (exists $this->{vars}->{$varname})
-		{
-			$value = $this->{vars}->{$varname};
-		}
-		else
-		{
-			croak("variable/constant unknown: $varname");
-		}
+			my $value;
+			if (exists $temp_vars{$varname})
+			{
+				# temp_vars override previously defined vars
+				$value = $temp_vars{$varname};
+			}
+			elsif (exists $this->{vars}->{$varname})
+			{
+				$value = $this->{vars}->{$varname};
+			}
+			else
+			{
+				croak("variable/constant unknown: $varname");
+			}
 
-		# if we're being called in a list context, we should use
-		# placeholders and return the var values
-		# if being called in a scalar context, do a literal
-		# substitution of the var value into the query
-		if (wantarray)
-		{
-			# can*not* do a global sub here!
-			# that would throw off the order (and number, FTM) of @vars
-			$query =~ s/$variable/\?/;
+			# for variable substitution, we use placeholders and return the var values
+			# the funky substring is pretty much straight out of the perlvar manpage
+			# it avoids the use of $& (which cause severe performance penalties), _and_ it's faster for this
+			# operation anyways, because using $& would involve a s//, which is going to be slower than using
+			# substr() as an lvalue
+			substr($query, $-[0], $+[0] - $-[0]) = '?';
 			push @vars, $value;
 		}
-		else
+		elsif ($2)														# values ???
 		{
-			$query =~ s/$variable/$value/g;
+			my $hash = shift @ns_placeholders;
+
+			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
+					join(', ', ('?') x scalar(keys %$hash)) . ')';
+
+			push @vars, map { $hash->{$_} } sort keys %$hash;
 		}
 	}
 
@@ -409,8 +422,7 @@ sub _transform_query
 		print STDERR "after transform:\n$query\n" if DEBUG >= 4;
 		print "DataStore current query:\n$query\n" if $this->{show_queries};
 
-	print STDERR "before preparing query: ",
-			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+		print STDERR "before preparing query: ", $this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
 
 		$sth = $this->{dbh}->prepare($query);
 		unless ($sth)
@@ -670,7 +682,6 @@ sub execute
 		if (exists $params{report})
 		{
 			my $rows = $res->rows_affected();
-			# maybe this should be "if ($res->{sth}->{NUM_OF_FIELDS})" ??
 			if ($res->{sth}->{NUM_OF_FIELDS})
 			{
 				$rows = 0;
@@ -775,7 +786,7 @@ sub append_table
 	my $columns = join(',', @colnames);
 	my $placeholders = join(',', ("?") x scalar(@colnames));
 	my $query = "insert $table ($columns) values ($placeholders)";
-	my $sth = $this->_transform_query($query) or return undef;
+	my ($sth) = $this->_transform_query($query) or return undef;
 
 	foreach my $row (@$data)
 	{

@@ -1,6 +1,7 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 use strict;
+use warnings;
 
 use Barefoot::debug(1);
 
@@ -305,6 +306,7 @@ $testds = DataStore->open("test", $rootuser);
 test_load_append_replace();
 test_show_queries();
 test_transactions();
+test_nonscalar_placeholders();
 
 # clean up our test stuff
 $testds = DataStore->open("test", $rootuser);	# have to be sa for this to work
@@ -396,12 +398,8 @@ sub test_aliases
 
 sub test_constants
 {
-	db_assert($testds->do("insert test1 "
-			. "values ('con', {BEGINNING_OF_TIME}, 1.01)"),
-			"beginning of time insert failed");
-	db_assert($testds->do("insert test1 "
-			. "values ('con', {END_OF_TIME}, 1.01)"),
-			"end of time insert failed");
+	db_assert($testds->do("insert test1 values ('con', {BEGINNING_OF_TIME}, 1.01)"), "beginning of time insert failed");
+	db_assert($testds->do("insert test1 values ('con', {END_OF_TIME}, 1.01)"), "end of time insert failed");
 	test_output("select * from test1 where a = 'con'",
 			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
 			"incorrect data stored for constants");
@@ -476,8 +474,7 @@ sub test_misc_functions
 	db_assert($testds->do(q{ insert test1 values ('nul', null, 123.45) }), "couldn't insert data1 to test ifnull func");
 	db_assert($testds->do(q{ insert test1 values ('nul', null, null) }), "couldn't insert data2 to test ifnull func");
 	db_assert($testds->do(q{ insert test1 values ('nul', null, 99.99) }), "couldn't insert data3 to test ifnull func");
-	test_output("select {&ifnull c, 99.99} from test1 where a = 'nul' "
-			. "order by c", "99.99\n99.99\n123.45\n",
+	test_output("select {&ifnull c, 99.99} from test1 where a = 'nul' order by c", "99.99\n99.99\n123.45\n",
 			"test of ifnull func failed");
 }
 
@@ -717,15 +714,12 @@ sub test_show_queries
 sub test_transactions
 {
 	$testds->begin_tran() or die("begin tran failed");
-	$testds->do("insert into test1 values ('trn', '1/1/01', 0)")
-			or die("insert for transaction failed");
+	$testds->do("insert into test1 values ('trn', '1/1/01', 0)") or die("insert for transaction failed");
 	$testds->rollback() or die("rollback tran failed");
-	test_output("select * from test1 where a = 'trn'",
-			"", "rollback didn't work");
+	test_output("select * from test1 where a = 'trn'", "", "rollback didn't work");
 
 	$testds->begin_tran() or die("begin tran failed");
-	$testds->do("insert into test1 values ('trn', '$date_result{$rdbms}', 3.03)")
-			or die("insert for transaction failed");
+	$testds->do("insert into test1 values ('trn', '$date_result{$rdbms}', 3.03)") or die("insert for transaction failed");
 	$testds->commit() or die("commit tran failed");
 	test_output("select * from test1 where a = 'trn'",
 			"trn:$date_result{$rdbms}:3.03\n",
@@ -735,8 +729,7 @@ sub test_transactions
 sub test_calc_columns
 {
 	my $res;
-	db_assert($res = $testds->do("select {*fred = 1 + 2}"),
-			"can't execute calc column query");
+	db_assert($res = $testds->do("select {*fred = 1 + 2}"), "can't execute calc column query");
 	$res->next_row();
 	die("couldn't get correct output for calc column")
 			unless $res->col(0) == 3;
@@ -794,10 +787,39 @@ sub test_col_attrs
 	or die("didn't detect multiple identity cols");
 
 	# make sure IDENTITY is doing what's it's supposed to be doing
-	db_assert($testds->do(q{ insert test2 (b) values ('aaa') }),
-			"identity insert failed")
-			for 1..3;
+	db_assert($testds->do(q{ insert test2 (b) values ('aaa') }), "identity insert failed") for 1..3;
 	test_output(q{ select a from test2 },
 			"1\n2\n3\n",
 			"identity column not functioning");
+}
+
+
+sub test_values
+{
+	my ($which_test, @test_rows) = @_;
+
+	my $data = $testds->load_data("select a, b, c from test1 where a = '$which_test' order by c");
+	print STDERR "got error: ", $testds->last_error(), "\n" if not defined $data and DEBUG >= 2;
+	return undef unless $data;
+
+	my $real_data = join("\n", map { join("||", @$_) } @$data);
+	my $test_data = join("\n", map { join("||", @$_) } @test_rows);
+	print STDERR "real data is >>>\n$real_data\n<<<\n" if DEBUG >= 3;
+	print STDERR "test data is >>>\n$test_data\n<<<\n" if DEBUG >= 4;
+	return $real_data eq $test_data;
+}
+
+
+sub test_nonscalar_placeholders
+{
+	my $res = $testds->do('insert into test1 values ???', { a => 'INS', b => '2001/1/1', c => 63.87 });
+	die("insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("insert gave wrong data") unless test_values("INS", [ 'INS', '2001-01-01', '63.87' ]);
+
+	#my @rows_to_insert = ( { c => 123, a => 'INX', b => '2002-01-01' }, { c => 456, a => 'INX', b => '2002-01-01' },
+	#		{ c => 789, a => 'INX', b => '2002-01-01' } );
+	#$res = $testds->do('insert into test1 values ???', @rows_to_insert);
+	#die("multiple insert failed: " . $testds->last_error()) unless $res;
+	#die("multiple insert gave wrong data")
+	#		unless test_values("INX", map { [ @$_{qw<a b c>} ] } @rows_to_insert);
 }
