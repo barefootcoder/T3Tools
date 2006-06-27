@@ -15,16 +15,14 @@ use CGI;
 use File::Copy;
 use Getopt::Std;
 use Data::Dumper;
-use Perl6::Slurp;
 use File::HomeDir;
 use Config::General;
-use File::Temp qw<tempfile>;
 
 use Barefoot::base;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
-use Barefoot::input qw< get_yn input >;
+use Barefoot::input qw< get_yn input input_text >;
 use Barefoot::date epoch => '2003-12-29';
 use Barefoot::T3Timer qw< get_timer_info do_timer_command >;
 
@@ -816,9 +814,21 @@ sub get_timer_parameter
 
 	my $opts = {};
 	# this will keep people from being able to change parameters if the command is "start"
-	$opts->{RESTRICT_CHANGES} = true if $command eq 'START';
+	$opts->{'RESTRICT_CHANGES'} = true if $command eq 'START';
 
 	return get_parameter($parmname, $parminfo, $objinfo, $opts);
+}
+
+
+sub get_timer_hrsmins
+{
+	my ($timer) = @_;
+
+	my $minutes = calc_time($timer->{time});
+	my $hours = range::round($minutes / 60, range::ROUND_DOWN);
+	$minutes = $minutes - $hours * 60;
+
+	return ($hours, $minutes);
 }
 
 
@@ -836,9 +846,7 @@ sub print_elapsed
 
 		my $timer = $timers->{$tname};
 
-		my $minutes = calc_time($timer->{time});
-		my $hours = range::round($minutes / 60, range::ROUND_DOWN);
-		$minutes = $minutes - $hours * 60;
+		my ($hours, $minutes) = get_timer_hrsmins($timer);
 		my $date = calc_date($timer->{time});
 		my $curtimer_marker = $timers->{T3::CURRENT_TIMER} &&
 				$timers->{T3::CURRENT_TIMER} eq $tname ? "==>" : "";
@@ -918,12 +926,11 @@ sub print_and_gather
 	my ($giventimer) = @_;
 
 	my $thistimer = $timers->{$giventimer};
-	my $minutes = calc_time($thistimer->{time});
-	my $hours = range::round($minutes / 60, range::ROUND_DOWN),
+	my ($hours, $minutes) = get_timer_hrsmins($thistimer);
 	my $date = calc_date($thistimer->{time});
 	my $client = $thistimer->{client};
 	print "\ntimer: $giventimer\n";
-	print "total time is $minutes mins ($hours hrs ", $minutes - $hours * 60, " mins) on $date for $client\n";
+	print "total time is $minutes mins ($hours hrs $minutes mins) on $date for $client\n";
 	print "please remember this in case there is a problem!\n\n";
 	if (!$parminfo->{noconfirm})
 	{
@@ -947,9 +954,6 @@ sub gather_log_info
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
 	print STDERR "$log_timer timer: ", Dumper($timer) if DEBUG >= 2;
 
-	my ($emp_id, $emp_fullname, $client, $client_name, $rounding, $to_nearest, $date, $hours, $project, $project_name,
-			$phase, $phase_name, $tracking, $tracking_name, $comments);
-
 	# please note that the order you ask for the data elements in is
 	# *very* important ... the following things are true:
 	#	you have to do employee before you do client
@@ -965,12 +969,12 @@ sub gather_log_info
 	# based on this, there is not a whole lot you can do differently in
 	# the order chosen below, so DON'T MUCK WITH IT!
 
-	($emp_id, $emp_fullname) = get_timer_parameter("employee");
+	my ($emp_id, $emp_fullname) = get_timer_parameter("employee");
 
 	# $parminfo->{user} may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
-	$parminfo->{date} = $date = input(
+	$parminfo->{date} = my $date = input(
 			"Date:",
 			$timer ? calc_date($timer->{time}) : date::today(),
 			{
@@ -981,10 +985,11 @@ sub gather_log_info
 
 
 	# Get client info
-	($client, $client_name) = get_timer_parameter("client");
+	my ($client, $client_name) = get_timer_parameter("client");
 
+	my $hours;
 	HOURS: {
-		($rounding, $to_nearest) = client_rounding($client);
+		my ($rounding, $to_nearest) = client_rounding($client);
 
 		$hours = input("Hours:", $timer ? range::round(calc_time($timer->{time}) / 60, $rounding, $to_nearest) : 0);
 		print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
@@ -994,25 +999,19 @@ sub gather_log_info
 	$parminfo->{hours} = $hours;
 
 	# Get project info
-	($project, $project_name) = get_timer_parameter("project");
+	my ($project, $project_name) = get_timer_parameter("project");
 
 	my ($phase_needed, $tracking_needed, $comments_needed) = proj_requirements($client, $project, $date);
 
 	# Get phase information
-	($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
+	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
 	$parminfo->{phase} = $phase;
 
-	($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("client tracking code") : (undef, "");
+	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("client tracking code") : (undef, "");
 	$parminfo->{tracking} = $tracking;
 
-	COMMENTS: {
-		$comments = undef;
-		last unless $comments_needed;
-		$comments = get_comment();
-		print "  {You must have comments}\n\n" and redo COMMENTS if not $comments;
-		print "  {Comments too long!}\n\n" and redo COMMENTS if length($comments) > 255;
-	}
-	$parminfo->{comments} = $comments;
+	# Get comments if necessary
+	$parminfo->{comments} = $comments_needed ? get_comment($log_timer, $parminfo) : undef;
 
 	print "working.....\n";
 
@@ -1024,7 +1023,7 @@ sub gather_log_info
 			$phase,		$phase_name,				$hours,
 							$tracking, $tracking_name
 	);
-	writeln(Log_Comments, $comments);
+	writeln(Log_Comments, $parminfo->{comments});
 
 	unless (get_yn("\n\nis everything okay?"))
 	{
@@ -1037,38 +1036,33 @@ sub gather_log_info
 
 sub get_comment
 {
+	my ($timername, $parminfo) = @_;
+
 	my $header = <<END;
-		Enter comments below (maximum 255 chars):
-		  (255 chars is a little over 3 lines if your screen is 80
-		   columns wide--or almost exactly two lines if your screen is
-		   125 columns wide--and you don't hit RETURN at all (which you shouldn't))
+   (255 chars is a little over 3 lines if your screen is 80
+   columns wide--or almost exactly two lines if your screen is
+   125 columns wide--and you don't hit RETURN at all (which you shouldn't))
 END
-	$header =~ s/^\t+//mg;
-	my $comments = '';
 
-	if (my $editor = rc_param(LOG => 'editor'))
+	if ($timername)
 	{
-		my ($fh, $tmpfile) = tempfile();
-		my $separator = "=" x 80;
-		print $fh "\n$separator\n";
-		print $fh $header;
-		system($editor, $tmpfile);
-		$comments = slurp $tmpfile;
-		$comments =~ s/\n${separator}.*$//s;
-	}
-	else
-	{
-		print "\n$header";
-		print "Enter ^D (control-D) on a line by itself to finish the comments.\n";
-		local ($/) = undef;
-		$comments = input();
-
-		<STDIN>;					# HACK! don't know why this is necessary
+		my $timer = $timers->{$timername};
+		my ($hours, $minutes) = get_timer_hrsmins($timer);
+		my $date = calc_date($timer->{'time'});
+		my $codes = join('/', grep { $_ } $parminfo->{'client'}, $parminfo->{'project'}, $parminfo->{'phase'});
+		$header .= "\nTimer: $timername ($hours hrs $minutes mins) on $date for $codes\n";
 	}
 
-	$comments =~ s/^\s+$//mg;							# no completely blank lines
-	$comments =~ s/^\s*\n+\s*//;						# no extra newlines in front
-	$comments =~ s/\s*\n+\s*$//;						# none at the end either
+	my $opts =
+	{
+		EDITOR				=>	rc_param(LOG => 'editor'),
+		MAXLEN				=>	255,
+		REQUIRED			=>	1,
+		ALLTRIM				=>	1,
+		STRIP_BLANK_LINES	=>	1,
+	};
+
+	my $comments = input_text('comments', $header, $opts);
 
 	print STDERR "comments are: $comments\n" and <STDIN> if DEBUG >= 4;
 

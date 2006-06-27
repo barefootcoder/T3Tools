@@ -1,10 +1,10 @@
 #! /usr/local/bin/perl
 
 # For RCS:
-# $Date$
+# $Date: 2003/06/26 18:03:10 $
 #
-# $Id$
-# $Revision$
+# $Id: input.pm,v 1.9 2003/06/26 18:03:10 buddy Exp $
+# $Revision: 1.9 $
 
 ###########################################################################
 #
@@ -66,8 +66,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 1999-2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 1999-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -79,7 +80,9 @@ use strict;
 
 use Term::Size;
 use Data::Dumper;
+use Perl6::Slurp;
 use Array::PrintCols;
+use File::Temp qw<tempfile>;
 
 use Barefoot::base;
 use Barefoot::range;
@@ -89,7 +92,7 @@ use Barefoot::string;
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
 
-@EXPORT_OK = qw<get_yn input menu_select>;
+@EXPORT_OK = qw< get_yn input input_text menu_select >;
 
 
 our ($COLS, $ROWS) = Term::Size::chars;
@@ -159,6 +162,58 @@ sub input
 	}
 
 	return ( $answer ne "" ) ? $answer : $default;
+}
+
+
+sub input_text
+{
+	my ($name, $explan, $opts) = @_;
+	$opts ||= {};
+
+	my $max_msg = $opts->{'MAXLEN'} ? " (maximum length $opts->{'MAXLEN'} chars)" : '';
+	my $text = $opts->{'DEFAULT'} || '';
+
+	my $error;
+	TEXT: {
+
+		print STDERR "input_text: cycled back around again\n" if DEBUG >= 5;
+		if ($opts->{'EDITOR'})
+		{
+			my ($fh, $tmpfile) = tempfile();
+			my $separator = "=" x 80;
+			print $fh "$text\n$separator\n";
+			print $fh "<< ERROR! $error >>\n\n" if $error;
+			print $fh "Enter $name above$max_msg\n";
+			print $fh $explan;
+			#close($fh);
+
+			system($opts->{'EDITOR'}, $tmpfile);
+			$text = slurp $tmpfile;
+			$text =~ s/\n${separator}.*$//s;
+		}
+		else
+		{
+			print "  {$error}\n\n" if $error;
+
+			print "Enter $name below$max_msg\n$explan";
+			print "Enter ^D (control-D) on a line by itself to finish the comments.\n";
+			local ($/) = undef;
+			$text = input();
+
+			<STDIN>;					# HACK! don't know why this is necessary
+		}
+
+		$text =~ s/^\s+$//mg if $opts->{'STRIP_BLANK_LINES'};			# no completely blank lines
+		$text =~ s/^\s*\n+\s*// if $opts->{'ALLTRIM'};					# no extra newlines in front
+		$text =~ s/\s*\n+\s*$// if $opts->{'ALLTRIM'};					# none at the end either
+
+		print STDERR "input_text: text is: $text\n" and <STDIN> if DEBUG >= 4;
+
+		$error = "You must have $name" and redo TEXT if $opts->{'REQUIRED'} and not $text;
+		$error = "\u$name too long!" and redo TEXT if $opts->{'MAXLEN'} and length($text) > $opts->{'MAXLEN'};
+	}
+
+	return $text;
 }
 
 
