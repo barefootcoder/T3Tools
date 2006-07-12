@@ -12,7 +12,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -100,8 +100,7 @@ sub debug
 			($msg) = @_;
 		}
 
-		print STDERR "$0 ($$): $msg at ", scalar(localtime(time())), "\n"
-				if Barefoot::DEBUG >= $level;
+		print STDERR "$0 ($$): $msg at ", scalar(localtime(time())), "\n" if Barefoot::DEBUG >= $level;
 	}
 }
 
@@ -189,10 +188,10 @@ package Barefoot::T3::base;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use base qw<Exporter>;
-use vars qw<@EXPORT>;
-@EXPORT = (
+our @EXPORT = (
 	qw< t3 t3_config t3_username >,
 	qw< t3_filenames t3_readfile t3_writefile t3_pipename t3_create_pipe >,
 	qw< timer_fields todo_fields >,
