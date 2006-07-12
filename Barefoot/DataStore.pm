@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For RCS:
-# $Date: 2003/11/18 04:58:37 $
-#
-# $Id: DataStore.pm,v 1.15 2003/11/18 04:58:37 buddy Exp $
-# $Revision: 1.15 $
-
 ###########################################################################
 #
 # Barefoot::DataStore
@@ -32,6 +24,7 @@ package DataStore;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use DBI;
 use Carp;
