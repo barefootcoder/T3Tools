@@ -155,8 +155,9 @@ sub readfile
 	return t3_readfile(TIMER => $user, {
 		FOREACH		=>	sub
 						{
-							# set current timer tag
 							my ($timers, $timer) = @_;
+
+							# set current timer tag
 							if ($timer->{'time'} =~ /-$/)
 							{
 								print STDERR "readfile: setting current timer to $timer->{'name'}\n" if DEBUG >= 3;
@@ -171,44 +172,6 @@ sub writefile
 {
 	my ($user, $timers, $backup_rotate) = @_;
 	return t3_writefile(TIMER => $user, $timers, { BACKUP_ROTATE => $backup_rotate });
-	print STDERR "entering writefile function\n" if DEBUG >= 5;
-
-	# don't really care whether this succeeds or not
-	try
-	{
-		print STDERR "in try block\n" if DEBUG >= 5;
-		# turned off temporarily until this can be fixed
-		#save_to_db($user, $timers);
-	}
-	catch
-	{
-		print "returning from catch block\n" if DEBUG >= 5;
-		return;															# from catch block
-	};
-	print STDERR "made it past exception block\n" if DEBUG >= 5;
-
-	my $tfile = T3::base_filename(TIMER => $user);
-	print STDERR "going to print to file $tfile\n" if DEBUG >= 3;
-
-	while ($backup_rotate)
-	{
-		my $rfile = "$tfile.$backup_rotate";
-		my $prev_rfile = --$backup_rotate ? "$tfile.$backup_rotate" : $tfile;
-		unlink $rfile if -e $rfile;
-		rename $prev_rfile, $rfile if -e $prev_rfile;
-	}
-
-	open(TFILE, ">$tfile") or die("can't write to timer file");
-	while (my ($name, $timer) = each %$timers)
-	{
-		# ignore tags
-		next if substr($name, 0, 1) eq ':';
-
-		$timer->{phase} ||= "";
-		$timer->{todo_link} ||= "";
-		print TFILE join("\t", timer_fields($timer)), "\n";
-	}
-	close(TFILE);
 }
 
 
