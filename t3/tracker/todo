@@ -1,10 +1,20 @@
 #! /usr/bin/perl
 
-# For CVS:
-# $Date: 2003/06/26 18:05:57 $
+###########################################################################
 #
-# $Id: todo,v 1.7 2003/06/26 18:05:57 buddy Exp $
-# $Revision: 1.7 $
+# todo
+#
+###########################################################################
+#
+# First working Tracker module.
+#
+# #########################################################################
+#
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+#
+###########################################################################
 
 use strict;
 use warnings;
@@ -42,7 +52,7 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 #################################
 
 use constant TodoListHeader =>
-"   Todo:            Description:                         CLI PRJ  Due by:\n" .
+"   Todo:            Title:                               CLI PRJ  Due by:\n" .
 "   ===============  ===================================  === ===  ========";
 
 use constant TodoList =>
@@ -52,11 +62,14 @@ use constant TodoTask =>
 	'
     Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Date:
     Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
-    Phase:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    Description:  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
-    ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+    Title:        ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
+    ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    Description:
+    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
 
 #################################
@@ -83,7 +96,7 @@ else
 # PSEUDO-GLOBAL VARIABLES
 #################################
 
-our (@todo_list, %todo_index);
+our $todos = {};
 
 our %menu_list;
 tie %menu_list, 'Tie::IxHash',
@@ -138,8 +151,8 @@ sub add_todo
 {
 	my $new_todo = {};
 
-	$new_todo->{name} = input("Short codename for the item:");
-	if (exists $todo_index{$new_todo->{name}})
+	$new_todo->{'name'} = input("Short codename for the item:");
+	if (exists $todos->{$new_todo->{'name'}})
 	{
 		print "There is already a task with that code; sorry.\n";
 		input(PRESS_RETURN);
@@ -147,7 +160,7 @@ sub add_todo
 	}
 	input_todo($new_todo);
 
-	push @todo_list, $new_todo and sync_lists();
+	$todos->{$new_todo->{'name'}} = $new_todo;
 	writefile();
 }
 
@@ -162,22 +175,21 @@ sub todo_details
 
 sub edit_todo
 {
-	my $index = get_existing_todo("edit");
-	return unless defined $index;
+	my $todo = get_existing_todo("edit");
+	return unless defined $todo;
 
-	input_todo($todo_list[$index]);
+	input_todo($todo);
 
-	sync_lists();
 	writefile();
 }
 
 
 sub push_date
 {
-	my $index = get_existing_todo("postpone");
-	return unless defined $index;
+	my $todo = get_existing_todo("postpone");
+	return unless defined $todo;
 
-	$todo_list[$index]->{due} = input_date($todo_list[$index]->{due});
+	$todo->{'due'} = input_date($todo->{'due'});
 
 	writefile();
 }
@@ -185,14 +197,13 @@ sub push_date
 
 sub cancel_todo
 {
-	my $index = get_existing_todo("cancel");
-	return unless defined $index;
+	my $todo = get_existing_todo("cancel");
+	return unless defined $todo;
 
 	print "A cancelled todo task is gone forever!!\n";
 	if (get_yn("Are you sure you want to do this?"))
 	{
-		my $old_todo = splice @todo_list, $index, 1;
-		sync_lists();
+		my $old_todo = delete $todos->{$todo->{'name'}};
 		save_history($parminfo->{user}, "cancel", todo_fields($old_todo));
 		writefile();
 	}
@@ -201,13 +212,12 @@ sub cancel_todo
 
 sub complete_todo
 {
-	my $index = get_existing_todo("complete");
-	return unless defined $index;
+	my $todo = get_existing_todo("complete");
+	return unless defined $todo;
 
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
-		my $old_todo = splice @todo_list, $index, 1;
-		sync_lists();
+		my $old_todo = delete $todos->{$todo->{'name'}};
 		save_history($parminfo->{user}, "complete", todo_fields($old_todo));
 		writefile();
 	}
@@ -217,7 +227,7 @@ sub complete_todo
 sub refresh_list
 {
 	# clear the list, then reread the file: that refreshes the list
-	undef @todo_list;
+	$todos = {};
 	readfile();
 }
 
@@ -225,8 +235,8 @@ sub refresh_list
 sub shift_schedule
 {
 	# determine oldest task
-	my $oldest_todo = (sort { $a->{due} <=> $b->{due} } @todo_list)[0];
-	my $old_date = $oldest_todo->{due};
+	my $oldest_todo = (sort( { $a->{'due'} <=> $b->{'due'} } values %$todos))[0];
+	my $old_date = $oldest_todo->{'due'};
 	writeln('Oldest task is dated @m/#d/@y.', $old_date);
 
 	print "Please enter a new date for this task.\n";
@@ -236,10 +246,10 @@ sub shift_schedule
 	print "All tasks will be moved forward $shift_days days.\n";
 	if (get_yn("Are you sure?"))
 	{
-		foreach my $todo (@todo_list)
+		foreach my $todo (values %$todos)
 		{
-			$todo->{due} = date::dateTimeSeconds(
-					date::incDays($todo->{due}, $shift_days));
+			$todo->{'due'} = date::dateTimeSeconds(
+					date::incDays($todo->{'due'}, $shift_days));
 		}
 
 		writefile();
@@ -295,24 +305,44 @@ sub initialize
 
 sub readfile
 {
+	$todos = t3_readfile(TODO => $parminfo->{'user'});
+	return;
+
 	open(IN, T3::base_filename(TODO => $parminfo->{user}))
 			or die("can't read todo file");
-	while ( <IN> )
+	LINE: while ( <IN> )
 	{
 		chomp;
+
+		if ($_ eq TEXT_SEP)
+		{
+			$/ = TEXT_SEP . "\n";
+			while ( <IN> )
+			{
+				if ( s/^ (.*?) \t //x)
+				{
+					my $name = $1;
+					s/ \s* \n \s* / /x;
+					$todos->{$name}->{'description'} = $_;
+				}
+				else
+				{
+					die("illegal text line in todo file");
+				}
+			}
+			last LINE;
+		}
 
 		my $todo = {};
 		(todo_fields($todo)) = split("\t");
 
 		# account for the possibility that due dates are stored as
 		# date strings instead of time numbers (as they should be)
-		$todo->{due} = str2time($todo->{due}) if $todo->{due} =~ m@/@;
+		$todo->{'due'} = str2time($todo->{'due'}) if $todo->{'due'} =~ m@/@;
 
-		push @todo_list, $todo;
+		$todos->{$todo->{'name'}} = $todo;
 	}
 	close(IN);
-
-	sync_lists();
 }
 
 
@@ -320,7 +350,7 @@ sub writefile
 {
 	open(OUT, ">" . T3::base_filename(TODO => $parminfo->{user}))
 			or die("can't write todo file");
-	foreach my $todo (@todo_list)
+	foreach my $todo (values %$todos)
 	{
 		print OUT join("\t", todo_fields($todo)), "\n";
 	}
@@ -328,18 +358,9 @@ sub writefile
 }
 
 
-# this keeps %todo_index sync'ed up with @todo_list.  you have to call
-# this function yourself every time you modify @todo_list.
-
-sub sync_lists
-{
-	%todo_index = map { $todo_list[$_]->{name} => $_ } 0..$#todo_list;
-}
-
-
 sub todo_menu_list
 {
-	my @menu_list = sort { $a->{due} <=> $b->{due} } @todo_list;
+	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } values %$todos;
 	foreach my $todo (@menu_list)
 	{
 		$todo = swrite(TodoList, todo_fields($todo)) . "\n";
@@ -350,7 +371,7 @@ sub todo_menu_list
 
 sub menu_header
 {
-	if (@todo_list)
+	if (%$todos)
 	{
 		my $list_header = TodoListHeader . "\n";
 		return join('', $list_header, todo_menu_list());
@@ -368,20 +389,19 @@ sub get_existing_todo
 
 	my $name = input("What is the name of the task you want to $operation?");
 
-	unless (exists $todo_index{$name})
+	unless (exists $todos->{$name})
 	{
 		print "No such task!\n";
 		input(PRESS_RETURN);
 		return undef;
 	}
 
-	my $todo = $todo_list[$todo_index{$name}];
+	my $todo = $todos->{$name};
 
 	# retrieve full names from database
 	foreach (
 			[ "client",		"{~timer}.client",			"client_id",	false ],
 			[ "project",	"{~timer}.project",			"proj_id",		true ],
-			[ "phase",		"{~timer}.phase",			"phase_id",		false ],
 			[ "tracking",	"{~timer}.client_tracking",	"tracking_code",true ],
 			)
 	{
@@ -404,12 +424,11 @@ sub get_existing_todo
 	}
 
 	# make a copy for the format, else the field itself will get eaten
-	my $descr = $todo->{descr};
-	writeln(TodoTask, @$todo{ qw<client client_name project project_name
-			due phase phase_name tracking tracking_name> }, $descr);
+	my $title = $todo->{'title'};
+	writeln(TodoTask, @$todo{ qw<client client_name project project_name due tracking tracking_name> }, $title);
 	print "\n\n";
 
-	return $todo_index{$name};
+	return $todo;
 }
 
 
@@ -417,8 +436,8 @@ sub input_todo
 {
 	my ($todo) = @_;
 
-	$todo->{descr} = input("Brief description of the task:", $todo->{descr});
-	$todo->{due} = input_date($todo->{due});
+	$todo->{'title'} = input("Brief description (title) of the task:", $todo->{'title'});
+	$todo->{'due'} = input_date($todo->{'due'});
 
 	# need to save results in object, not parminfo
 	my $opts = { SAVE_IN_OBJECT => 1 };
