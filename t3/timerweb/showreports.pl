@@ -186,9 +186,7 @@ sub param_to_cookie
 	my $value;
 
 	$value = $cgi->param($name);
-	$value = string::upper($value)
-			if exists $vars->{$name}->{options}
-			and $vars->{$name}->{options} =~ /(^|,)upper(,|$)/;
+	$value = uc($value) if exists $vars->{$name}->{options} and $vars->{$name}->{options} =~ /(^|,)upper(,|$)/;
 	if (defined $value)
 	{
 										debug("making cookie for $name");
@@ -439,8 +437,8 @@ sub processdir
 			$report->{file} = $basefile;
 			$report->{title} = $title;
 			$report->{updated} = $updated;
-			$report->{params} = "script" if $dirtype ne "reprt";
-			$report->{params} = $tparam{$title} if $dirtype eq "reprt";
+			$report->{params} = $dirtype eq "reprt"
+					? $tparam{$title} : "script";
 			$report->{vars} = $variables;
 			push @{$report_groups{$tgroup{$title}}}, $report;
 		}

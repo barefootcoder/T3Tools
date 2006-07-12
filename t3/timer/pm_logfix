@@ -2,9 +2,12 @@
 
 use strict;
 
+#use Barefoot::debug;
+
+use Barefoot::base;
 use Barefoot::date;
+use Barefoot::DataStore;
 use Barefoot::input qw(get_yn input);
-use Barefoot::timerdata;
 
 
 ################
@@ -14,79 +17,72 @@ use Barefoot::timerdata;
 my $log_id = $ARGV[0];
 $log_id = input("Time log ID:") unless defined($log_id);
 
-my $rows = timerdata::query_results("
-		select e.fname, tl.client, c.name, tl.proj, tl.phase, tl.cliproj,
-				convert(char(10), tl.date, 101), tl.hours
-		from time_log tl, employee e, client c
-		where tl.log_id = $log_id
-		and tl.emp = e.emp
-		and tl.client = c.client
-	");
-die("couldn't access timer database") unless defined($rows);
-die("bad time log id:".scalar(@$rows)) unless @$rows == 1;
+my $t3 = DataStore->open(DEBUG ? "t3test" : "T3", $ENV{USER});
 
-my $employee = $rows->[0]->[0];
-my $client = $rows->[0]->[1];
-my $client_name = $rows->[0]->[2];
-my $proj = $rows->[0]->[3];
-my $phase = $rows->[0]->[4];
-my $cliproj = $rows->[0]->[5];
-my $date = $rows->[0]->[6];
-my $hours = $rows->[0]->[7];
+my $res = $t3->do("
+
+		select pe.first_name, tl.client_id, c.name, tl.proj_id, tl.phase_id,
+				tl.tracking_code, tl.log_date, tl.hours
+		from {~timer}.time_log tl, {~timer}.employee e, {~t3}.person pe,
+				{~timer}.client c
+		where tl.log_id = $log_id
+		and tl.emp_id = e.emp_id
+		and e.person_id = pe.person_id
+		and tl.client_id = c.client_id
+
+");
+die("database error: ", $t3->last_error()) unless $res and $res->next_row();
+
+print defined $res->col($_) ? $res->col($_) : "<<NULL>>", ":"
+		foreach 0..($res->num_cols()-1); print "\n";
+
+my ($employee, $client, $client_name, $proj, $phase, $tracking,
+		$date, $hours) = $res->all_cols();
+my $date = date::mdy(date::dateTimeSeconds($date));
+
+$res->next_row();		# finish up pending query
 
 print "\nTime log for employee $employee, client $client_name, "
-		. "proj $proj,\n    phase $phase, cliproj $cliproj, date $date, "
+		. "proj $proj,\n    phase $phase, tracking $tracking, date $date, "
 		. "hours $hours\n";
 exit 1 unless get_yn("Is this right?");
 
 $client = input("New client?", $client);
 $proj = input("New proj?", $proj);
-$phase = input("New phase?", $phase);
-$cliproj = input("New cliproj?", $cliproj);
+$phase = input("New phase?", $phase ? $phase : '');
+$tracking = input("New tracking code?", $tracking ? $tracking : '');
 $date = input("New date?", $date);
 $hours = input("New number of hours?", $hours);
 die("illegal date") unless date::isValid($date);
 
-$proj = string::upper($proj);
-$phase = string::upper($phase);
-$cliproj = string::upper($cliproj);
+$proj = uc($proj);
+$phase = $phase ? "'" . uc($phase) . "'" : "NULL";
+$tracking = $tracking ? "'" . uc($tracking) . "'" : "NULL";
 
-$cliproj = "'$cliproj'" unless $cliproj eq "NULL";
-my $update_query = "
+my $update_query = <<END;
+
 	update time_log
-	set client = '$client', proj = '$proj', phase = '$phase',
-			cliproj = $cliproj, date = '$date', hours = $hours,
+	set client = '$client', proj = '$proj', phase = $phase,
+			tracking = $tracking, date = '$date', hours = $hours,
 			chguser = '$::ENV{USER}', chgdate = getdate()
 	where log_id = $log_id
-	go
-";
 
-timerdata::set_user($::ENV{USER});
-my $results = timerdata::run_query("
-	begin tran
-	go
+END
 
-	$update_query
-
-	rollback tran
-	go
-");
-die("mark failed <<$results>>") unless
-		$results =~ /^\(1 row affected\)\s*$/;
+$t3->begin_tran();
+$res = $t3->do($update_query);
+die("database error: ", $t3->last_error())
+		unless $res and $res->rows_affected() == 1;
+$t3->rollback();
 
 print "\nInitial attempt successful for employee $employee, client $client,\n";
-print "    new proj $proj, new phase $phase, new cliproj $cliproj\n";
+print "    new proj $proj, new phase $phase, new tracking $tracking\n";
 exit 1 unless get_yn("Proceed?");
 
-my $results = timerdata::run_query("
-	begin tran
-	go
+$t3->begin_tran();
+$res = $t3->do($update_query);
+die("database error: ", $t3->last_error())
+		unless $res and $res->rows_affected() == 1;
+$t3->commit();
 
-	$update_query
-
-	commit tran
-	go
-");
-die("theoretically impossible error occurred <<$results>>") unless
-		$results =~ /^\(1 row affected\)\s*/;
 print "\nmark was successful\n";

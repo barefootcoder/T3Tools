@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For RCS:
-# $Date: 2003/01/06 04:57:35 $
-#
-# $Id: valid.pm,v 1.5 2003/01/06 04:57:35 buddy Exp $
-# $Revision: 1.5 $
-
 ###########################################################################
 #
 # Barefoot::T3::valid
@@ -19,7 +11,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -151,8 +143,8 @@ sub get_parameter
 					"Which $parmname is this for? (? for list)",
 					$default
 			);
-			$parm = string::upper($parm);				# codes are all UC
-			$parm = string::trim($parm);				# no spaces
+			$parm = uc($parm);											# codes are all UC
+			$parm = string::trim($parm);								# no spaces
 
 			if ($parm eq "?")
 			{

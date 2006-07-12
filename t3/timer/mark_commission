@@ -35,7 +35,7 @@ $prompt .= ")";
 my $ctype;
 CTYPE: {
 	$ctype = input($prompt);
-	$ctype = string::upper($ctype);
+	$ctype = uc($ctype);
 	redo CTYPE unless exists $comm_types{$ctype};
 }
 print "\n";

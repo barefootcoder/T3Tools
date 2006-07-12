@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For RCS:
-# $Date$
-# $Log$
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # string
@@ -14,6 +6,12 @@
 #
 # Some generally useful string routines
 #
+# #########################################################################
+#
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 1999-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+#
 ###########################################################################
 
 package string;
@@ -21,6 +19,9 @@ package string;
 ### Private ###############################################################
 
 use strict;
+use warnings;
+
+use Carp;
 
 1;
 
@@ -32,12 +33,14 @@ use strict;
 
 sub upper
 {
+carp("WARNING!! this function is heavily depracated! please change the code immediately!");
 	my ($str) = @_;
 	"\U$str\E";
 }
 
 sub lower
 {
+carp("WARNING!! this function is heavily depracated! please change the code immediately!");
 	my ($str) = @_;
 	"\L$str\E";
 }
