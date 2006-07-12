@@ -85,7 +85,7 @@ use Barefoot::string;
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
 
-@EXPORT_OK = qw< get_yn input input_text menu_select >;
+@EXPORT_OK = qw< get_yn input input_text menu_select $COLS $ROWS >;
 
 
 our ($COLS, $ROWS) = Term::Size::chars;
@@ -220,7 +220,7 @@ sub menu_select
 {
 	my ($prompt, @choices) = @_;
 	my $options = {};
-	$options = pop @choices if ref $choices[$#choices] eq "HASH";
+	$options = pop @choices if ref $choices[-1] eq "HASH";
 
 	# set defaults in case not specified
 	$options->{LMARGIN} ||= 0;
@@ -238,8 +238,7 @@ sub menu_select
 		# if two choices have the same initial letter, the first one wins
 		# as of now, there is no way to specify the second one by letter
 		my $initial_letter = lc substr($_, 0, 1);
-		$opt_letters{$initial_letter} = $choice
-				unless exists $opt_letters{$initial_letter};
+		$opt_letters{$initial_letter} = $choice unless exists $opt_letters{$initial_letter};
 
 		$_ = sprintf "$spec: $_", $choice;
 		$max_choice_len = range::max($max_choice_len, length($_));
@@ -251,8 +250,7 @@ sub menu_select
 
 	# pointless for print_cols to sort our list
 	$Array::PrintCols::PreSorted = true;
-	my $menu = format_cols \@choices, $max_choice_len + $options->{SPBETWEEN},
-			$COLS, $options->{LMARGIN};
+	my $menu = format_cols \@choices, $max_choice_len + $options->{SPBETWEEN}, $COLS, $options->{LMARGIN};
 
 	# get header and make sure it will fit on screen
 	my $header = $options->{HEADER} || "";
