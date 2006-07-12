@@ -1,5 +1,3 @@
-#! /usr/local/bin/perl
-
 ###########################################################################
 #
 # Barefoot::T3::base
@@ -68,12 +66,10 @@ use constant CURRENT_TIMER => ':CURRENT';
 
 
 # need this for getting proper values out of config file (below)
-our $workgroup = DEBUG ? T3::TEST_WORKGROUP
-		: $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
+our $workgroup = DEBUG ? T3::TEST_WORKGROUP : $ENV{T3_WORKGROUP} || T3::DEFAULT_WORKGROUP;
 
-# let's read in the config file here and let people use t3_config
-# to get various and sundry parameters out of it
-# (saves having to read the config file in several times)
+# let's read in the config file here and let people use t3_config to get various and sundry parameters out of
+# it (saves having to read the config file in several times)
 our $cfg_file = config_file->read(T3::CONFIG_FILE);
 
 
@@ -196,15 +192,40 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
-@EXPORT = qw<t3 t3_config t3_username t3_filenames t3_pipename t3_create_pipe timer_fields todo_fields>;
+@EXPORT = (
+	qw< t3 t3_config t3_username >,
+	qw< t3_filenames t3_readfile t3_writefile t3_pipename t3_create_pipe >,
+	qw< timer_fields todo_fields >,
+);
 
+use Data::Dumper;
 use POSIX qw<mkfifo>;
 
 use Barefoot::base;
+use Barefoot::exception;
 use Barefoot::config_file;
 
 
+use constant TEXT_SEP => "==========\n";
+
+
 our $t3;									# DataStore for singleton
+
+our %field_func =
+(
+	TIMER		=>	\&timer_fields,
+	TODO		=>	\&todo_fields,
+);
+
+our %text_fields =
+(
+	TIMER		=>	{
+						comments	=>	1,
+					},
+	TODO		=>	{
+						description	=>	1,
+					},
+);
 
 
 ###########################
@@ -245,6 +266,103 @@ sub t3_filenames
 
 	return (T3::base_filename($module, $user),
 			T3::hist_filename($module, $user));
+}
+
+
+sub t3_readfile
+{
+	my ($module, $user, $opts) = @_;
+	$opts ||= {};
+	print STDERR "t3_readfile: args module $module, user $user, opts ", Dumper($opts) if DEBUG >= 4;
+
+	my $objects = {};
+
+	open(TFILE, T3::base_filename($module, $user)) or die("can't read \L$module\E file");
+	LINE: while ( <TFILE> )
+	{
+		if ($_ eq TEXT_SEP)
+		{
+			local $/ = "\n" . TEXT_SEP;
+			while ( <TFILE> )
+			{
+				chomp;
+				if ( s/^ (.*?) \n //x)
+				{
+					my ($name, $field) = split(':', $1);
+					s/ \s* \n \s* / /x;
+					$objects->{$name}->{$field} = $_;
+				}
+				else
+				{
+					die("illegal text line in todo file");
+				}
+			}
+			last LINE;
+		}
+
+		chomp;
+		my $obj = {};
+		($field_func{$module}->($obj)) = split("\t", $_, -1);
+		$objects->{$obj->{'name'}} = $obj;
+		$opts->{'FOREACH'}->($objects, $obj) if $opts->{'FOREACH'};
+	}
+	close(TFILE);
+
+	return $objects;
+}
+
+
+sub t3_writefile
+{
+	my ($module, $user, $objects, $opts) = @_;
+	$opts ||= {};
+	print STDERR "t3_writefile: args module $module, user $user, opts ", Dumper($opts) if DEBUG >= 4;
+
+	# don't really care whether this succeeds or not
+	try
+	{
+		print STDERR "t3_writefile: in try block\n" if DEBUG >= 5;
+		# turned off temporarily until this can be fixed
+		#save_to_db($user, $timers);
+	}
+	catch
+	{
+		print STDERR "t3_writefile: returning from catch block\n" if DEBUG >= 5;
+		return;															# from catch block
+	};
+	print STDERR "t3_writefile: made it past exception block\n" if DEBUG >= 5;
+
+	my $tfile = T3::base_filename($module => $user);
+	print STDERR "t3_writefile: going to print to file $tfile\n" if DEBUG >= 3;
+
+	my $backup_rotate = $opts->{'BACKUP_ROTATE'};
+	while ($backup_rotate)
+	{
+		my $rfile = "$tfile.$backup_rotate";
+		my $prev_rfile = --$backup_rotate ? "$tfile.$backup_rotate" : $tfile;
+		unlink $rfile if -e $rfile;
+		rename $prev_rfile, $rfile if -e $prev_rfile;
+	}
+
+	open(TFILE, ">$tfile") or die("can't write to \L$module\E file");
+	my %text;
+	while (my ($name, $obj) = each %$objects)
+	{
+		# ignore tags
+		next if substr($name, 0, 1) eq ':';
+
+		print TFILE join("\t", $field_func{$module}->($obj)), "\n";
+		foreach (keys %{$text_fields{$module}})
+		{
+			$text{"$name:$_"} = $obj->{$_} if exists $obj->{$_};
+		}
+	}
+	print TFILE TEXT_SEP if %text;
+	while (my ($which, $text) = each %text)
+	{
+		print TFILE "$which:\n", "$text\n", TEXT_SEP;
+	}
+	close(TFILE);
 }
 
 
@@ -302,7 +420,7 @@ sub timer_fields : lvalue
 
 sub todo_fields : lvalue
 {
-	@{$_[0]}{ qw<name descr client project due> };
+	@{$_[0]}{ qw<name title client project due> };
 }
 
 
