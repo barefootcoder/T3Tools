@@ -314,9 +314,9 @@ sub readfile
 	{
 		chomp;
 
-		if ($_ eq TEXT_SEP)
+		if ($_ eq Barefoot::T3::base::TEXT_SEP)
 		{
-			$/ = TEXT_SEP . "\n";
+			$/ = Barefoot::T3::base::TEXT_SEP . "\n";
 			while ( <IN> )
 			{
 				if ( s/^ (.*?) \t //x)
