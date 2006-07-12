@@ -25,6 +25,7 @@ use warnings;
 use CGI;
 use File::Copy;
 use Getopt::Std;
+use Tie::IxHash;
 use Data::Dumper;
 use File::HomeDir;
 use Config::General;
@@ -38,6 +39,7 @@ use Barefoot::date epoch => '2003-12-29';
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw< get_parameter >;
+use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
 use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
 use Barefoot::T3::Timer qw< timer_command get_timer_info calc_date calc_time test_connection this_week_totals >;
 
@@ -102,22 +104,24 @@ print STDERR "about to begin execution\n" if DEBUG >= 5;
 
 our $parminfo = {};
 our $timers = {};
-my $command_strings = {
+my $commands = {};
+tie %$commands, 'Tie::IxHash',
+(
 	s	=>	"START",
 	e	=>	"LIST",
 	d	=>	"DONE",
 	l	=>	"LOG",
 	c	=>	"CANCEL",
+	i	=>	"COPYINFO",
 	p	=>	"PAUSE",
 	r	=>	"RENAME",
-	b	=>	"BREAKDOWN",
-	t	=>	"TOTAL",
-	L	=>	"LOGALL",
-	i	=>	"COPYINFO",
-	a	=>	"AVERAGE",
 	A	=>	"ANNOTATE",
+	b	=>	"BREAKDOWN",
+	L	=>	"LOGALL",
+	t	=>	"TOTAL",
+	a	=>	"AVERAGE",
 	'@'	=>	"PARSE",
-};
+);
 our ($cgi, $command, $workgroup);
 
 if (-t STDOUT or @ARGV)
@@ -126,26 +130,13 @@ if (-t STDOUT or @ARGV)
 
 	my $opt = {};
 	getopts('sedlcpriAbLtafhu:C:P:H:@:', $opt) or usage();
-	$parminfo->{'force'} = defined $opt->{f};
-	$parminfo->{'noconfirm'} = defined $opt->{f};
-	$parminfo->{'halftime'} = defined $opt->{h};
-	$parminfo->{'user'} = $opt->{u};
-	$parminfo->{'client'} = string::upper($opt->{C});
-	$parminfo->{'project'} = string::upper($opt->{P});
-	$parminfo->{'phase'} = string::upper($opt->{H});
+	cli_common_opts($parminfo, $opt);
+	$parminfo->{'halftime'} = defined $opt->{'h'};
 	$parminfo->{'parse_fmt'} = $opt->{'@'};
 
 	$parminfo->{'newtimer'} = $ARGV[1];
 
-	foreach my $copt ( qw< s e d l c i p r A b L t a @ > )
-	{
-		if (exists $opt->{$copt})
-		{
-			error(2, "you must specify exactly one command (s,e,d,l,c,i,p,r,A,b,L,t,a)") if defined $command;
-			$command = $command_strings->{$copt};
-			# print STDERR "defined command as $command\n";
-		}
-	}
+	$command = cli_get_command($commands, $opt);
 }
 else
 {
@@ -159,7 +150,7 @@ else
 	$parminfo->{'force'} = 1;					# no input when run as a CGI
 	$parminfo->{'parse_fmt'} = 'x';				# always output XML-style
 
-	$command = $command_strings->{string::left($cgi->param('mode'), 1)};
+	$command = $commands->{string::left($cgi->param('mode'), 1)};
 
 	# get a header out there so the server won't choke
 	print $cgi->header('text/plain');
@@ -203,25 +194,8 @@ if ($command eq 'START')					# start a timer
 	{
 		my $todo_name = $1;
 
-		# probably ought to be calling todo's readfile here,
-		# but need to make vast improvements to readfile before we can do that
-		open(TODO, T3::base_filename(TODO => $parminfo->{'user'}))
-				or die("can't open todo file for $parminfo->{'user'}");
-		my $todo = {};
-		my $found = false;
-		while ( <TODO> )
-		{
-			if ( /^$todo_name\t/ )
-			{
-				chomp;
-				(todo_fields($todo)) = split("\t");
-				$found = true;
-				last;
-			}
-		}
-		close(TODO);
-
-		die("can't find todo name $todo_name") unless $found;
+		my $todo = t3_readfile(TODO => $parminfo->{'user'});
+		error(2, "can't find todo name $todo_name") unless exists $todo->{$todo_name};
 
 		$parminfo->{'timer'} = $todo_name;
 		$parminfo->{'client'} = $todo->{'client'};
@@ -773,8 +747,7 @@ sub usage
 sub error
 {
 	my ($exitcode, @messages) = @_;
-	my $progname = $0;
-	$progname =~ s@.*/@@;
+
 	if ($cgi)
 	{
 		foreach (@messages)
@@ -784,10 +757,9 @@ sub error
 		print @messages, "\n";
 		exit 0;
 	}
-	else
+	else																# must be CLI, so just pass through args
 	{
-		print STDERR "$progname: ", @messages, "\n";
-		exit $exitcode;
+		&cli_fatal;
 	}
 }
 
@@ -984,7 +956,7 @@ sub print_and_gather
 	my $date = calc_date($thistimer->{'time'});
 	my $client = $thistimer->{'client'};
 	print "\ntimer: $giventimer\n";
-	print "total time is $minutes mins ($hours hrs $minutes mins) on $date for $client\n";
+	print "total time is $hours hrs $minutes mins on $date for $client\n";
 	print "please remember this in case there is a problem!\n\n";
 	if (!$parminfo->{'noconfirm'})
 	{
