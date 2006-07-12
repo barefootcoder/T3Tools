@@ -33,11 +33,12 @@ use Barefoot::array;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
-use Barefoot::input qw<input get_yn menu_select>;
+use Barefoot::input qw< input get_yn menu_select $COLS $ROWS >;
 
 use Barefoot::T3::base;
-use Barefoot::T3::valid qw<get_parameter>;
-use Barefoot::T3::db_get qw<one_datum>;
+use Barefoot::T3::db_get qw< one_datum >;
+use Barefoot::T3::valid qw< get_parameter >;
+use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
 
 
 #################################
@@ -51,14 +52,20 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 # FORMATS
 #################################
 
-use constant TodoListHeader =>
+our $TodoListHeader =
 "   Todo:            Title:                               CLI PRJ  Due by:\n" .
 "   ===============  ===================================  === ===  ========";
 
-use constant TodoList =>
+our $TodoList =
 '   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
 
-use constant TodoTask =>
+# $TodoList was designed for an 80-column screen; adjust the Title field to take up more or less space based
+# on the screen width
+_screen_width_adjust($TodoListHeader, 'Title: ');						# note that that trailing space is crucial ...
+_screen_width_adjust($TodoListHeader, '=' x 35);
+_screen_width_adjust($TodoList, '@' . '<' x 34);
+
+our $TodoTask =
 	'
     Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Date:
     Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
@@ -77,15 +84,21 @@ use constant TodoTask =>
 #################################
 
 our $parminfo = {};
+my $commands = {};
+tie %$commands, 'Tie::IxHash',
+(
+	l	=>	"LIST",
+);
+our $command;
 
 if (-t STDOUT or @ARGV)
 {
 	my $opt = {};
-	getopts('fhu:', $opt) or usage();
-	$parminfo->{noconfirm} = defined $opt->{f};
-	$parminfo->{user} = $opt->{u};
+	getopts('lfu:h', $opt) or usage();
+	cli_common_opts($parminfo, $opt);
+	$command = cli_get_command($commands, $opt);
 
-	usage() if defined $opt->{h};
+	usage() if defined $opt->{'h'};
 }
 else
 {
@@ -112,8 +125,6 @@ tie %menu_list, 'Tie::IxHash',
 	"Quit program"			=>		sub { exit },
 );
 
-# this is a primitive way to get this, but it works
-my ($screen_rows) = split(' ', `stty size`);
 # the menu will get printed in three columns on an 80-column screen
 # sometime in the future, we should try to do this a bit more dynamically,
 # but for now this is good enough
@@ -121,7 +132,7 @@ my $menu_size = range::round(scalar(keys %menu_list) / 3, range::ROUND_UP);
 # now figure maximum number of tasks we can put in our list:
 # save 2 rows for list header, 1 for separator between list and menu,
 # the number of menu lines, and 2 for the prompt after the menu
-our $max_task_list = $screen_rows - 2 - 1 - $menu_size - 2;
+our $max_task_list = $ROWS - 2 - 1 - $menu_size - 2;
 
 
 #################################
@@ -130,15 +141,44 @@ our $max_task_list = $screen_rows - 2 - 1 - $menu_size - 2;
 
 initialize();
 
+if ($command)
+{
+	if ($command eq 'LIST')
+	{
+		print "\n", menu_header(), "\n";
+	}
+
+	exit 0;
+}
+# else no command, so go interactive
+$parminfo->{'force'} = 0;
+
 # infinite loop for menu and actions
 while (true)
 {
 	my @menu_choices = keys %menu_list;
 	my $mheader = menu_header();
-	my $command = menu_select("Choose:", @menu_choices,
-			{ LMARGIN => 2, SPBETWEEN => 3, HEADER => $mheader, TMARGIN => 1,
-					TRUNC_MSG => "<<MORE TASKS THAN SHOWN>>\n", } );
+	my $command = menu_select("Choose:", @menu_choices, { LMARGIN => 2, SPBETWEEN => 3, HEADER => $mheader, TMARGIN => 1,
+			TRUNC_MSG => "<<MORE TASKS THAN SHOWN>>\n", } );
 	$menu_list{ $menu_choices[$command] }->();
+}
+
+
+#################################
+# HELPER ROUTINES
+#################################
+
+sub _screen_width_adjust
+{
+	my ($format, $field_to_adj) = @_;
+
+	my $cur_width = length($field_to_adj);
+	my $desired_width = $COLS - (80 - $cur_width);
+	return if $desired_width == $cur_width;
+
+	my $new_field = $desired_width < $cur_width ? substr($field_to_adj, 0, $desired_width)
+			: $field_to_adj . substr($field_to_adj, -1) x ($desired_width - $cur_width);
+	$_[0] =~ s/\Q$field_to_adj\E/$new_field/;
 }
 
 
@@ -204,7 +244,7 @@ sub cancel_todo
 	if (get_yn("Are you sure you want to do this?"))
 	{
 		my $old_todo = delete $todos->{$todo->{'name'}};
-		save_history($parminfo->{user}, "cancel", todo_fields($old_todo));
+		save_history($parminfo->{'user'}, "cancel", todo_fields($old_todo));
 		writefile();
 	}
 }
@@ -218,7 +258,7 @@ sub complete_todo
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
 		my $old_todo = delete $todos->{$todo->{'name'}};
-		save_history($parminfo->{user}, "complete", todo_fields($old_todo));
+		save_history($parminfo->{'user'}, "complete", todo_fields($old_todo));
 		writefile();
 	}
 }
@@ -264,9 +304,11 @@ sub shift_schedule
 sub usage
 {
 	error(0, "usage is:\n",
-			"    todo [-h | -f]\n",
+			"    todo [-h | -lf -u user]\n",
 			"       -h: this help message\n",
-			"       -f: don't ask for confirmations\n",
+			"       -l: list todos and exit (default: enter interactive mode)\n",
+			"       -f: don't ask for confirmations in interactive mode\n",
+			"       -u: work with todos for a different user\n",
 	);
 }
 
@@ -297,7 +339,7 @@ sub error
 
 sub initialize
 {
-	$parminfo->{user} ||= t3_username();
+	$parminfo->{'user'} ||= t3_username();
 
 	readfile();
 }
@@ -305,56 +347,22 @@ sub initialize
 
 sub readfile
 {
-	$todos = t3_readfile(TODO => $parminfo->{'user'});
-	return;
+	$todos = t3_readfile(TODO => $parminfo->{'user'}, {
+		FOREACH		=>	sub
+						{
+							my ($todos, $task) = @_;
 
-	open(IN, T3::base_filename(TODO => $parminfo->{user}))
-			or die("can't read todo file");
-	LINE: while ( <IN> )
-	{
-		chomp;
-
-		if ($_ eq Barefoot::T3::base::TEXT_SEP)
-		{
-			$/ = Barefoot::T3::base::TEXT_SEP . "\n";
-			while ( <IN> )
-			{
-				if ( s/^ (.*?) \t //x)
-				{
-					my $name = $1;
-					s/ \s* \n \s* / /x;
-					$todos->{$name}->{'description'} = $_;
-				}
-				else
-				{
-					die("illegal text line in todo file");
-				}
-			}
-			last LINE;
-		}
-
-		my $todo = {};
-		(todo_fields($todo)) = split("\t");
-
-		# account for the possibility that due dates are stored as
-		# date strings instead of time numbers (as they should be)
-		$todo->{'due'} = str2time($todo->{'due'}) if $todo->{'due'} =~ m@/@;
-
-		$todos->{$todo->{'name'}} = $todo;
-	}
-	close(IN);
+							# account for the possibility that due dates are stored as
+							# date strings instead of time numbers (as they should be)
+							$task->{'due'} = str2time($task->{'due'}) if $task->{'due'} =~ m@/@;
+						}
+	});
 }
 
 
 sub writefile
 {
-	open(OUT, ">" . T3::base_filename(TODO => $parminfo->{user}))
-			or die("can't write todo file");
-	foreach my $todo (values %$todos)
-	{
-		print OUT join("\t", todo_fields($todo)), "\n";
-	}
-	close(OUT);
+	return t3_writefile(TODO => $parminfo->{'user'}, $todos);
 }
 
 
@@ -363,7 +371,7 @@ sub todo_menu_list
 	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } values %$todos;
 	foreach my $todo (@menu_list)
 	{
-		$todo = swrite(TodoList, todo_fields($todo)) . "\n";
+		$todo = swrite($TodoList, todo_fields($todo)) . "\n";
 	}
 	return @menu_list;
 }
@@ -373,7 +381,7 @@ sub menu_header
 {
 	if (%$todos)
 	{
-		my $list_header = TodoListHeader . "\n";
+		my $list_header = $TodoListHeader . "\n";
 		return join('', $list_header, todo_menu_list());
 	}
 	else
@@ -425,7 +433,7 @@ sub get_existing_todo
 
 	# make a copy for the format, else the field itself will get eaten
 	my $title = $todo->{'title'};
-	writeln(TodoTask, @$todo{ qw<client client_name project project_name due tracking tracking_name> }, $title);
+	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name > }, $title);
 	print "\n\n";
 
 	return $todo;
