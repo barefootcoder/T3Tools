@@ -1,10 +1,21 @@
 #! /usr/bin/perl
 
-# For RCS:
-# $Date: 2003/03/25 23:37:52 $
+###########################################################################
 #
-# $Id: timer,v 1.38 2003/03/25 23:37:52 buddy Exp $
-# $Revision: 1.38 $
+# timer
+#
+###########################################################################
+#
+# The star of the T3 suite, timer.
+#
+# #########################################################################
+#
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 1999-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# (based on code originally written roughly 1994, (c) Barefoot Software)
+#
+###########################################################################
 
 use strict;
 use warnings;
@@ -24,12 +35,11 @@ use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::input qw< get_yn input input_text >;
 use Barefoot::date epoch => '2003-12-29';
-use Barefoot::T3Timer qw< get_timer_info do_timer_command >;
 
 use Barefoot::T3::base;
-use Barefoot::T3::valid qw <get_parameter >;
+use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
-use Barefoot::T3::Timer qw <calc_date calc_time test_connection this_week_totals >;
+use Barefoot::T3::Timer qw< timer_command get_timer_info calc_date calc_time test_connection this_week_totals >;
 
 
 #################################
@@ -39,6 +49,12 @@ use Barefoot::T3::Timer qw <calc_date calc_time test_connection this_week_totals
 
 use constant RC_FILE => "$~{$ENV{'USER'}}/.t3rc";
 my $RC = read_rc();
+
+use constant COMMENT_HEADER => <<END;
+   (255 chars is a little over 3 lines if your screen is 80
+   columns wide--or almost exactly two lines if your screen is
+   125 columns wide--and you don't hit RETURN at all (which you shouldn't))
+END
 
 
 #################################
@@ -99,6 +115,7 @@ my $command_strings = {
 	L	=>	"LOGALL",
 	i	=>	"COPYINFO",
 	a	=>	"AVERAGE",
+	A	=>	"ANNOTATE",
 	'@'	=>	"PARSE",
 };
 our ($cgi, $command, $workgroup);
@@ -108,24 +125,23 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcpribLtafhu:C:P:H:@:', $opt) or usage();
-	$parminfo->{force} = defined $opt->{f};
-	$parminfo->{noconfirm} = defined $opt->{f};
-	$parminfo->{halftime} = defined $opt->{h};
-	$parminfo->{user} = $opt->{u};
-	$parminfo->{client} = string::upper($opt->{C});
-	$parminfo->{project} = string::upper($opt->{P});
-	$parminfo->{phase} = string::upper($opt->{H});
-	$parminfo->{parse_fmt} = $opt->{'@'};
+	getopts('sedlcpriAbLtafhu:C:P:H:@:', $opt) or usage();
+	$parminfo->{'force'} = defined $opt->{f};
+	$parminfo->{'noconfirm'} = defined $opt->{f};
+	$parminfo->{'halftime'} = defined $opt->{h};
+	$parminfo->{'user'} = $opt->{u};
+	$parminfo->{'client'} = string::upper($opt->{C});
+	$parminfo->{'project'} = string::upper($opt->{P});
+	$parminfo->{'phase'} = string::upper($opt->{H});
+	$parminfo->{'parse_fmt'} = $opt->{'@'};
 
-	$parminfo->{newtimer} = $ARGV[1];
+	$parminfo->{'newtimer'} = $ARGV[1];
 
-	foreach my $copt ( qw <s e d l c i p r b L t a @ > )
+	foreach my $copt ( qw< s e d l c i p r A b L t a @ > )
 	{
 		if (exists $opt->{$copt})
 		{
-			error(2, "you must specify exactly one command (s,e,d,l,c,i,p,r,b,L,t,a)")
-					if defined $command;
+			error(2, "you must specify exactly one command (s,e,d,l,c,i,p,r,A,b,L,t,a)") if defined $command;
 			$command = $command_strings->{$copt};
 			# print STDERR "defined command as $command\n";
 		}
@@ -135,13 +151,13 @@ else
 {
 	$cgi = new CGI;
 	$workgroup = $cgi->param('workgroup');
-	$parminfo->{user} = $cgi->param('user');
-	$parminfo->{client} = $cgi->param('client');
-	$parminfo->{timer} = $cgi->param('timername');
-	$parminfo->{newtimer} = $cgi->param('newname');
+	$parminfo->{'user'} = $cgi->param('user');
+	$parminfo->{'client'} = $cgi->param('client');
+	$parminfo->{'timer'} = $cgi->param('timername');
+	$parminfo->{'newtimer'} = $cgi->param('newname');
 
-	$parminfo->{force} = 1;					# no input when run as a CGI
-	$parminfo->{parse_fmt} = 'x';				# always output XML-style
+	$parminfo->{'force'} = 1;					# no input when run as a CGI
+	$parminfo->{'parse_fmt'} = 'x';				# always output XML-style
 
 	$command = $command_strings->{string::left($cgi->param('mode'), 1)};
 
@@ -183,14 +199,14 @@ catch
 if ($command eq 'START')					# start a timer
 {
 	# integration with TODO module
-	if ($parminfo->{timer} =~ /^todo:(.*)$/)
+	if ($parminfo->{'timer'} =~ /^todo:(.*)$/)
 	{
 		my $todo_name = $1;
 
 		# probably ought to be calling todo's readfile here,
 		# but need to make vast improvements to readfile before we can do that
-		open(TODO, T3::base_filename(TODO => $parminfo->{user}))
-				or die("can't open todo file for $parminfo->{user}");
+		open(TODO, T3::base_filename(TODO => $parminfo->{'user'}))
+				or die("can't open todo file for $parminfo->{'user'}");
 		my $todo = {};
 		my $found = false;
 		while ( <TODO> )
@@ -207,19 +223,19 @@ if ($command eq 'START')					# start a timer
 
 		die("can't find todo name $todo_name") unless $found;
 
-		$parminfo->{timer} = $todo_name;
-		$parminfo->{client} = $todo->{client};
-		$parminfo->{project} = $todo->{project};
-		$parminfo->{todo_link} = $todo_name;
+		$parminfo->{'timer'} = $todo_name;
+		$parminfo->{'client'} = $todo->{'client'};
+		$parminfo->{'project'} = $todo->{'project'};
+		$parminfo->{'todo_link'} = $todo_name;
 	}
 
-	unless ($parminfo->{force})
+	unless ($parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		get_giventimer("start", $parminfo);
 	}
 
-	if (not exists $timers->{$parminfo->{timer}})
+	if (not exists $timers->{$parminfo->{'timer'}})
 	{
 		if (test_connection())
 		{
@@ -227,16 +243,16 @@ if ($command eq 'START')					# start a timer
 			get_timer_parameter("client");
 			get_timer_parameter("project");
 
-			my ($phase_needed) = proj_requirements($parminfo->{client},
-					$parminfo->{project}, calc_date(time));
+			my ($phase_needed) = proj_requirements($parminfo->{'client'},
+					$parminfo->{'project'}, calc_date(time));
 
 			get_timer_parameter("phase") if $phase_needed;
 		}
 		else
 		{
-			$parminfo->{client} = 0;
-			$parminfo->{project} = 0;
-			$parminfo->{phase} = 0;
+			$parminfo->{'client'} = 0;
+			$parminfo->{'project'} = 0;
+			$parminfo->{'phase'} = 0;
 		}
 	}
 }
@@ -248,7 +264,7 @@ if ($command eq 'PAUSE')					# pause all timers
 		error(1, "no timer is actively timing");
 	}
 
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		exit unless get_yn("are you sure you want to pause all timers?");
@@ -257,29 +273,28 @@ if ($command eq 'PAUSE')					# pause all timers
 
 if ($command eq 'CANCEL')					# cancel a timer
 {
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		get_giventimer("cancel", $parminfo);
 
 		print STDERR "warning! a cancelled timer is gone forever!\n";
-		print STDERR "are you sure you want to cancel timer ", $parminfo->{timer}, "?  (y/N) ";
-		exit unless <STDIN> =~ /^y/i;
+		exit unless get_yn("are you sure you want to cancel timer $parminfo->{'timer'}?");
 	}
 }
 
 if ($command eq 'RENAME')					# new name for a timer
 {
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		get_giventimer("new name for", $parminfo);
 	}
 
-	if (not $parminfo->{newtimer} or not $parminfo->{force})
+	if (not $parminfo->{'newtimer'} or not $parminfo->{'force'})
 	{
-		my $defname = $parminfo->{newtimer} || $parminfo->{timer};
-		$parminfo->{newtimer} = input("new name for this timer?", $defname);
+		my $defname = $parminfo->{'newtimer'} || $parminfo->{'timer'};
+		$parminfo->{'newtimer'} = input("new name for this timer?", $defname);
 	}
 
 	if (test_connection())
@@ -289,7 +304,7 @@ if ($command eq 'RENAME')					# new name for a timer
 
 		my ($phase_needed, $tracking_needed, $comments_needed) =
 				proj_requirements(
-					$parminfo->{client}, $parminfo->{project},
+					$parminfo->{'client'}, $parminfo->{'project'},
 					calc_date(time)
 				);
 
@@ -299,34 +314,73 @@ if ($command eq 'RENAME')					# new name for a timer
 
 if ($command eq 'COPYINFO')
 {
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		get_giventimer("copy info for", $parminfo);
 	}
 
-	if (not $parminfo->{newtimer} or not $parminfo->{force})
+	if (not $parminfo->{'newtimer'} or not $parminfo->{'force'})
 	{
-		my $defname = $parminfo->{newtimer};
-		$parminfo->{newtimer} = input("name for the new timer?", $defname);
+		my $defname = $parminfo->{'newtimer'};
+		$parminfo->{'newtimer'} = input("name for the new timer?", $defname);
 	}
 }
 
-if ($command eq 'BREAKDOWN')					# break down a timer
+if ($command eq 'ANNOTATE')						# annotate a timer (add comments)
 {
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
-		get_giventimer("break down", $parminfo);
+		get_giventimer("annotate", $parminfo);
 	}
 
-	my $giventimer = $parminfo->{timer};
+	my $giventimer = $parminfo->{'timer'};
 	if (not exists $timers->{$giventimer})
 	{
 		error(1, "no such timer as $giventimer");
 	}
 
-	my @parts = split(/,/, $timers->{$giventimer}->{time});
+	my $opts =
+	{
+		EDITOR				=>	rc_param(LOG => 'editor'),
+		MAXLEN				=>	255,
+		ALLTRIM				=>	1,
+		STRIP_BLANK_LINES	=>	1,
+		DEFAULT				=>	$timers->{$giventimer}->{'comments'},
+	};
+
+	my $comments = input_text('comments', COMMENT_HEADER, $opts);
+	print STDERR "got comments <<$comments>>\n" if DEBUG >= 3;
+	if ($timers->{$giventimer}->{'comments'} and not $comments)
+	{
+		print STDERR "warning! this will remove all comments from this timer\n";
+		unless (get_yn("are you sure you want to continue?"))
+		{
+			print STDERR "comments will be unchanged.\n";
+			exit;
+		}
+	}
+
+	$parminfo->{'comments'} = $comments;
+	$timers->{$giventimer}->{'comments'} = $comments;
+}
+
+if ($command eq 'BREAKDOWN')					# break down a timer
+{
+	if (!$parminfo->{'force'})
+	{
+		print_elapsed($parminfo, $timers);
+		get_giventimer("break down", $parminfo);
+	}
+
+	my $giventimer = $parminfo->{'timer'};
+	if (not exists $timers->{$giventimer})
+	{
+		error(1, "no such timer as $giventimer");
+	}
+
+	my @parts = split(/,/, $timers->{$giventimer}->{'time'});
 	foreach my $part (@parts)
 	{
 		my $mins = calc_time($part);
@@ -382,8 +436,8 @@ if ($command eq 'TOTAL')					# total timers by client
 		next unless ref $_ eq 'HASH';
 		next if exists $ignore_timers{$_->{name}};
 
-		my $client = $_->{client} || '???';
-		my $proj = $_->{project} || '???';
+		my $client = $_->{'client'} || '???';
+		my $proj = $_->{'project'} || '???';
 
 		unless (exists $totals->{$client})
 		{
@@ -396,8 +450,8 @@ if ($command eq 'TOTAL')					# total timers by client
 			$totals->{$client}->{$proj} = 0;
 		}
 
-		my $mins = rounded_time($client, $_->{time});
-		$mins = $min_time if calc_time($_->{time}) > 0 and $mins < $min_time;
+		my $mins = rounded_time($client, $_->{'time'});
+		$mins = $min_time if calc_time($_->{'time'}) > 0 and $mins < $min_time;
 		$totals->{$client}->{$proj} += $mins;
 		$totals->{$client}->{':TOTAL'} += $mins;
 	}
@@ -490,13 +544,13 @@ if ($command eq 'DONE')					# done with a timer
 		exit;
 	}
 
-	if (!$parminfo->{force})
+	if (!$parminfo->{'force'})
 	{
 		print_elapsed($parminfo, $timers);
 		get_giventimer("done with", $parminfo);
 	}
 
-	my $giventimer = $parminfo->{timer};
+	my $giventimer = $parminfo->{'timer'};
 	if (!exists $timers->{$giventimer})
 	{
 		error(1, "no such timer as $giventimer");
@@ -539,7 +593,7 @@ told it to save for next week are last week's timers, only empty; don't worry
 too much about that, though, since you will still have the opportunity to
 resave them if you want to.
 END
-	if (!$parminfo->{noconfirm})
+	if (!$parminfo->{'noconfirm'})
 	{
 		exit unless get_yn("are you sure you want to continue?");
 	}
@@ -553,11 +607,11 @@ END
 	unless ($timers->{T3::CURRENT_TIMER} eq $log_timername)
 	{
 		# HACK! these are hardcoded for now; should be changed to pull from a config file or something
-		local $parminfo->{timer} = $log_timername;
-		local $parminfo->{client} = 'TG';
-		local $parminfo->{project} = 'LOG';
-		local $parminfo->{phase} = 'ADM';
-		do_timer_command('START', $parminfo, $timers);
+		local $parminfo->{'timer'} = $log_timername;
+		local $parminfo->{'client'} = 'TG';
+		local $parminfo->{'project'} = 'LOG';
+		local $parminfo->{'phase'} = 'ADM';
+		timer_command('START', $parminfo, $timers);
 	}
 
 	TIMER: foreach my $timer (sort keys %$timers)
@@ -570,22 +624,22 @@ END
 		# shortcut
 		my $thistimer = $timers->{$timer};
 
-		my $minutes = calc_time($thistimer->{time});
+		my $minutes = calc_time($thistimer->{'time'});
 		if ($minutes == 0)
 		{
 			unless (get_yn("\n\ntimer $timer has no time logged this week; save it?"))
 			{
-				$parminfo->{timer} = $timer;
-				do_timer_command('CANCEL', $parminfo, $timers);
+				$parminfo->{'timer'} = $timer;
+				timer_command('CANCEL', $parminfo, $timers);
 			}
 			next;
 		}
 
 		unless (exists $timers->{$timer . '-nw'} or exists $timers->{$timer . '-save'})
 		{
-			$parminfo->{timer} = $timer;
-			$parminfo->{newtimer} = $timer . '-save';
-			do_timer_command('COPYINFO', $parminfo, $timers);
+			$parminfo->{'timer'} = $timer;
+			$parminfo->{'newtimer'} = $timer . '-save';
+			timer_command('COPYINFO', $parminfo, $timers);
 		}
 
 		# log out the timer (done)
@@ -593,12 +647,12 @@ END
 			eval
 			{
 				local $SIG{INT} = sub { die("user interrupt") };
-				$parminfo->{timer} = $timer;
-				$parminfo->{client} = undef;
-				$parminfo->{project} = undef;
-				$parminfo->{phase} = undef;
+				$parminfo->{'timer'} = $timer;
+				$parminfo->{'client'} = undef;
+				$parminfo->{'project'} = undef;
+				$parminfo->{'phase'} = undef;
 				print_and_gather($timer);
-				do_timer_command('DONE', $parminfo, $timers);
+				timer_command('DONE', $parminfo, $timers);
 			};
 
 			if (exists $timers->{$timer})			# logging out failed for some reason
@@ -606,15 +660,15 @@ END
 				redo LOG if get_yn("\n\nlogging of timer $timer failed; retry?");
 				if (get_yn("\ndo you want to cancel this timer?"))
 				{
-					$parminfo->{timer} = $timer;
-					do_timer_command('CANCEL', $parminfo, $timers);
+					$parminfo->{'timer'} = $timer;
+					timer_command('CANCEL', $parminfo, $timers);
 					last LOG;
 				}
 
 				if (exists $timers->{$timer . '-save'})
 				{
-					$parminfo->{timer} = $timer . '-save';
-					do_timer_command('CANCEL', $parminfo, $timers);
+					$parminfo->{'timer'} = $timer . '-save';
+					timer_command('CANCEL', $parminfo, $timers);
 				}
 
 				next TIMER;
@@ -631,14 +685,14 @@ END
 		{
 			if ($saved_timer =~ /-nw$/ or get_yn("\nsave this timer for next week?"))
 			{
-				$parminfo->{timer} = $saved_timer;
-				$parminfo->{newtimer} = $timer;
-				do_timer_command('RENAME', $parminfo, $timers);
+				$parminfo->{'timer'} = $saved_timer;
+				$parminfo->{'newtimer'} = $timer;
+				timer_command('RENAME', $parminfo, $timers);
 			}
 			else
 			{
-				$parminfo->{timer} = $saved_timer;
-				do_timer_command('CANCEL', $parminfo, $timers);
+				$parminfo->{'timer'} = $saved_timer;
+				timer_command('CANCEL', $parminfo, $timers);
 			}
 		}
 
@@ -658,7 +712,7 @@ if ($command eq 'PARSE')			# special flag for use by other processes
 try
 {
 	# the main event
-	do_timer_command($command, $parminfo, $timers);
+	timer_command($command, $parminfo, $timers);
 }
 catch
 {
@@ -670,7 +724,7 @@ if ($command eq 'COPYINFO')
 	# why copy a timer's info unless you also wanted to start it?
 	# info is copied, let's just start it now
 	$parminfo->{'timer'} = $parminfo->{'newtimer'};
-	do_timer_command('START', $parminfo, $timers);
+	timer_command('START', $parminfo, $timers);
 }
 
 unless ( $command eq 'LOG' )
@@ -697,8 +751,9 @@ sub usage
 		"       -i:   copy info for a timer (copies all but actual time worked)\n",
 		"       -e:   show elapsed time for all timers\n",
 		"       -l:   log time directly to database\n",
-		"       -L:   log out all current timers, optionally saving their info\n",
+		"       -A:   annotate the timer by adding comments\n",
 		"       -b:   break down a timer's portions\n",
+		"       -L:   log out all current timers, optionally saving their info\n",
 		"       -t:   total for all timers this week (by client)\n",
 		"       -a:   totals by week with weekly average\n",
 		"       -f:   force (ignore all confirmations)\n",
@@ -775,7 +830,7 @@ sub get_giventimer
 	my ($function, $parminfo) = @_;
 
 	TIMER: {
-		my $new = input("$function what timer? ", $parminfo->{timer});
+		my $new = input("$function what timer? ", $parminfo->{'timer'});
 		if ($new =~ /\s/)
 		{
 			print STDERR "timer name can't have a space; sorry\n";
@@ -787,7 +842,7 @@ sub get_giventimer
 			redo TIMER;
 		}
 
-		$parminfo->{timer} = $new if $new;
+		$parminfo->{'timer'} = $new if $new;
 	}
 }
 
@@ -795,11 +850,10 @@ sub get_giventimer
 sub get_timer_parameter
 {
 	my ($parmname) = @_;
-	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n"
-			if DEBUG >= 4;
+	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n" if DEBUG >= 4;
 
 	# objinfo would be the specified timer, which we get here
-	my $objinfo = $timers->{$parminfo->{timer}};
+	my $objinfo = $timers->{$parminfo->{'timer'}};
 
 	# this is somewhat complicated.  we need to figure out what the proper thing (client, project, or phase)
 	# should be, and then use it as the default.  now, we have three possible places to get this info from:
@@ -824,7 +878,7 @@ sub get_timer_hrsmins
 {
 	my ($timer) = @_;
 
-	my $minutes = calc_time($timer->{time});
+	my $minutes = calc_time($timer->{'time'});
 	my $hours = range::round($minutes / 60, range::ROUND_DOWN);
 	$minutes = $minutes - $hours * 60;
 
@@ -838,7 +892,7 @@ sub print_elapsed
 	print_parsable($parminfo, $timers) and return if $cgi;
 
 	#print Dumper($timers);
-	print "\nTIMERS FOR $parminfo->{user}:\n";
+	print "\nTIMERS FOR $parminfo->{'user'}:\n";
 	foreach my $tname (sort keys %$timers)
 	{
 		# ignore tags
@@ -847,14 +901,14 @@ sub print_elapsed
 		my $timer = $timers->{$tname};
 
 		my ($hours, $minutes) = get_timer_hrsmins($timer);
-		my $date = calc_date($timer->{time});
+		my $date = calc_date($timer->{'time'});
 		my $curtimer_marker = $timers->{T3::CURRENT_TIMER} &&
 				$timers->{T3::CURRENT_TIMER} eq $tname ? "==>" : "";
 
-		writeln(Elapsed, $curtimer_marker, $tname, $timer->{client},
-				$timer->{project}, $timer->{phase} ? ",$timer->{phase}" : "",
+		writeln(Elapsed, $curtimer_marker, $tname, $timer->{'client'},
+				$timer->{'project'}, $timer->{'phase'} ? ",$timer->{'phase'}" : "",
 				$hours, $minutes, $date,
-				$timer->{time} =~ m{/\d+-$} ? "HALF-TIMING" : "");
+				$timer->{'time'} =~ m{/\d+-$} ? "HALF-TIMING" : "");
 	}
 
 	print $timers->{T3::CURRENT_TIMER}
@@ -867,17 +921,17 @@ sub print_parsable
 {
 	my ($parminfo, $timers) = @_;
 
-	my $user = $parminfo->{user};
+	my $user = $parminfo->{'user'};
 	while (my ($tname, $timer) = each %$timers)
 	{
 		next if $tname =~ /^:/;					# special markers; not real timers
 
-		print "$tname\n" and next if $parminfo->{parse_fmt} eq 't';
+		print "$tname\n" and next if $parminfo->{'parse_fmt'} eq 't';
 
-		my $client = $timer->{client};
-		foreach my $part (reverse split(/,/, $timer->{time}))
+		my $client = $timer->{'client'};
+		foreach my $part (reverse split(/,/, $timer->{'time'}))
 		{
-			print "<TIMER>" if $parminfo->{parse_fmt} eq 'x';
+			print "<TIMER>" if $parminfo->{'parse_fmt'} eq 'x';
 			print "$user:$tname:$client:";
 
 			my $mins = calc_time($part);
@@ -896,7 +950,7 @@ sub print_parsable
 			# not sure if half-time is needed, so we'll leave it out for now
 			# print " at half-time" if $1 == 2;
 
-			print "</TIMER>" if $parminfo->{parse_fmt} eq 'x';
+			print "</TIMER>" if $parminfo->{'parse_fmt'} eq 'x';
 			print "\n";
 		}
 	}
@@ -927,12 +981,12 @@ sub print_and_gather
 
 	my $thistimer = $timers->{$giventimer};
 	my ($hours, $minutes) = get_timer_hrsmins($thistimer);
-	my $date = calc_date($thistimer->{time});
-	my $client = $thistimer->{client};
+	my $date = calc_date($thistimer->{'time'});
+	my $client = $thistimer->{'client'};
 	print "\ntimer: $giventimer\n";
 	print "total time is $minutes mins ($hours hrs $minutes mins) on $date for $client\n";
 	print "please remember this in case there is a problem!\n\n";
-	if (!$parminfo->{noconfirm})
+	if (!$parminfo->{'noconfirm'})
 	{
 		print "press return to continue ...\n";
 		<STDIN>;
@@ -947,8 +1001,8 @@ sub gather_log_info
 	my ($log_timer) = @_;
 
 	# For logging timers, we MUST ask for codes; no 'force' allowed.  But
-	# the noconfirm option can still turn off the annoying confirmations.
-	$parminfo->{force} = false;
+	# the 'noconfirm' option can still turn off the annoying confirmations.
+	$parminfo->{'force'} = false;
 
 	# a shortcut
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
@@ -971,12 +1025,12 @@ sub gather_log_info
 
 	my ($emp_id, $emp_fullname) = get_timer_parameter("employee");
 
-	# $parminfo->{user} may not match emp_id at this point; that's ok.
+	# $parminfo->{'user'} may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
 	$parminfo->{date} = my $date = input(
 			"Date:",
-			$timer ? calc_date($timer->{time}) : date::today(),
+			$timer ? calc_date($timer->{'time'}) : date::today(),
 			{
 				VALID		=>	\&date::isValid,
 				VALID_ERR	=>	"  {Invalid date!}\n",
@@ -991,7 +1045,7 @@ sub gather_log_info
 	HOURS: {
 		my ($rounding, $to_nearest) = client_rounding($client);
 
-		$hours = input("Hours:", $timer ? range::round(calc_time($timer->{time}) / 60, $rounding, $to_nearest) : 0);
+		$hours = input("Hours:", $timer ? range::round(calc_time($timer->{'time'}) / 60, $rounding, $to_nearest) : 0);
 		print "  {Hours must divisible by $to_nearest}\n" and redo HOURS
 				unless $hours == range::round($hours, range::ROUND_OFF, $to_nearest);
 		print "  {Hours must be greater than zero}\n" and redo HOURS unless $hours > 0;
@@ -1005,7 +1059,7 @@ sub gather_log_info
 
 	# Get phase information
 	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
-	$parminfo->{phase} = $phase;
+	$parminfo->{'phase'} = $phase;
 
 	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("client tracking code") : (undef, "");
 	$parminfo->{tracking} = $tracking;
@@ -1038,12 +1092,7 @@ sub get_comment
 {
 	my ($timername, $parminfo) = @_;
 
-	my $header = <<END;
-   (255 chars is a little over 3 lines if your screen is 80
-   columns wide--or almost exactly two lines if your screen is
-   125 columns wide--and you don't hit RETURN at all (which you shouldn't))
-END
-
+	my $header = COMMENT_HEADER;
 	if ($timername)
 	{
 		my $timer = $timers->{$timername};
@@ -1060,6 +1109,7 @@ END
 		REQUIRED			=>	1,
 		ALLTRIM				=>	1,
 		STRIP_BLANK_LINES	=>	1,
+		DEFAULT				=>	$timername ? $timers->{$timername}->{'comments'} : '',
 	};
 
 	my $comments = input_text('comments', $header, $opts);
