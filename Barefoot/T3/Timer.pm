@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl -w
-
-# For CVS:
-# $Date: 2003/04/02 20:23:17 $
-#
-# $Id: Timer.pm,v 1.7 2003/04/02 20:23:17 buddy Exp $
-# $Revision: 1.7 $
-
 ###########################################################################
 #
 # Barefoot::T3::Timer
@@ -16,8 +8,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -26,13 +19,14 @@ package Barefoot::T3::Timer;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<timer_command readfile calc_time calc_date test_connection
-		this_week_totals>;
+@EXPORT_OK = qw< timer_command get_timer_info readfile calc_time calc_date test_connection this_week_totals >;
 
 use Date::Parse;
+use Data::Dumper;
 use Date::Format;
 use Storable qw< dclone >;
 
@@ -41,6 +35,9 @@ use Barefoot::range;
 use Barefoot::exception;
 
 use Barefoot::T3::base;
+
+
+use constant FALLBACK_TIMER => 'default';
 
 
 # Timer command map
@@ -52,6 +49,7 @@ our %timer_commands =
 	DONE		=>	\&done,
 	LIST		=>	\&list,
 	RENAME		=>	\&rename,
+	ANNOTATE	=>	\&add_comment,
 	LOG			=>	\&log_time,
 	COPYINFO	=>	\&copy_info,
 );
@@ -71,13 +69,25 @@ sub _remove_timer
 	# if the removed timer is the current one
 
     my $del_timer = delete $timers->{$timer_to_remove};
-    save_history($command, $opts->{user}, $del_timer);
+    save_history($command, $opts->{'user'}, $del_timer);
 
     if (exists $timers->{T3::CURRENT_TIMER}
 			and $timers->{T3::CURRENT_TIMER} eq $timer_to_remove)
     {
         delete $timers->{T3::CURRENT_TIMER};
     }
+}
+
+
+sub _setup_params									# fill in some parameters if they're not there already
+{
+	my ($timername, $parminfo) = @_;
+
+    $parminfo->{'timer'} = $timername || FALLBACK_TIMER;
+
+	$parminfo->{'user'} = t3_username() unless $parminfo->{'user'};
+
+	return true;
 }
 
 
@@ -103,42 +113,64 @@ sub timer_command
 	if ($timer_commands{$command}->($opts, $timers))
 	{
 		print STDERR "about to write file\n" if DEBUG >= 5;
-		writefile($opts->{user}, $timers, $opts->{backup_rotate});
+		writefile($opts->{'user'}, $timers, $opts->{backup_rotate});
 		print STDERR "back from writing file\n" if DEBUG >= 5;
 	}
+}
+
+
+sub get_timer_info
+{
+	my ($timername, $parminfo) = @_;
+
+	_setup_params($timername, $parminfo);
+	my $timers = readfile($parminfo->{'user'});
+	print STDERR "read timers: ", Dumper($timers) if DEBUG >= 3;
+
+	# try to find a more reasonable default timer
+	if ($parminfo->{'timer'} eq FALLBACK_TIMER)
+	{
+		if ($timers->{T3::CURRENT_TIMER})
+		{
+			# if there's a current timer, use that
+			$parminfo->{'timer'} = $timers->{T3::CURRENT_TIMER};
+		}
+		elsif (keys %$timers == 1)
+		{
+			# if there's only 1 timer, use that
+			# note: when each is called in a scalar context (such as below),
+			# it returns the "next" key (in this case, there's only 1 key)
+			$parminfo->{'timer'} = each %$timers;
+		}
+		# if none of those work, you're stuck with FALLBACK_TIMER
+	}
+
+	return $timers;
 }
 
 
 sub readfile
 {
 	my ($user) = @_;
-
-	my $timers = {};
-
-	open(TFILE, T3::base_filename(TIMER => $user))
-			or die("can't read timer file");
-	while ( <TFILE> )
-	{
-		chomp;
-		my $timer = {};
-		(timer_fields($timer)) = split("\t", $_, -1);
-		$timers->{$timer->{name}} = $timer;
-		if ($timer->{time} =~ /-$/)
-		{
-			print STDERR "readfile: setting current timer to $timer->{name}\n"
-					if DEBUG >= 3;
-			$timers->{T3::CURRENT_TIMER} = $timer->{name};
-		}
-	}
-	close(TFILE);
-
-	return $timers;
+	return t3_readfile(TIMER => $user, {
+		FOREACH		=>	sub
+						{
+							# set current timer tag
+							my ($timers, $timer) = @_;
+							if ($timer->{'time'} =~ /-$/)
+							{
+								print STDERR "readfile: setting current timer to $timer->{'name'}\n" if DEBUG >= 3;
+								$timers->{T3::CURRENT_TIMER} = $timer->{'name'};
+							}
+						}
+	});
 }
 
 
 sub writefile
 {
 	my ($user, $timers, $backup_rotate) = @_;
+	return t3_writefile(TIMER => $user, $timers, { BACKUP_ROTATE => $backup_rotate });
 	print STDERR "entering writefile function\n" if DEBUG >= 5;
 
 	# don't really care whether this succeeds or not
@@ -151,7 +183,7 @@ sub writefile
 	catch
 	{
 		print "returning from catch block\n" if DEBUG >= 5;
-		return;					# from catch block
+		return;															# from catch block
 	};
 	print STDERR "made it past exception block\n" if DEBUG >= 5;
 
@@ -238,11 +270,11 @@ sub calc_date
 	my ($line) = @_;
 
 	my $seconds;
-	if ($line and $line =~ /(\d+),$/)	# ends in a comma, must be paused
+	if ($line and $line =~ /(\d+),$/)									# ends in a comma, must be paused
 	{
 		$seconds = $1;
 	}
-	else								# current or no time given
+	else																# current or no time given
 	{
 		$seconds = time;
 	}
@@ -264,7 +296,7 @@ sub calc_date
 ###########################
 
 
-my $connected;
+our $connected;
 
 sub test_connection
 {
@@ -382,7 +414,7 @@ sub db_post_timer
 	{
 		print STDERR "Removing old timer $tname from list\n" if DEBUG >= 3;
 		# if it hasn't been posted ...
-		if (not $timer->{posted})
+		if (not $timer->{'posted'})
 		{
 			# try to delete it from the db
 			print STDERR "Deleting old timer $tname from db before posting\n"
@@ -395,11 +427,11 @@ sub db_post_timer
 	else
 	{
 		# not found in the list, mark it as unposted
-		$timer->{posted} = false;
+		$timer->{'posted'} = false;
 	}
 
 	# if it hasn't been posted ...
-	if (not $timer->{posted})
+	if (not $timer->{'posted'})
 	{
 		print STDERR "Posting unposted timer $tname\n" if DEBUG >= 2;
 
@@ -448,7 +480,7 @@ sub db_post_timer
 
 		# note that timers that are still timing (easy to tell because their
 		# time chunks string ends in a dash) are never considered posted
-		$timer->{posted} = true unless substr($timer->{time}, -1) eq '-';
+		$timer->{'posted'} = true unless substr($timer->{time}, -1) eq '-';
 	}
 
 	print STDERR "Leaving db_post_timer w/o error\n" if DEBUG >= 5;
@@ -506,7 +538,7 @@ sub this_week_totals
 					c.rounding, c.to_nearest
 			from {@workgroup_user} wu, {@timer} t, {@timer_chunk} tc,
 					{@client} c
-			where wu.nickname = {user}
+			where wu.nickname = {'user'}
 			and wu.wuser_id = t.wuser_id
 			and t.wuser_id = tc.wuser_id
 			and t.timer_name = tc.timer_name
@@ -517,10 +549,8 @@ sub this_week_totals
 
 	$timer_data = $timer_data->group(
 			group_by		=>	[ qw<timer_name> ],
-			new_columns		=>	[ qw<timer_name seconds client_id proj_id>,
-									qw<phase_id rounding to_nearest> ],
-			constant		=>	[ qw<client_id proj_id phase_id>,
-									qw<rounding to_nearest> ],
+			new_columns		=>	[ qw<timer_name seconds client_id proj_id>, qw<phase_id rounding to_nearest> ],
+			constant		=>	[ qw<client_id proj_id phase_id>, qw<rounding to_nearest> ],
 			on_new_group	=>	sub
 								{
 									$_->{seconds} = 0;
@@ -726,15 +756,18 @@ END
 ###########################
 
 
-sub start                   # start a timer
+sub start																# start a timer
 {
 	my ($opts, $timers) = @_;
-	my $timersent = $opts->{timer};
+	my $timersent = $opts->{'timer'};
 	print STDERR "start: going to start timer $timersent\n" if DEBUG >= 3;
 
 	# figure out current timer (if any)
 	my $curtimer = $timers->{T3::CURRENT_TIMER} || "";
 	print STDERR "start: current timer is $curtimer\n" if DEBUG >= 2;
+
+	# check for illegal characters in names
+	die("Illegal character(s) in timer name") if $timersent =~ / / or $timersent =~ /:/;
 
 	# if new and old are the same, make sure a difference in full/half is
 	# being requested, else it's an error
@@ -759,7 +792,7 @@ sub start                   # start a timer
 	{
 		print STDERR "going to pause current timer\n" if DEBUG >= 4;
 		$timers->{$curtimer}->{time} .= time . ',';
-		$timers->{$curtimer}->{posted} = false;
+		$timers->{$curtimer}->{'posted'} = false;
 	}
 
 	# if not restarting an existing timer, got to build up some structure
@@ -774,9 +807,8 @@ sub start                   # start a timer
 	}
 
 	# add start time, mark unposted
-	$timers->{$timersent}->{time} .=
-			($opts->{halftime} ? "2/" : "") . time . '-';
-	$timers->{$timersent}->{posted} = false;
+	$timers->{$timersent}->{time} .= ($opts->{halftime} ? "2/" : "") . time . '-';
+	$timers->{$timersent}->{'posted'} = false;
 
 	# change current timer marker (in case caller wishes to display something)
 	$timers->{T3::CURRENT_TIMER} = $timersent;
@@ -786,7 +818,7 @@ sub start                   # start a timer
 }
 
 
-sub pause                   # pause all timers
+sub pause																# pause all timers
 {
 	my ($opts, $timers) = @_;
 
@@ -799,7 +831,7 @@ sub pause                   # pause all timers
 
 	# provide end time, mark unposted, clear current timer
     $timers->{$curtimer}->{time} .= time . ',';
-    $timers->{$curtimer}->{posted} = false;
+    $timers->{$curtimer}->{'posted'} = false;
     delete $timers->{T3::CURRENT_TIMER};
 
 	# need to write the file
@@ -807,10 +839,10 @@ sub pause                   # pause all timers
 }
 
 
-sub cancel                   # cancel a timer
+sub cancel																# cancel a timer
 {
 	my ($opts, $timers) = @_;
-	my $timersent = $opts->{timer};
+	my $timersent = $opts->{'timer'};
 	print STDERR "cancelling timer $timersent\n" if DEBUG >= 2;
 
 	# make sure timer to cancel really exists
@@ -827,10 +859,10 @@ sub cancel                   # cancel a timer
 }
 
 
-sub done					# done with a timer
+sub done																# done with a timer
 {
 	my ($opts, $timers) = @_;
-	my $timersent = $opts->{timer};
+	my $timersent = $opts->{'timer'};
 	print "entering done function\n" if DEBUG >= 5;
 
     unless (exists $timers->{$timersent})
@@ -850,7 +882,7 @@ sub done					# done with a timer
 }
 
 
-sub log_time				# log time not connected to a timer
+sub log_time															# log time not connected to a timer
 {
 	my ($opts, $timers) = @_;
 
@@ -881,42 +913,42 @@ sub list
 }
 
 
-sub rename                   # new name for a timer
+sub rename																# new name for a timer
 {
 	my ($opts, $timers) = @_;
 
-    # just a shortcut here
-    my $oldname = $opts->{timer};
-    unless (exists $timers->{$oldname})
-    {
+	# just a shortcut here
+	my $oldname = $opts->{'timer'};
+	unless (exists $timers->{$oldname})
+	{
 		die("Can't rename; no such timer");
-    }
+	}
 
-    if (not $opts->{newtimer})
-    {
+	if (not $opts->{newtimer})
+	{
 		die("New name not specified");
-    }
+	}
 
-    my $newname = $opts->{newtimer};
+	my $newname = $opts->{newtimer};
 
-    # if changing timer name
-    if ($newname ne $oldname)
-    {
+	# if changing timer name
+	if ($newname ne $oldname)
+	{
 		# can't rename to same name as an existing timer, of course
-        if (exists $timers->{$newname})
-        {
+		if (exists $timers->{$newname})
+		{
 			die("That timer already exists");
-        }
+		}
 
 		# change name attribute
 		$timers->{$oldname}->{name} = $newname;
 		# copy old to new
-        $timers->{$newname} = $timers->{$oldname};
+		$timers->{$newname} = $timers->{$oldname};
 		# delete old
-        delete $timers->{$oldname};
-    }
+		delete $timers->{$oldname};
+	}
 
-    # change other parameters
+	# change other parameters
 	# (not checking these against database)
 	foreach (qw< client project phase >)
 	{
@@ -924,10 +956,10 @@ sub rename                   # new name for a timer
 	}
 
 	# timer should be marked unposted so changes can go to database
-	$timers->{$newname}->{posted} = false;
+	$timers->{$newname}->{'posted'} = false;
 
 	# switch current timer marker if renaming current timer
-    $timers->{T3::CURRENT_TIMER} = $newname
+	$timers->{T3::CURRENT_TIMER} = $newname
 			if exists $timers->{T3::CURRENT_TIMER} and $timers->{T3::CURRENT_TIMER} eq $oldname;
 
 	# need to write the file
@@ -935,24 +967,43 @@ sub rename                   # new name for a timer
 }
 
 
-sub copy_info				# copy a timer
+sub add_comment															# add a comment to (aka annotate) a timer
 {
 	my ($opts, $timers) = @_;
-	print STDERR "trying to copy info $opts->{timer} => $opts->{newtimer}\n" if DEBUG >= 2;
+	my $timersent = $opts->{'timer'};
 
-    # just a shortcut here
-    my $source = $opts->{timer};
-    unless (exists $timers->{$source})
+	# make sure timer to annotate really exists
+   	unless (exists $timers->{$timersent})
     {
+		die("Can't annotate; no such timer");
+    }
+
+	$timers->{$timersent}->{'comments'} = $opts->{'comments'};
+	$timers->{$timersent}->{'posted'} = false;
+
+	# need to write the file
+	return true;
+}
+
+
+sub copy_info															# copy a timer
+{
+	my ($opts, $timers) = @_;
+	print STDERR "trying to copy info $opts->{'timer'} => $opts->{newtimer}\n" if DEBUG >= 2;
+
+	# just a shortcut here
+	my $source = $opts->{'timer'};
+	unless (exists $timers->{$source})
+	{
 		die("Can't copy; no such timer");
-    }
+	}
 
-    if (not $opts->{newtimer})
-    {
+	if (not $opts->{newtimer})
+	{
 		die("New name not specified");
-    }
+	}
 
-    my $dest = $opts->{newtimer};
+	my $dest = $opts->{newtimer};
 
 	# can't copy to same name as an existing timer, of course
 	if (exists $timers->{$dest})
@@ -974,7 +1025,7 @@ sub copy_info				# copy a timer
 	}
 
 	# timer should be marked unposted so changes can go to database
-	$timers->{$dest}->{posted} = false;
+	$timers->{$dest}->{'posted'} = false;
 
 	# need to write the file
 	return true;

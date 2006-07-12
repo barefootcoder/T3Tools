@@ -10,7 +10,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<get_timer_info do_timer_command insert_time_log>;
+@EXPORT_OK = qw<insert_time_log>;
 
 
 use Storable;
@@ -31,8 +31,6 @@ use Barefoot::T3::Timer qw<timer_command readfile calc_date calc_time>;
 
 
 # Timer constants
-
-use constant FALLBACK_TIMER => 'default';
 
 
 unless ($ENV{USER})
@@ -83,66 +81,6 @@ sub processMessage
 	};
 
 	return $send;
-}
-
-
-sub get_timer_info
-{
-	my ($timername, $parminfo) = @_;
-
-	setup_params($timername, $parminfo);
-	my $timers = readfile($parminfo->{user});
-
-	# try to find a more reasonable default timer
-	if ($parminfo->{timer} eq FALLBACK_TIMER)
-	{
-		if ($timers->{T3::CURRENT_TIMER})
-		{
-			# if there's a current timer, use that
-			$parminfo->{timer} = $timers->{T3::CURRENT_TIMER};
-		}
-		elsif (keys %$timers == 1)
-		{
-			# if there's only 1 timer, use that
-			# note: when each is called in a scalar context (such as below),
-			# it returns the "next" key (in this case, there's only 1 key)
-			$parminfo->{timer} = each %$timers;
-		}
-		# if none of those work, you're stuck with FALLBACK_TIMER
-	}
-
-	return $timers;
-}
-
-
-sub do_timer_command
-{
-	my ($command, $parminfo, $timers) = @_;
-
-=comment
-	# save command in case later functions need it
-	$timerinfo->{command} = $command;
-
-	die("command not supported ($command)")
-			unless exists $timer_commands{$command};
-	die("half-time flag only makes sense when starting a timer")
-			if $timerinfo->{halftime} and $command ne 'START';
-	$timer_commands{$command}->($timerinfo);
-=cut
-	#print Dumper($timerinfo->{timers});
-	timer_command($command, $parminfo, $timers);
-}
-
-
-sub setup_params		# fill in some parameters if they're not there already
-{
-	my ($timername, $parminfo) = @_;
-
-    $parminfo->{timer} = $timername || FALLBACK_TIMER;
-
-	$parminfo->{user} = t3_username() unless $parminfo->{user};
-
-	return true;
 }
 
 
