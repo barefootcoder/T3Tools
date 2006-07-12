@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For RCS:
-# $Date: 2003/06/26 18:03:10 $
-#
-# $Id: input.pm,v 1.9 2003/06/26 18:03:10 buddy Exp $
-# $Revision: 1.9 $
-
 ###########################################################################
 #
 # input
@@ -77,6 +69,7 @@ package Barefoot::input;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Term::Size;
 use Data::Dumper;
@@ -115,16 +108,17 @@ sub get_yn
 	print "  [y/N] ";
 
 	my $yn = <STDIN>;
-	return 1 if $yn =~ /^y/i;
-	return 0;
+	print STDERR "get_yn: got response $yn" if DEBUG >= 4;
+	return $yn =~ /^y/i;
 }
 
 
 sub input
 {
 	my ($prompt, $default, $opts) = @_;
+	print STDERR "input: starting function\n" if DEBUG >= 5;
 
-	local ($|) = 1;							# autoflush stdout
+	local ($|) = 1;														# autoflush stdout
 
 	my $answer = "";
 	INPUT:
@@ -133,7 +127,9 @@ sub input
 		print " (", $default, ")" if defined($default);
 		print "  " if defined($prompt);
 
+		print STDERR "input: about to get a line of input from stdin\n" if DEBUG >= 5;
 		$answer = <STDIN>;
+		print STDERR "input: got a line of input from stdin\n" if DEBUG >= 5;
 		chomp $answer;
 
 		if ($answer ne "" and exists $opts->{VALID})
@@ -169,6 +165,7 @@ sub input_text
 {
 	my ($name, $explan, $opts) = @_;
 	$opts ||= {};
+	print STDERR "input_text: args name $name, explanatory text <<$explan>>, opts ", Dumper($opts) if DEBUG >= 4;
 
 	my $max_msg = $opts->{'MAXLEN'} ? " (maximum length $opts->{'MAXLEN'} chars)" : '';
 	my $text = $opts->{'DEFAULT'} || '';
@@ -189,7 +186,8 @@ sub input_text
 
 			system($opts->{'EDITOR'}, $tmpfile);
 			$text = slurp $tmpfile;
-			$text =~ s/\n${separator}.*$//s;
+			$text =~ s/\n?${separator}.*$//s;
+			print STDERR "input_text: text before adjustment is <<$text>>\n" if DEBUG >= 5;
 		}
 		else
 		{
@@ -207,12 +205,13 @@ sub input_text
 		$text =~ s/^\s*\n+\s*// if $opts->{'ALLTRIM'};					# no extra newlines in front
 		$text =~ s/\s*\n+\s*$// if $opts->{'ALLTRIM'};					# none at the end either
 
-		print STDERR "input_text: text is: $text\n" and <STDIN> if DEBUG >= 4;
+		print STDERR "input_text: text after adjustments is <<$text>>\n" and <STDIN> if DEBUG >= 5;
 
 		$error = "You must have $name" and redo TEXT if $opts->{'REQUIRED'} and not $text;
 		$error = "\u$name too long!" and redo TEXT if $opts->{'MAXLEN'} and length($text) > $opts->{'MAXLEN'};
 	}
 
+	print STDERR "input_text: final text is <<$text>>\n" and <STDIN> if DEBUG >= 4;
 	return $text;
 }
 
