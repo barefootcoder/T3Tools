@@ -157,6 +157,8 @@ else
 }
 
 $parminfo->{'backup_rotate'} = rc_param(ALL => 'BackupRotation');
+my $nw = rc_param(ALL => 'NextWeekMarker') || '-nw';
+my $nw_re = qr/\Q$nw\E$/;
 
 
 #################################
@@ -296,7 +298,7 @@ if ($command eq 'COPYINFO')
 
 	if (not $parminfo->{'newtimer'} or not $parminfo->{'force'})
 	{
-		my $defname = $parminfo->{'newtimer'};
+		my $defname = $parminfo->{'newtimer'} || $parminfo->{'timer'} . $nw;
 		$parminfo->{'newtimer'} = input("name for the new timer?", $defname);
 	}
 }
@@ -314,6 +316,7 @@ if ($command eq 'ANNOTATE')						# annotate a timer (add comments)
 	{
 		error(1, "no such timer as $giventimer");
 	}
+	my $timer = $timers->{$giventimer};
 
 	my $opts =
 	{
@@ -321,10 +324,14 @@ if ($command eq 'ANNOTATE')						# annotate a timer (add comments)
 		MAXLEN				=>	255,
 		ALLTRIM				=>	1,
 		STRIP_BLANK_LINES	=>	1,
-		DEFAULT				=>	$timers->{$giventimer}->{'comments'},
+		DEFAULT				=>	$timer->{'comments'},
 	};
 
-	my $comments = input_text('comments', COMMENT_HEADER, $opts);
+	my $header = COMMENT_HEADER;
+	my $codes = join('/', grep { $_ } $timer->{'client'}, $timer->{'project'}, $timer->{'phase'});
+	$header .= "\nAnnotating Timer: $giventimer ($codes)\n";
+
+	my $comments = input_text('comments', $header, $opts);
 	print STDERR "got comments <<$comments>>\n" if DEBUG >= 3;
 	if ($timers->{$giventimer}->{'comments'} and not $comments)
 	{
@@ -553,9 +560,9 @@ if ($command eq 'LOGALL')
 	print <<END;
 
 this will log out all your timers for the week, giving you the opportunity to
-save them.  any timers whose names end in '-nw' are assumed to be time for the
+save them.  any timers whose names end in '$nw' are assumed to be time for the
 upcoming week, and will not be logged out, although they will be renamed to
-lose the '-nw' once they can be.  during this time a timer called '$log_timername'
+lose the '$nw' once they can be.  during this time a timer called '$log_timername'
 will automatically be started for you.  note: if you want to give up logging
 out a timer while you're in the middle of it, you can safely hit CTRL-C.  you
 will be given an opportunity to retry the logout, cancel the timer, or just
@@ -588,12 +595,28 @@ END
 		timer_command('START', $parminfo, $timers);
 	}
 
+	my %visited_nw_timers;
 	TIMER: foreach my $timer (sort keys %$timers)
 	{
 		next if $timer =~ /^:/;					# special markers; not real timers
-		next if $timer =~ /-nw/;				# timers for next week started early
 		next if $timer =~ /-save/;				# timers saved from a previous timer -L
 		next if exists $quarterly{$timer};		# not time to log these out yet
+
+		if ($timer =~ /$nw_re/)					# timers for next week started early
+		{
+			print STDERR "now dealing with nw timer $timer\n" if DEBUG >= 3;
+			unless (exists $visited_nw_timers{$timer})
+			{
+				# just rename it to get rid of the -nw
+				$parminfo->{'timer'} = $timer;
+				$visited_nw_timers{$timer} = true;
+
+				$timer =~ s/$nw_re//;
+				$parminfo->{'newtimer'} = $timer;
+				timer_command('RENAME', $parminfo, $timers);
+			}
+			next;
+		}
 
 		# shortcut
 		my $thistimer = $timers->{$timer};
@@ -609,7 +632,7 @@ END
 			next;
 		}
 
-		unless (exists $timers->{$timer . '-nw'} or exists $timers->{$timer . '-save'})
+		unless (exists $timers->{$timer . $nw} or exists $timers->{$timer . '-save'})
 		{
 			$parminfo->{'timer'} = $timer;
 			$parminfo->{'newtimer'} = $timer . '-save';
@@ -649,7 +672,7 @@ END
 			}
 		}
 
-		my $saved_timer = $timer . '-nw';
+		my $saved_timer = $timer . $nw;
 		unless (exists $timers->{$saved_timer})
 		{
 			$saved_timer = $timer . '-save';
@@ -657,11 +680,12 @@ END
 		}
 		if ($saved_timer)
 		{
-			if ($saved_timer =~ /-nw$/ or get_yn("\nsave this timer for next week?"))
+			if ($saved_timer =~ /$nw_re/ or get_yn("\nsave this timer for next week?"))
 			{
 				$parminfo->{'timer'} = $saved_timer;
 				$parminfo->{'newtimer'} = $timer;
 				timer_command('RENAME', $parminfo, $timers);
+				$visited_nw_timers{$saved_timer} = true;		# might get a -save in here, but it doesn't really matter
 			}
 			else
 			{
@@ -822,7 +846,7 @@ sub get_giventimer
 sub get_timer_parameter
 {
 	my ($parmname) = @_;
-	print "wantarray is ", defined wantarray ? wantarray : "undef", "\n" if DEBUG >= 4;
+	print STDERR "wantarray is ", defined wantarray ? wantarray : "undef", "\n" if DEBUG >= 4;
 
 	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{'timer'}};
