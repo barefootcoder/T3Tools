@@ -41,6 +41,7 @@ use constant PASSWORD_FILE => '.dbpasswd';
 
 my $HASH_PH = qr/(?:\(\s*)?\Q???\E(?:\s*\))?/;
 my $ARR_PH = $HASH_PH;
+my $VAR_VALUE = qr/^\{.+\}$/;
 
 
 # load_table is just an alias for load_data
@@ -280,7 +281,7 @@ sub _transform_query
 
 			# for variable substitution, we use placeholders and return the var values
 			# the funky substring is pretty much straight out of the perlvar manpage
-			# it avoids the use of $& (which cause severe performance penalties), _and_ it's faster for this
+			# it avoids the use of $& (which causes severe performance penalties), _and_ it's faster for this
 			# operation anyways, because using $& would involve a s//, which is going to be slower than using
 			# substr() as an lvalue
 			substr($query, $-[0], $+[0] - $-[0]) = '?';
@@ -291,9 +292,9 @@ sub _transform_query
 			my $hash = shift @ns_placeholders;
 
 			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
-					join(', ', ('?') x scalar(keys %$hash)) . ')';
+					join(',', map { $hash->{$_} =~ /$VAR_VALUE/ ? $hash->{$_} : '?' } sort keys %$hash) . ')';
 
-			push @vars, map { $hash->{$_} } sort keys %$hash;
+			push @vars, map { $hash->{$_} =~ /$VAR_VALUE/ ? () : $hash->{$_} } sort keys %$hash;
 		}
 	}
 
@@ -307,17 +308,14 @@ sub _transform_query
 	my $raw_query = $query;
 	# do *not* return a cached statement handle that is still active!
 	# this could screw up pathological cases
-	if (exists $_query_cache{$raw_query}
-			and not $_query_cache{$raw_query}->{Active})
+	if (exists $_query_cache{$raw_query} and not $_query_cache{$raw_query}->{Active})
 	{
 		$sth = $_query_cache{$raw_query};
-		print "DataStore current query:\n  cached version of\n$query\n"
-				if $this->{show_queries};
+		print "DataStore current query:\n  cached version of\n$query\n" if $this->{show_queries};
 	}
 	else											# do it the hard way
 	{
-		print STDERR "about to check for curly braces in query $query\n"
-				if DEBUG >= 3;
+		print STDERR "about to check for curly braces in query $query\n" if DEBUG >= 3;
 		# this outer if protects queries with no substitutions from paying
 		# the cost for searching for the various types of sub's
 		if ($query =~ /{/)	# if you want % to work in vi, you need a } here

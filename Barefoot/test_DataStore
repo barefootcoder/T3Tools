@@ -6,6 +6,7 @@ use warnings;
 use Barefoot::debug(1);
 
 use Carp;
+use Date::Format;
 use POSIX qw<strftime>;
 
 use Barefoot::base;
@@ -815,6 +816,11 @@ sub test_nonscalar_placeholders
 	my $res = $testds->do('insert into test1 values ???', { a => 'INS', b => '2001/1/1', c => 63.87 });
 	die("insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("insert gave wrong data") unless test_values("INS", [ 'INS', '2001-01-01', '63.87' ]);
+
+	my $today = time2str("%Y-%m-%d", time());	# hopefully we don't cross a midnight boundary between this line and the next
+	my $res = $testds->do('insert into test1 values ???', { a => 'IN2', b => '{&curdate}', c => 100.05 });
+	die("2nd insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("2nd insert gave wrong data") unless test_values("IN2", [ 'IN2', $today, '100.05' ]);
 
 	#my @rows_to_insert = ( { c => 123, a => 'INX', b => '2002-01-01' }, { c => 456, a => 'INX', b => '2002-01-01' },
 	#		{ c => 789, a => 'INX', b => '2002-01-01' } );
