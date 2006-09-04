@@ -257,7 +257,7 @@ sub _transform_query
 	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
 	print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
 	# variables and constants
-	while ($query =~ / { (\w+) } | (values) \s+ $HASH_PH /iox)
+	while ($query =~ / { (\w+) } | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
 	{
 		if ($1)															# just a variable
 		{
@@ -293,6 +293,15 @@ sub _transform_query
 
 			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
 					join(',', map { $hash->{$_} =~ /$VAR_VALUE/ ? $hash->{$_} : '?' } sort keys %$hash) . ')';
+
+			push @vars, map { $hash->{$_} =~ /$VAR_VALUE/ ? () : $hash->{$_} } sort keys %$hash;
+		}
+		elsif ($3)														# set ???
+		{
+			my $hash = shift @ns_placeholders;
+
+			substr($query, $-[0], $+[0] - $-[0]) = 'set ' .
+					join(', ', map { "$_ = " . ($hash->{$_} =~ /$VAR_VALUE/ ? $hash->{$_} : '?') } sort keys %$hash);
 
 			push @vars, map { $hash->{$_} =~ /$VAR_VALUE/ ? () : $hash->{$_} } sort keys %$hash;
 		}

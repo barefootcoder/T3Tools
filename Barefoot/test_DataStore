@@ -818,7 +818,7 @@ sub test_nonscalar_placeholders
 	die("insert gave wrong data") unless test_values("INS", [ 'INS', '2001-01-01', '63.87' ]);
 
 	my $today = time2str("%Y-%m-%d", time());	# hopefully we don't cross a midnight boundary between this line and the next
-	my $res = $testds->do('insert into test1 values ???', { a => 'IN2', b => '{&curdate}', c => 100.05 });
+	$res = $testds->do('insert into test1 values ???', { a => 'IN2', b => '{&curdate}', c => 100.05 });
 	die("2nd insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("2nd insert gave wrong data") unless test_values("IN2", [ 'IN2', $today, '100.05' ]);
 
@@ -828,4 +828,12 @@ sub test_nonscalar_placeholders
 	#die("multiple insert failed: " . $testds->last_error()) unless $res;
 	#die("multiple insert gave wrong data")
 	#		unless test_values("INX", map { [ @$_{qw<a b c>} ] } @rows_to_insert);
+
+	$res = $testds->do(q{ update test1 set ??? where a = 'INS' }, { a => 'UPD', c => 55.43 });
+	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("update gave wrong data") unless test_values("UPD", [ 'UPD', '2001-01-01', '55.43' ]);
+
+	$res = $testds->do(q{ update test1 set ??? where a = 'UPD' }, { a => 'UP2', b => '{&curdate}' });
+	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("update gave wrong data") unless test_values("UP2", [ 'UP2', $today, '55.43' ]);
 }
