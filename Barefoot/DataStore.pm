@@ -15,7 +15,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -126,8 +126,6 @@ our $funcs =
 our $procs = {};				# we don't use this, but someone else might
 
 our %_query_cache;				# this is only used by _transform_query
-
-1;
 
 
 #
@@ -250,8 +248,7 @@ sub _transform_query
 	# subroutine that calls queries, this is a good common place to check.
 	if ($this->{modified})
 	{
-		croak("can't execute query with config's pending; "
-				. "run commit_configs()");
+		croak("can't execute query with config's pending; run commit_configs()");
 	}
 
 	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
@@ -1009,3 +1006,18 @@ sub all_cols
 {
 	return @{ $_[0]->{currow} };
 }
+
+
+sub count
+{
+	my $this = shift;
+	$this->next_row() or return undef;
+	return $this->{currow}->col(0);
+}
+
+
+###########################
+# Return a true value:
+###########################
+
+1;

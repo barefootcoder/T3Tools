@@ -7,12 +7,12 @@ use Barefoot::debug(1);
 
 use Carp;
 use Date::Format;
-use POSIX qw<strftime>;
 
 use Barefoot::base;
 use Barefoot::range;
-use Barefoot::DataStore;
 use Barefoot::exception;
+use Barefoot::DataStore;
+use Barefoot::DataStore::procs;
 
 sub test_error(&@);
 
@@ -151,21 +151,17 @@ my %rdbms_query =
 );
 my $results = $testds->do($rdbms_query{$rdbms});
 die("got no results (query 1)") unless $results;
-die("results aren't blessed properly")
-		unless $results->isa("DataStore::ResultSet");
+die("results aren't blessed properly") unless $results->isa("DataStore::ResultSet");
 $results->next_row();
 die("incorrect number of columns") unless $results->num_cols() == 2;
 if ($rdbms eq 'Sybase')
 {
 	die("results are not correct")
-			unless $results->col("name") eq "sysobjects"
-			and $results->col("crdate") eq "Jan  1 1900 12:00AM";
+			unless $results->col("name") eq "sysobjects" and $results->col("crdate") eq "Jan  1 1900 12:00AM";
 }
 elsif ($rdbms eq 'mysql')
 {
-	die("results are not correct")
-			unless $results->col("user") eq "root"
-			and $results->col("host") eq "localhost";
+	die("results are not correct") unless $results->col("user") eq "root" and $results->col("host") eq "localhost";
 }
 else
 {
@@ -232,13 +228,11 @@ die("can't insert values properly: " . $testds->last_error()) unless $results;
 $results = $testds->do("insert test1 select * from test1");
 die("can't insert select properly: " . $testds->last_error()) unless $results;
 my $nrows = $results->rows_affected();
-die("didn't get proper number of rows (got $nrows)")
-		unless $nrows == NUM_TEST_ROWS;
+die("didn't get proper number of rows (got $nrows)") unless $nrows == NUM_TEST_ROWS;
 
 # ... and get data back out
 $results = $testds->do("select * from test1");
-die("can't get resultset colnames")
-			unless join(':', $results->colnames()) eq 'a:b:c';
+die("can't get resultset colnames") unless join(':', $results->colnames()) eq 'a:b:c';
 $count = 0;
 my %date_result =
 (
@@ -278,6 +272,7 @@ test_aliases();
 test_constants();
 test_bogus_function();
 test_indices();
+test_count_func();
 test_misc_functions();
 test_user_types();
 test_schema_trans();
@@ -308,6 +303,7 @@ test_load_append_replace();
 test_show_queries();
 test_transactions();
 test_nonscalar_placeholders();
+test_update_or_insert();
 
 # clean up our test stuff
 $testds = DataStore->open("test", $rootuser);	# have to be sa for this to work
@@ -449,6 +445,21 @@ sub test_indices
 			"can't drop an index (function drop_index");
 }
 
+sub test_count_func
+{
+	# make sure NULL result returns undef
+	die("null result count() does not return undef") if defined $testds->do(q{select null from test1 where 1 = 0})->count();
+
+	# make sure when we no rows returns zero
+	my $count = $testds->do(q{select count(*) from test1 where 1 = 0})->count();
+	die("no rows count() does not return zero") unless defined $count and $count == 0;
+
+	# and now make sure we get right number of rows
+	$count = $testds->do(q{select count(*) from test1 where a = 'xxx'})->count();
+	print STDERR "expected 30, got $count\n" if DEBUG >= 2;
+	die("count() does not return proper number") unless defined $count and $count == 30;
+}
+
 sub test_misc_functions
 {
 	my %date_format =
@@ -464,12 +475,9 @@ sub test_misc_functions
 	# note: if you happen to be running this at the exact moment of midnight,
 	# I suppose it's technically possible for the RDBMS date and the Unix
 	# date to fail to match.  just run it again.
-	print STDERR "current date: from data store = ",
-			substr($res->col(0), 0, 11), ", from Perl = ",
-			strftime($date_format{$rdbms}, localtime(time())), "\n" if DEBUG >= 2;
-	die("can't get current date")
-			unless substr($res->col(0), 0, 11)
-					eq strftime($date_format{$rdbms}, localtime(time()));
+	print STDERR "current date: from data store = ", substr($res->col(0), 0, 11),
+			", from Perl = ", time2str($date_format{$rdbms}, time()), "\n" if DEBUG >= 2;
+	die("can't get current date") unless substr($res->col(0), 0, 11) eq time2str($date_format{$rdbms}, time());
 
 	# ifnull function
 	db_assert($testds->do(q{ insert test1 values ('nul', null, 123.45) }), "couldn't insert data1 to test ifnull func");
@@ -836,4 +844,54 @@ sub test_nonscalar_placeholders
 	$res = $testds->do(q{ update test1 set ??? where a = 'UPD' }, { a => 'UP2', b => '{&curdate}' });
 	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("update gave wrong data") unless test_values("UP2", [ 'UP2', $today, '55.43' ]);
+}
+
+
+sub test_update_or_insert
+{
+	# get count of rows before starting
+	my $test1_rows = $testds->do(q{ select count(*) from test1 })->count();
+
+	# this one should insert
+	my $res = $testds->update_or_insert(test1 => q{ where a = 'U|I' }, { a => 'U|I', b => '1999/12/31', c => 99 });
+	die("upd_or_ins insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '1999-12-31', '99.00' ]);
+	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
+
+	# and this one should update
+	$res = $testds->update_or_insert(test1 => q{ where a = 'U|I' }, { a => 'U|I', b => '2001/1/1', c => 101 });
+	die("upd_or_ins update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '2001-01-01', '101.00' ]);
+	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
+
+	# this updates too, only with variables
+	$res = $testds->update_or_insert(test1 => q{ where a = {a} }, { a => 'U|I', c => 199 });
+	die("upd_or_ins 2nd update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '2001-01-01', '199.00' ]);
+	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
+
+	# now let's ditch that and try again with stamps
+	$res = $testds->do(q{ delete from test1 where a = 'U|I' });
+	die("can't reset upd_or_ins testing") unless $res and $res->rows_affected() == 1
+			and $testds->do(q{ select count(*) from test1 })->count() == $test1_rows;
+
+	test_error
+	{
+		$testds->update_or_insert_set_stamps(bogus => {c => 9 });
+	}
+	catch { /unknown trigger/ }
+	or die("didn't detect bogus trigger for upd_or_ins stamps");
+	$testds->update_or_insert_set_stamps(insert => { c => 0 }, update => { c => 1 });
+
+	# insert
+	$res = $testds->update_or_insert(test1 => q{ where a = 'U|I' }, { a => 'U|I', b => '1999/12/31' });
+	die("upd_or_ins insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '1999-12-31', '0.00' ]);
+	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
+
+	# and update
+	$res = $testds->update_or_insert(test1 => q{ where a = 'U|I' }, { a => 'U|I', b => '2001/1/1' });
+	die("upd_or_ins update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '2001-01-01', '1.00' ]);
+	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
 }
