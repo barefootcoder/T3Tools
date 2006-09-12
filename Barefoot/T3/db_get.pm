@@ -6,14 +6,13 @@
 #
 ###########################################################################
 #
-# This module contains routines which retreive various information from
-# the T3 database.
+# This module contains routines which retreive various information from the T3 database.
 #
 # #########################################################################
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -24,9 +23,9 @@ package Barefoot::T3::db_get;
 use strict;
 use warnings;
 
-use base qw<Exporter>;
-use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw < one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
+use base qw< Exporter >;
+use vars qw< @EXPORT_OK >;
+@EXPORT_OK = qw< one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
 
 use Barefoot::DataStore;
 
@@ -54,12 +53,14 @@ sub get_emp_id
 {
 	my ($user) = @_;
 
-	my $res = &t3->do("
-			select e.emp_id
-			from {~t3}.workgroup_user wu, {~timer}.employee e
-			where wu.nickname = '$user'
-			and wu.person_id = e.person_id
-	");
+	my $res = &t3->do(q{
+		select e.emp_id
+		from {@workgroup_user} wu, {@employee} e
+		where wu.nickname = {user}
+		and wu.person_id = e.person_id
+	},
+		user => $user,
+	);
 	die("default client query failed") unless $res and $res->next_row();
 	return $res->col(0);
 }
@@ -69,11 +70,13 @@ sub default_client
 {
 	my ($emp) = @_;
 
-	my $res = &t3->do("
-			select e.def_client
-			from {~timer}.employee e
-			where e.emp_id = '$emp'
-	");
+	my $res = &t3->do(q{
+		select e.def_client
+		from {@employee} e
+		where e.emp_id = {emp}
+	},
+		emp => $emp,
+	);
 	die("default client query failed") unless $res and $res->next_row();
 	return $res->col(0);
 }
@@ -83,11 +86,13 @@ sub client_rounding
 {
 	my ($client) = @_;
 
-	my $res = &t3->do("
-			select c.rounding, c.to_nearest
-			from {~timer}.client c
-			where c.client_id = '$client'
-	");
+	my $res = &t3->do(q{
+		select c.rounding, c.to_nearest
+		from {@client} c
+		where c.client_id = {client}
+	},
+		client => $client,
+	);
 	die("client rounding query failed:", &t3->last_error())
 			unless $res and $res->next_row();
 
