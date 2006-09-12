@@ -38,8 +38,7 @@ try
 }
 catch
 {
-	print STDERR "\nThe T3 data store could not be opened for the following "
-			. "reason:\n";
+	print STDERR "\nThe T3 data store could not be opened for the following reason:\n";
 	print STDERR "  ==>  $_\n";
 	print STDERR "Please run the make_t3_data_store script.  You may\n";
 	print STDERR "have to run this script as root.\n\n";
@@ -49,8 +48,7 @@ catch
 # slightly cheating here, since DataStore has no interface (yet) for
 # getting existing aliases
 # (note this a copy, not a reference)
-my %existing =
-		exists $t3->{config}->{aliases} ? %{ $t3->{config}->{aliases} } : ();
+my %existing = exists $t3->{config}->{aliases} ? %{ $t3->{config}->{aliases} } : ();
 
 my %current = ();
 
@@ -59,6 +57,7 @@ my %current = ();
 
 make_aliases("t3");
 make_aliases("timer");
+make_aliases("tracker");
 make_aliases("reporting");
 
 
