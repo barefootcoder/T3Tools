@@ -10,7 +10,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -320,7 +320,7 @@ sub insert_time_log
 sub save_to_db
 {
 	my ($user, $timers) = @_;
-	print STDERR "Entered save_to_db\n" if DEBUG >= 5;
+	print STDERR "Entered timer::save_to_db\n" if DEBUG >= 5;
 
 	# get the workgroup user ID because just about every query needs that
 	my $wuser_data = &t3->load_table("select wuser_id "
