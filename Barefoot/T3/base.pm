@@ -4,9 +4,8 @@
 #
 ###########################################################################
 #
-# This provides basic constants and functions that just about every T3
-# module will use.  Most of these are exported into your namespace whether
-# you like or not, so try to peruse the list carefully before including.
+# This provides basic constants and functions that just about every T3 module will use.  Most of these are
+# exported into your namespace whether you like or not, so try to peruse the list carefully before including.
 #
 # #########################################################################
 #
@@ -127,16 +126,14 @@ BEGIN
 		my ($module, $user) = @_;
 
 		# first, if we've figured this stuff out before, just return the cache
-		if (exists $basefiles{$user}
-				and exists $basefiles{$user}->{$module})
+		if (exists $basefiles{$user} and exists $basefiles{$user}->{$module})
 		{
 			return $basefiles{$user}->{$module};
 		}
 
 		# double check validity of which file
 		# (this indicates a logic error)
-		die("don't know extension for module $module")
-				unless exists $base_file_ext{$module};
+		die("don't know extension for module $module") unless exists $base_file_ext{$module};
 
 		my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
 		die("don't have a directory for timer files") unless $t3dir;
@@ -163,8 +160,7 @@ BEGIN
 
 		# double check validity of which file
 		# (this indicates a logic error)
-		die("don't know history file for module $module")
-				unless exists $hist_file{$module};
+		die("don't know history file for module $module") unless exists $hist_file{$module};
 
 		my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
 		die("don't have a directory for timer files") unless $t3dir;
@@ -192,9 +188,9 @@ use warnings;
 
 use base qw<Exporter>;
 our @EXPORT = (
-	qw< t3 t3_config t3_username >,
-	qw< t3_filenames t3_readfile t3_writefile t3_pipename t3_create_pipe >,
-	qw< timer_fields todo_fields >,
+	qw< t3 t3_config t3_username t3_filenames t3_readfile t3_writefile >,
+	qw< t3_pipename t3_create_pipe >,
+	qw< timer_fields todo_fields t3_values >,
 );
 
 use Data::Dumper;
@@ -203,6 +199,7 @@ use POSIX qw<mkfifo>;
 use Barefoot::base;
 use Barefoot::exception;
 use Barefoot::config_file;
+use Barefoot::DataStore::procs;
 
 
 use constant TEXT_SEP => "==========\n";
@@ -225,6 +222,11 @@ our %text_fields =
 						description	=>	1,
 					},
 );
+
+
+# set these up so we won't have to specify them all the time
+DataStore->update_or_insert_set_stamps(	insert => { create_user => $ENV{'USER'}, create_date => '{&curdate}' },
+										update => { chguser => $ENV{'USER'}, chgdate => '{&curdate}' });
 
 
 ###########################
@@ -300,6 +302,22 @@ sub t3_readfile
 		}
 
 		chomp;
+
+		if ( s/^:(.+?)\t// )
+		{
+			my $tag = $1;
+			my $tag_read = $opts->{'TAGS'}->{$tag};
+			if ($tag_read)
+			{
+				$tag_read->($objects, $_);
+				next;
+			}
+			else
+			{
+				die("don't know how to read tag line $tag in $module file");
+			}
+		}
+
 		my $obj = {};
 		($field_func{$module}->($obj)) = split("\t", $_, -1);
 		$objects->{$obj->{'name'}} = $obj;
@@ -411,7 +429,7 @@ sub t3_create_pipe
 #		(todo_fields($todo)) = split("\t");
 #
 # don't shoot us; we didn't make the rules.)
-
+#
 sub timer_fields : lvalue
 {
 	@{$_[0]}{ qw<name time client project phase posted todo_link> };
@@ -419,8 +437,23 @@ sub timer_fields : lvalue
 
 sub todo_fields : lvalue
 {
-	@{$_[0]}{ qw<name title client project due> };
+	@{$_[0]}{ qw<name title client project due posted> };
 }
+
+
+###########################
+# This works just like
+#
+#		values %$thingies
+#
+# except that it picks out the tags and doesn't return them.  Makes it much easier to loop through thingies
+# (timers, todods, etc).
+#
+sub t3_values
+{
+	return map { /^:/ ? () : $_[0]->{$_} } keys %{$_[0]};
+}
+
 
 
 ###########################
