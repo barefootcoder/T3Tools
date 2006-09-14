@@ -1,0 +1,44 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+
+use Barefoot;
+
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG == 0;
+debuggit(1 => "IF YOU SEE THIS, SOMETHING IS VERY WRONG");
+
+package test;
+use Barefoot;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG == 0;
+
+package test2;
+sub DEBUG () { return "test2"; }
+use Barefoot;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG eq "test2";
+
+package test3;
+use Barefoot;
+die("true not correct") unless true == 1;
+die("false not correct") unless false == 0;
+die("DEBUG not correct") unless DEBUG == 0;
+
+my $dir = `pwd`;
+chomp $dir;
+chdir '/';
+my $subtest_out = `$dir/test_Barefoot2 2>&1`;
+die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output\n";
+
+package test4;
+BEGIN
+{
+	die("debug didn't set higher level for value: $@") unless eval "use Barefoot(DEBUG => 2); DEBUG;" == 2;
+}
+
+print "ALL TESTS PASSED\n";

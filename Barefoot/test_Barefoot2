@@ -1,0 +1,13 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+
+use Barefoot(DEBUG => 1);
+
+die("DEBUG not correct") unless DEBUG == 1;
+die("DEBUG not correct") unless Barefoot::DEBUG == 1;
+debuggit(1 => "correct output");
+
+chdir '/';
+use Barefoot::test_Barefoot2;
