@@ -30,7 +30,7 @@ use DBI;
 use Carp;
 use Storable;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore::DataSet;
 
@@ -143,11 +143,9 @@ sub _login
 	if (exists $this->{config}->{connect_string})
 	{
 		my $server = $this->{config}->{server};
-		print STDERR "attempting to get password for server $server "
-				. "user $this->{user}\n" if DEBUG >= 3;
+		debuggit(3 => "attempting to get password for server", $server, "user", $this->{user});
 
-		print STDERR "environment for dbpasswd: user $ENV{USER} "
-				. "home $ENV{HOME} path $ENV{PATH}\n" if DEBUG >= 4;
+		debuggit(4 => "environment for dbpasswd: user", $ENV{USER}, "home", $ENV{HOME}, "path", $ENV{PATH});
 		my $passwd;
 		my $pwerror = "";
 		try
@@ -163,8 +161,7 @@ sub _login
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
 		# this is okay, as they will be ignored by RDBMSes they don't apply to
-		print STDERR "connecting via: $this->{config}->{connect_string}\n"
-				if DEBUG >= 4;
+		debuggit(4 => "connecting via:", $this->{config}->{connect_string});
 		$this->{dbh} = DBI->connect($this->{config}->{connect_string},
 				$this->{user}, $passwd,
 				{
@@ -175,19 +172,18 @@ sub _login
 				});
 		croak("can't connect to data store as user $this->{user}")
 				unless $this->{dbh};
-		print STDERR "successfully connected\n" if DEBUG >= 5;
+		debuggit(5 => "successfully connected");
 
 		if (exists $this->{initial_commands})
 		{
 			foreach my $command (@{$this->{initial_commands}})
 			{
-				print STDERR "now trying to perform command: $command\n";
+				debuggit(1 => "now trying to perform command: $command");
 				my $res = $this->do($command);
-				print STDERR "results has $res->{rows} rows\n";
-				print STDERR "last error was $this->{last_err}\n";
-				print STDERR "statement handle isa ", ref $res->{sth}, "\n";
-				croak("initial command ($command) failed for data store "
-						. $this->{name}) unless defined $res;
+				debuggit(1 => "results has", $res->{rows}, "rows");
+				debuggit(1 => "last error was", $this->{last_err});
+				debuggit(1 => "statement handle isa", ref $res->{sth});
+				croak("initial command ($command) failed for data store $this->{name}") unless defined $res;
 			}
 		}
 	}
@@ -220,6 +216,30 @@ sub _make_schema_trans
 }
 
 
+# used only by _transform_query (below) while checking for ??? (non-scalar placeholders)
+sub _check_for_variable
+{
+	my ($which, $value) = @_;
+
+	my $is_var = defined $value && $value =~ /$VAR_VALUE/;
+	debuggit(4 => "found that", $value, $is_var ? "is" : "is not", " a variable");
+	if ($which eq 'PLACEHOLDER')
+	{
+		# if it's a variable, just return it back; otherwise return a ? placeholder
+		return $is_var ? $value : '?';
+	}
+	elsif ($which eq 'BIND_VAL')
+	{
+		# if it's a variable, then there will be no bind val, so return an empty list (else return the value)
+		return $is_var ? () : $value;
+	}
+	else
+	{
+		die("don't know what to return when checking for variable ($which)");
+	}
+}
+
+
 # handle all substitutions on queries
 sub _transform_query
 {
@@ -228,13 +248,13 @@ sub _transform_query
 	# pull out any hash or array placeholders (a.k.a. "non-scalar placeholders")
 	my @ns_placeholders;
 	for (0..$#_) { push @ns_placeholders, $_[$_] and splice @_, $_, 1 if ref $_[$_] };
-	print STDERR "built ns_placeholders with ", scalar(@ns_placeholders), " elements\n" if DEBUG >= 4;
+	debuggit(4 => "built ns_placeholders with", scalar(@ns_placeholders), "elements");
 
 	my ($query, %temp_vars) = @_;
 	my @vars = ();
 	my $calc_funcs = {};
 
-	print STDERR "at top of transform: ", $this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+	debuggit(5 => "at top of transform:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
 	# it's a bad idea to allow queries while the data store is modified.
 	# the biggest reason is that the result set returned by do() contains
@@ -252,7 +272,7 @@ sub _transform_query
 	}
 
 	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
-	print STDERR "about to check for vars in $query\n" if DEBUG >= 5;
+	debuggit(5 => "about to check for vars in", $query);
 	# variables and constants
 	while ($query =~ / { (\w+) } | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
 	{
@@ -289,18 +309,18 @@ sub _transform_query
 			my $hash = shift @ns_placeholders;
 
 			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
-					join(',', map { $hash->{$_} =~ /$VAR_VALUE/ ? $hash->{$_} : '?' } sort keys %$hash) . ')';
+					join(',', map { _check_for_variable(PLACEHOLDER => $hash->{$_}) } sort keys %$hash) . ')';
 
-			push @vars, map { $hash->{$_} =~ /$VAR_VALUE/ ? () : $hash->{$_} } sort keys %$hash;
+			push @vars, map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash;
 		}
 		elsif ($3)														# set ???
 		{
 			my $hash = shift @ns_placeholders;
 
 			substr($query, $-[0], $+[0] - $-[0]) = 'set ' .
-					join(', ', map { "$_ = " . ($hash->{$_} =~ /$VAR_VALUE/ ? $hash->{$_} : '?') } sort keys %$hash);
+					join(', ', map { "$_ = " . _check_for_variable(PLACEHOLDER => $hash->{$_}) } sort keys %$hash);
 
-			push @vars, map { $hash->{$_} =~ /$VAR_VALUE/ ? () : $hash->{$_} } sort keys %$hash;
+			push @vars, map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash;
 		}
 	}
 
@@ -321,7 +341,7 @@ sub _transform_query
 	}
 	else											# do it the hard way
 	{
-		print STDERR "about to check for curly braces in query $query\n" if DEBUG >= 3;
+		debuggit(3 => "about to check for curly braces in query", $query);
 		# this outer if protects queries with no substitutions from paying
 		# the cost for searching for the various types of sub's
 		if ($query =~ /{/)	# if you want % to work in vi, you need a } here
@@ -348,8 +368,7 @@ sub _transform_query
 				$query =~ s/$schema/$translation/g;
 			}
 
-			print STDERR "about to check for functions in $query\n"
-					if DEBUG >= 5;
+			debuggit(5 => "about to check for functions in", $query);
 			# function calls
 			while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
 			{
@@ -358,7 +377,7 @@ sub _transform_query
 				my @args = ();
 				@args = split(/,\s*/, $2) if $2;
 
-				print STDERR "translating function $func_name\n" if DEBUG >= 4;
+				debuggit(4 => "translating function", $func_name);
 				croak("no translation scheme defined")
 						unless exists $this->{config}->{translation_type};
 				my $func_table = $funcs->{$this->{config}->{translation_type}};
@@ -369,29 +388,24 @@ sub _transform_query
 				$query =~ s/$function/$func_output/g;
 			}
 
-			print STDERR "about to check for calc cols in $query\n"
-					if DEBUG >= 5;
+			debuggit(5 => "about to check for calc cols in", $query);
 			# calculated columns
 			while ($query =~ / { \* (.*?) \s* = \s* (.*?) } /sx)
 			{
 				my $field_spec = quotemeta($&);
 				my $calc_col = $1;
 				my $calculation = $2;
-				print STDERR "found a calc column: $calc_col = $calculation\n"
-						if DEBUG >= 4;
-				print STDERR "going to replace <<$field_spec>> with "
-						. "<<1 as \"*$calc_col\">> in query <<$query>>\n"
-						if DEBUG >= 5;
+				debuggit(4 => "found a calc column:", $calc_col, "=", $calculation);
+				debuggit(5 => "going to replace <<", $field_spec, ">> with <<1 as \"*$calc_col\">> in query <<",
+						$query, ">>");
 
 				while ($calculation =~ /%(\w+)/)
 				{
 					my $col_ref = $1;
 					my $spec = quotemeta($&);
 
-					print STDERR "found col ref in calc: $col_ref\n"
-							if DEBUG >= 4;
-					print STDERR qq/going to sub $spec with /,
-							qq/\$_[0]->col("$col_ref")\n/ if DEBUG >= 5;
+					debuggit(4 => "found col ref in calc:", $col_ref);
+					debuggit(5 => "going to sub", $spec, "with", qq/\$_[0]->col($col_ref)/);
 					$calculation =~ s/$spec/\$_[0]->col("$col_ref")/g;
 				}
 
@@ -403,39 +417,35 @@ sub _transform_query
 					$calculation =~ s/$spec/\${\$_[0]}->{vars}->{$varname}/g;
 				}
 
-				print STDERR "going to evaluate calc func: ",
-						"sub { $calculation }\n" if DEBUG >= 2;
+				debuggit(2 => "going to evaluate calc func:", "sub { $calculation }");
 				my $calc_function = eval "sub { $calculation }";
-				croak("illegal syntax in calculated column: $field_spec ($@)")
-						if $@;
+				croak("illegal syntax in calculated column: $field_spec ($@)") if $@;
 				$calc_funcs->{$calc_col} = $calc_function;
 
 				$query =~ s/$field_spec/1 as "*$calc_col"/g;
-				print STDERR "after calc col subst, query is <<$query>>\n"
-						if DEBUG >= 5;
+				debuggit(5 => "after calc col subst, query is <<", $query, ">>");
 			}
 		}
 
-		print STDERR "after transform:\n$query\n" if DEBUG >= 4;
+		debuggit(4 => "after transform:", $query);
 		print "DataStore current query:\n$query\n" if $this->{show_queries};
 
-		print STDERR "before preparing query: ", $this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+		debuggit(5 => "before preparing query:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
 		$sth = $this->{dbh}->prepare($query);
 		unless ($sth)
 		{
 			$this->{last_err} = $this->{dbh}->errstr();
-			print STDERR "prepare bombed: $this->{last_err}\n" if DEBUG >= 5;
+			debuggit(5 => "prepare bombed:", $this->{last_err});
 			return wantarray ? () : undef;
 		}
-		print STDERR "successfully prepared query\n" if DEBUG >= 5;
+		debuggit(5 => "successfully prepared query");
 
 		# cache the sth for next time
 		$_query_cache{$raw_query} = $sth;
 	}
 
-	print STDERR "at bottom of transform: ",
-			$this->ping() ? "connected" : "NOT CONNECTED!", "\n" if DEBUG >= 5;
+	debuggit(5 => "at bottom of transform:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
 	if (wantarray)
 	{
@@ -467,8 +477,7 @@ sub _dump_attribs
 
 	foreach (keys %$this)
 	{
-		print STDERR "  $msg: $_ = $this->{$_}\n"
-				unless $_ eq 'config' or $_ eq 'vars';
+		print STDERR "  $msg: $_ = $this->{$_}\n" unless $_ eq 'config' or $_ eq 'vars';
 	}
 }
 
@@ -480,7 +489,7 @@ sub get_password
 {
 	my ($find_server, $find_user) = @_;
 	my $pwfile = "$ENV{HOME}/" . PASSWORD_FILE;
-	print STDERR "password file is $pwfile\n" if DEBUG >= 4;
+	debuggit(4 => "password file is", $pwfile);
 
 	croak("must have a $pwfile file in your home directory")
 			unless -e $pwfile;
@@ -497,14 +506,13 @@ sub get_password
 		if ($server eq $find_server and $user eq $find_user)
 		{
 			close(PW);
-			print STDERR "get_password: returning password $pass\n"
-					if DEBUG >= 4;
+			debuggit(4 => "get_password: returning password", $pass);
 			return $pass;
 		}
 	}
 	close(PW);
 
-	print STDERR "get_password: couldn't find password\n" if DEBUG >= 4;
+	debuggit(4 => "get_password: couldn't find password");
 	return undef;
 }
 
@@ -515,7 +523,7 @@ sub open
 	my ($data_store_name, $user_name) = @_;
 
 	my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-	print STDERR "file name is $ds_filename\n" if DEBUG >= 3;
+	debuggit(3 => "file name is", $ds_filename);
 	croak("data store $data_store_name not found") unless -e $ds_filename;
 
 	my $this = {};
@@ -541,8 +549,7 @@ sub open
 
 	bless $this, $class;
 	$this->_login();
-	print STDERR "this is a ", ref $this, " for ds $data_store_name\n"
-			if DEBUG >= 4;
+	debuggit(4 => "this is a", ref $this, "for ds", $data_store_name);
 	return $this;
 }
 
@@ -650,7 +657,7 @@ sub do
 		$this->{last_err} = $sth->errstr();
 		return undef;
 	}
-	print STDERR "successfully executed query\n" if DEBUG >= 5;
+	debuggit(5 => "successfully executed query");
 
 	my $results = {};
 	$results->{ds} = $this;
@@ -779,7 +786,7 @@ sub append_table
 
 	# build an insert statement
 	my @colnames = $data->colnames();
-	print STDERR "column names are: @colnames\n" if DEBUG >= 3;
+	debuggit(3 => "column names are:", @colnames);
 	my $columns = join(',', @colnames);
 	my $placeholders = join(',', ("?") x scalar(@colnames));
 	my $query = "insert $table ($columns) values ($placeholders)";
@@ -869,7 +876,7 @@ sub overwrite_table
 	}
 	$column_list .= ", primary key ($pk)" if $pk;
 	$column_list .= ")";
-	print STDERR "final column list is $column_list\n" if DEBUG >= 3;
+	debuggit(3 => "final column list is", $column_list);
 
 	if ($this->do("select 1 from $table_name where 1 = 0"))
 	{

@@ -3,12 +3,10 @@
 use strict;
 use warnings;
 
-use Barefoot::debug(1);
-
 use Carp;
 use Date::Format;
 
-use Barefoot::base;
+use Barefoot(DEBUG => 1);
 use Barefoot::range;
 use Barefoot::exception;
 use Barefoot::DataStore;
@@ -363,8 +361,7 @@ sub test_output
 
 	# print STDERR "about to do $query\n";
 	my $res = $testds->do($query);
-	croak("test_output query failed: " . $testds->last_error())
-			unless defined $res;
+	croak("test_output query failed: " . $testds->last_error()) unless defined $res;
 	my $output = "";
 	$output .= join(':', $res->all_cols()) . "\n" while $res->next_row();
 	print STDERR "got output $output\n" if DEBUG >= 2;
@@ -825,10 +822,22 @@ sub test_nonscalar_placeholders
 	die("insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("insert gave wrong data") unless test_values("INS", [ 'INS', '2001-01-01', '63.87' ]);
 
+	try
+	{
+		local $SIG{__WARN__} = sub { die $_[0] };			# have to catch warnings to make sure NULL values don't warn
+		$res = $testds->do('insert into test1 values ???', { a => 'INN', b => '2000/1/1', c => undef });
+		die("insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	}
+	catch
+	{
+		print STDERR "$_ at $__FILE__ line $__LINE__\n";
+		die("insert ??? warns on NULL values");
+	};
+
 	my $today = time2str("%Y-%m-%d", time());	# hopefully we don't cross a midnight boundary between this line and the next
-	$res = $testds->do('insert into test1 values ???', { a => 'IN2', b => '{&curdate}', c => 100.05 });
+	$res = $testds->do('insert into test1 values ???', { a => 'INF', b => '{&curdate}', c => 100.05 });
 	die("2nd insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
-	die("2nd insert gave wrong data") unless test_values("IN2", [ 'IN2', $today, '100.05' ]);
+	die("2nd insert gave wrong data") unless test_values("INF", [ 'INF', $today, '100.05' ]);
 
 	#my @rows_to_insert = ( { c => 123, a => 'INX', b => '2002-01-01' }, { c => 456, a => 'INX', b => '2002-01-01' },
 	#		{ c => 789, a => 'INX', b => '2002-01-01' } );
@@ -840,6 +849,18 @@ sub test_nonscalar_placeholders
 	$res = $testds->do(q{ update test1 set ??? where a = 'INS' }, { a => 'UPD', c => 55.43 });
 	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("update gave wrong data") unless test_values("UPD", [ 'UPD', '2001-01-01', '55.43' ]);
+
+	try
+	{
+		local $SIG{__WARN__} = sub { die $_[0] };			# have to catch warnings to make sure NULL values don't warn
+		$res = $testds->do(q{ update test1 set ??? where a = 'INN' }, { a => 'UPN', b => '2001/1/1', c => undef });
+		die("insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
+	}
+	catch
+	{
+		print STDERR "$_ at $__FILE__ line $__LINE__\n";
+		die("update ??? warns on NULL values");
+	};
 
 	$res = $testds->do(q{ update test1 set ??? where a = 'UPD' }, { a => 'UP2', b => '{&curdate}' });
 	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
