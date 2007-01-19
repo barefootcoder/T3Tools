@@ -33,7 +33,7 @@ my $dir = `pwd`;
 chomp $dir;
 chdir '/';
 my $subtest_out = `$dir/test_Barefoot2 2>&1`;
-die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output\n";
+die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output <<undef>>\n";
 
 package test4;
 BEGIN
