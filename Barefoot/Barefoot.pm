@@ -139,7 +139,7 @@ sub _set_debuggit_func
 		eval qq{
 			sub ${caller_package}::debuggit
 			{
-				print STDERR "\@_\n" if DEBUG >= shift;
+				print STDERR join(' ', map { defined \$_ ? \$_ : '<<undef>>' } \@_), "\\n" if DEBUG >= shift;
 			}
 		};
 	}
