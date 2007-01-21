@@ -266,7 +266,7 @@ sub group
 				{
 					# source col not NULL, so dest col must be not NULL
 					# and equal (doing string equal here)
-					debuggit(3 => "source col", $src_col, "dest col not defined) if not defined $dest_col;
+					debuggit(3 => "source col", $src_col, "dest col not defined") if not defined $dest_col;
 					debuggit(3 => "source col", $src_col, "dest col", $dest_col)
 							if defined $dest_col and $src_col ne $dest_col;
 					return undef unless defined $dest_col and $src_col eq $dest_col;
@@ -291,7 +291,7 @@ sub group
 
 		$process->($src, $dst) if defined $process;
 	}
-	debuggit(4 => Data::Dumper->Dump( [$group_data], [ qw<group_data> ] );
+	debuggit(4 => Data::Dumper->Dump( [$group_data], [ qw<group_data> ] ));
 
 	# now sort group_data into a new dataset (new_data)
 	my $new_data = [];
