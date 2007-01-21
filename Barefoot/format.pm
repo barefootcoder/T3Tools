@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For CVS:
-# $Date: 2003/04/11 02:56:33 $
-#
-# $Id: format.pm,v 1.9 2003/04/11 02:56:33 buddy Exp $
-# $Revision: 1.9 $
-
 ###########################################################################
 #
 # format
@@ -14,38 +6,32 @@
 #
 # A few subs, which allows you to actually _use_ Perl formats:
 #
-#	my $formatted = swrite(MY_FORMAT, @stuff);
-#	# swrite() treats its first argument as a Perl-style format
-#	# all other args are expected to be the variables defined in the format
-#	# it returns a formatted string
+#		my $formatted = swrite(MY_FORMAT, @stuff);
+#		# swrite() treats its first argument as a Perl-style format
+#		# all other args are expected to be the variables defined in the format
+#		# it returns a formatted string
 #
-#	writeln(MY_FORMAT, @stuff);
-#	# writeln() treats its first argument as a Perl-style format
-#	# all other args are expected to be the variables defined in the format
-#	# first, writeln() will append $\ (or \n by default) to MY_FORMAT,
-#	#	unless it is already there
-#	# then writeln() prints the formatted string to the currently selected
-#	#	filehandle (STDOUT by default)
+#		writeln(MY_FORMAT, @stuff);
+#		# writeln() treats its first argument as a Perl-style format
+#		# all other args are expected to be the variables defined in the format
+#		# first, writeln() will append $\ (\n by default) to MY_FORMAT, unless it is already there
+#		# then writeln() prints the formatted string to the currently selected filehandle (STDOUT by default)
 #
 # FORMATS WITH swrite() AND writeln()
 #
-# In general, most standard Perl formats should work.  There are some
-# additional features and caveats, however.
+# In general, most standard Perl formats should work.  There are some additional features and caveats,
+# however.
 #
 #		1) Undefined Variables
-#		Undefined variables sent to either swrite() or writeln() are treated
-#		exactly like empty strings.  In general, this is considered to be a
-#		Good Thing(tm).  If you disagree, you should make other arrangements
-#		(like checking the vars before you call the funcs, or write your own
-#		damn funcs).
+#		Undefined variables sent to either swrite() or writeln() are treated exactly like empty strings.  In
+#		general, this is considered to be a Good Thing(tm).  If you disagree, you should make other
+#		arrangements (like checking the vars before you call the funcs, or write your own damn funcs).
 #
 #		2) Multiline Formats
-#		These are achieved as normal, that is by using a ^ format field
-#		instead of a @ format field, but you should note that putting other
-#		formats _after_ a multiline format on the same line is probably
-#		doomed to failure.  Also, swrite and writeln support an additional
-#		feature, which is the continuation multiline format.  For example,
-#		let's say you want your output to look like this:
+#		These are achieved as normal, that is by using a ^ format field instead of a @ format field, but you
+#		should note that putting other formats _after_ a multiline format on the same line is probably doomed
+#		to failure.  Also, swrite and writeln support an additional feature, which is the continuation
+#		multiline format.  For example, let's say you want your output to look like this:
 #
 #				Description:	Here's some text, which may continue
 #								on till the next line or might even
@@ -56,36 +42,29 @@
 #				Description:	^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #				~~				^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #
-#		but this is not going to work for you because you now have two
-#		different formats for the same variable.  If you sent the same
-#		variable twice to swrite or writeln, you'd see the first line
-#		repeated, which is definitely not what you want.  Therefore, make
-#		your format look like:
+#		but this is not going to work for you because you now have two different formats for the same
+#		variable.  If you sent the same variable twice to swrite or writeln, you'd see the first line
+#		repeated, which is definitely not what you want.  Therefore, make your format look like:
 #
 #				Description:	^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
 #				~~				^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #
-#		Note that the only difference is the & character at the end of the
-#		first line.  This indicates that the same value should be continued
-#		to the next line.  When you do this, make sure there are no formats
-#		between the continuation and the next format for that variable, and
-#		only send the variable itself once to swrite or writeln.
+#		Note that the only difference is the & character at the end of the first line.  This indicates that
+#		the same value should be continued to the next line.  When you do this, make sure there are no formats
+#		between the continuation and the next format for that variable, and only send the variable itself once
+#		to swrite or writeln.
 #
-#		One additional caveat: the & is replaced with the character in front
-#		of it, so don't try to pass a format like "^&".  Your format must be
-#		at least 3 characters to use this feature.
+#		One additional caveat: the & is replaced with the character in front of it, so don't try to pass a
+#		format like "^&".  Your format must be at least 3 characters to use this feature.
 #
 #		3) Date Formats
-#		Some basic functionality to allow you to format a time integer (i.e.,
-#		a number of seconds since the epoch, such as might be returned by
-#		time()) is included.  To allow maximum flexibility, a date format
-#		is defined a bit differently from other formats.  A date format
-#		starts with either @ or #, and continues until it hits whitespace
-#		(or the end of the format string).  For this format, recognizable
-#		pieces which describe the month, day, year, hours, minutes, or day
-#		of week are substituted with the relevant pieces.  If a piece begins
-#		with @, it is space-padded; if it begins with #, it is zero-padded.
-#		Here are some examples, using January 5, 1990:
+#		Some basic functionality to allow you to format a time integer (i.e., a number of seconds since the
+#		epoch, such as might be returned by time()) is included.  To allow maximum flexibility, a date format
+#		is defined a bit differently from other formats.  A date format starts with either @ or #, and
+#		continues until it hits whitespace (or the end of the format string).  For this format, recognizable
+#		pieces which describe the month, day, year, hours, minutes, or day of week are substituted with the
+#		relevant pieces.  If a piece begins with @, it is space-padded; if it begins with #, it is
+#		zero-padded.  Here are some examples, using January 5, 1990:
 #
 #				@m/@d/@y		# yields " 1/ 5/90"
 #				@m/@d/@yyy		# " 1/ 5/1990" (no Y2K problem)
@@ -95,15 +74,14 @@
 #				@ww #m-#d-#y	# "Fri 01-05-90" (but must send var twice!)
 #								# note that "#ww" doesn't make any sense
 #
-#		That last example is worth stressing: if you put a literal space
-#		in your format, what you're really doing is making two separate
-#		formats, and that means you have to send your variable twice.
+#		That last example is worth stressing: if you put a literal space in your format, what you're really
+#		doing is making two separate formats, and that means you have to send your variable twice.
 #
 #
 # ADDITIONAL FUNCTIONS
 #
-# A function which allows you deal with double-quoted, comma-separated
-# values (commonly referred to as CSV) just as you would a normal split:
+# A function which allows you deal with double-quoted, comma-separated values (commonly referred to as CSV)
+# just as you would a normal split:
 #
 #	my @fields = CSV::split($expr);
 #	# /PATTERN/ not needed; always assumed to be , (with double-quoting)
@@ -113,8 +91,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000-2003 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2000-2007 Barefoot Software
 #
 ###########################################################################
 
@@ -123,12 +102,13 @@ package Barefoot::format;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Text::CSV;
 use Date::Format;
 use Data::Dumper;
 
-use Barefoot::base;
+use Barefoot;
 
 
 use base qw<Exporter>;
@@ -152,18 +132,17 @@ our %date_fmt =
 	'#Y'	=>	'%Y',
 );
 
-
-#
-# Subroutines:
-#
-
-
 # can't make these true constants or else we can't interpolate with them
 our $STD_FMT = '\@[<>|]*';
 our $MLINE_FMT = '\^[<>|]*\&?';
 our $NUM_FMT = '[@^]\#*\.\#*';
 our $DATE_FMT_PART = '[@\#][mdywHMS]+';
 our $DATE_FMT = $DATE_FMT_PART . '.*?(?=\s|$)';
+
+
+#
+# Subroutines:
+#
 
 sub swrite
 {
@@ -179,11 +158,8 @@ sub swrite
 	foreach (split(/(?<=$terminator)/, $format))
 	{
 		# now break each line into pieces
-		my @pieces = split(
-				/ ( $DATE_FMT | $NUM_FMT | $MLINE_FMT | $STD_FMT ) /x,
-				$_, -1
-		);
-		print STDERR Dumper(\@pieces) if DEBUG >= 4;
+		my @pieces = split( / ( $DATE_FMT | $NUM_FMT | $MLINE_FMT | $STD_FMT ) /x, $_, -1 );
+		debuggit(4 => Dumper(\@pieces));
 
 		# start where we left off, but continuation makes us back up one
 		if ($continuation)
@@ -231,7 +207,7 @@ sub swrite
 				# by Date::Format, these are stored in the %date_fmt hash
 				my $format = $_;
 				$format =~ s/($DATE_FMT_PART)/$date_fmt{$1}/eg;
-				print STDERR "translated $_ into $format\n" if DEBUG >= 3;
+				debuggit(3 => "translated", $_, "into", $format);
 
 				# now put a generic format in the format string and
 				# the results of Date::Format in the variable list
@@ -244,17 +220,17 @@ sub swrite
 		}
 
 		my $template = join('', @pieces);
-		print STDERR "template is [[$template]]\n" if DEBUG >= 3;
+		debuggit(3 => "template is [[", $template, "]]");
 		if ($pos > $startpos)
 		{
-			print STDERR "formline with vars from $startpos to ", $pos - 1, "\n" if DEBUG >= 3;
+			debuggit(3 => "formline with vars from", $startpos, "to", $pos - 1);
 			formline($template, @vars[$startpos..$pos-1]);
 		}
 		else
 		{
 			$^A .= $template;
 		}
-		print STDERR "after format, accum is [[$^A]]\n" if DEBUG >= 3;
+		debuggit(3 => "after format, accum is [[", $^A, "]]");
 	}
 
 	return $^A;
@@ -265,7 +241,7 @@ sub writeln
 	my $format = shift;
 	my $terminator = $\ || "\n";
 	$format .= $terminator unless $format =~ /$terminator\Z/;
-	print STDERR "new format is [[$format]]\n" if DEBUG >= 3;
+	debuggit(3 => "new format is [[", $format, "]]");
 	print swrite($format, @_);
 }
 

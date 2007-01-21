@@ -7,7 +7,7 @@ use Barefoot::debug(1);
 use Carp;
 use Date::Parse;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::format;
 
 
