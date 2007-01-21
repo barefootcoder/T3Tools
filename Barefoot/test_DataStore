@@ -603,6 +603,15 @@ sub test_vars
 	test_output("select * from test1 where a = 'var'",
 			"var:$date_result{$rdbms}:96.55\n",
 			"override vars don't work");
+
+	# now test using temporary vars + standard placeholders
+	$testds->do("insert test1 values
+					( ?, '$date_result{$rdbms}', {c_val} )",
+				c_val => 88.88, 'v?')
+			or die("can't insert for var/placeholder test");
+	test_output("select * from test1 where a = 'v?'",
+			"v?:$date_result{$rdbms}:88.88\n",
+			"placeholder/var mix doesn't work");
 }
 
 sub test_conditionals
@@ -839,12 +848,12 @@ sub test_nonscalar_placeholders
 	die("2nd insert failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("2nd insert gave wrong data") unless test_values("INF", [ 'INF', $today, '100.05' ]);
 
-	#my @rows_to_insert = ( { c => 123, a => 'INX', b => '2002-01-01' }, { c => 456, a => 'INX', b => '2002-01-01' },
-	#		{ c => 789, a => 'INX', b => '2002-01-01' } );
-	#$res = $testds->do('insert into test1 values ???', @rows_to_insert);
-	#die("multiple insert failed: " . $testds->last_error()) unless $res;
-	#die("multiple insert gave wrong data")
-	#		unless test_values("INX", map { [ @$_{qw<a b c>} ] } @rows_to_insert);
+	my @rows_to_insert = ( { c => 123.11, a => 'INX', b => '2002-01-01' }, { c => 456.66, a => 'INX', b => '2002-01-01' },
+			{ c => 789.99, a => 'INX', b => '2002-01-01' } );
+	$res = $testds->do('insert into test1 values ???', @rows_to_insert);
+	die("multiple insert failed: " . $testds->last_error()) unless $res;
+	die("multiple insert gave wrong data")
+			unless test_values("INX", map { [ @$_{qw<a b c>} ] } @rows_to_insert);
 
 	$res = $testds->do(q{ update test1 set ??? where a = 'INS' }, { a => 'UPD', c => 55.43 });
 	die("update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;

@@ -15,7 +15,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -29,6 +29,7 @@ use warnings;
 use DBI;
 use Carp;
 use Storable;
+use Text::Balanced qw<:ALL>;
 
 use Barefoot;
 use Barefoot::exception;
@@ -39,6 +40,7 @@ use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
 
 use constant PASSWORD_FILE => '.dbpasswd';
 
+my $SCALAR_PH = qr/(?<=[^?])\?(?=[^?]|$)/;
 my $HASH_PH = qr/(?:\(\s*)?\Q???\E(?:\s*\))?/;
 my $ARR_PH = $HASH_PH;
 my $VAR_VALUE = qr/^\{.+\}$/;
@@ -47,7 +49,10 @@ my $VAR_VALUE = qr/^\{.+\}$/;
 # load_table is just an alias for load_data
 # it's just there for people who feel more comfortable matching it up
 # with replace_table and append_table
-*load_table = \&load_data;
+{
+	no warnings 'once';
+	*load_table = \&load_data;
+}
 
 
 our $data_store_dir = DEBUG ? "." : "/etc/data_store";
@@ -123,9 +128,9 @@ our $funcs =
 						},
 };
 
-our $procs = {};				# we don't use this, but someone else might
+our $procs = {};														# we don't use this, but someone else might
 
-our %_query_cache;				# this is only used by _transform_query
+our %_query_cache;														# this is only used by _transform_query
 
 
 #
@@ -140,17 +145,17 @@ sub _login
 {
 	my $this = shift;
 
-	if (exists $this->{config}->{connect_string})
+	if (exists $this->{'config'}->{'connect_string'})
 	{
-		my $server = $this->{config}->{server};
-		debuggit(3 => "attempting to get password for server", $server, "user", $this->{user});
+		my $server = $this->{'config'}->{'server'};
+		debuggit(3 => "attempting to get password for server", $server, "user", $this->{'user'});
 
-		debuggit(4 => "environment for dbpasswd: user", $ENV{USER}, "home", $ENV{HOME}, "path", $ENV{PATH});
+		debuggit(4 => "environment for dbpasswd: user", $ENV{'USER'}, "home", $ENV{'HOME'}, "path", $ENV{'PATH'});
 		my $passwd;
 		my $pwerror = "";
 		try
 		{
-			$passwd = get_password($server, $this->{user});
+			$passwd = get_password($server, $this->{'user'});
 		}
 		catch
 		{
@@ -161,29 +166,27 @@ sub _login
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
 		# this is okay, as they will be ignored by RDBMSes they don't apply to
-		debuggit(4 => "connecting via:", $this->{config}->{connect_string});
-		$this->{dbh} = DBI->connect($this->{config}->{connect_string},
-				$this->{user}, $passwd,
-				{
-					PrintError => 0,
-					# Sybase specific attributes
-					syb_failed_db_fatal => 1,
-					syb_show_sql => 1,
-				});
-		croak("can't connect to data store as user $this->{user}")
-				unless $this->{dbh};
+		debuggit(4 => "connecting via:", $this->{'config'}->{'connect_string'});
+		$this->{'dbh'} = DBI->connect($this->{'config'}->{'connect_string'}, $this->{'user'}, $passwd,
+			{
+				PrintError => 0,
+				# Sybase specific attributes
+				syb_failed_db_fatal => 1,
+				syb_show_sql => 1,
+			});
+		croak("can't connect to data store as user $this->{'user'}") unless $this->{'dbh'};
 		debuggit(5 => "successfully connected");
 
-		if (exists $this->{initial_commands})
+		if (exists $this->{'initial_commands'})
 		{
-			foreach my $command (@{$this->{initial_commands}})
+			foreach my $command (@{$this->{'initial_commands'}})
 			{
 				debuggit(1 => "now trying to perform command: $command");
 				my $res = $this->do($command);
-				debuggit(1 => "results has", $res->{rows}, "rows");
-				debuggit(1 => "last error was", $this->{last_err});
-				debuggit(1 => "statement handle isa", ref $res->{sth});
-				croak("initial command ($command) failed for data store $this->{name}") unless defined $res;
+				debuggit(1 => "results has", $res->{'rows'}, "rows");
+				debuggit(1 => "last error was", $this->{'last_err'});
+				debuggit(1 => "statement handle isa", ref $res->{'sth'});
+				croak("initial command ($command) failed for data store $this->{'name'}") unless defined $res;
 			}
 		}
 	}
@@ -194,13 +197,11 @@ sub _initialize_vars
 {
 	my $this = shift;
 
-	$this->{vars} = {};
-	if (exists $this->{config}->{translation_type})
+	$this->{'vars'} = {};
+	if (exists $this->{'config'}->{'translation_type'})
 	{
-		my $constant_table
-				= $constants->{$this->{config}->{translation_type}};
-		$this->{vars}->{$_} = $constant_table->{$_}
-				foreach keys %$constant_table;
+		my $constant_table = $constants->{$this->{'config'}->{'translation_type'}};
+		$this->{'vars'}->{$_} = $constant_table->{$_} foreach keys %$constant_table;
 	}
 	# _dump_attribs($this, "after var init");
 }
@@ -210,9 +211,8 @@ sub _make_schema_trans
 {
 	my $this = shift;
 
-	$this->{schema_translation}
-				= sub { eval $this->{config}->{schema_translation_code} }
-			if exists $this->{config}->{schema_translation_code};
+	$this->{'schema_translation'} = sub { eval $this->{'config'}->{'schema_translation_code'} }
+			if exists $this->{'config'}->{'schema_translation_code'};
 }
 
 
@@ -244,29 +244,67 @@ sub _check_for_variable
 sub _transform_query
 {
 	my $this = shift;
+	my $query = shift;
 
-	# pull out any hash or array placeholders (a.k.a. "non-scalar placeholders")
-	my @ns_placeholders;
-	for (0..$#_) { push @ns_placeholders, $_[$_] and splice @_, $_, 1 if ref $_[$_] };
+	# this is an algorithm cribbed from Filter::Simple (by the excellent Damian Conway) to replace all
+	# quoted strings with string placeholders (not to be confused with SQL placeholders) so they're out of the
+	# way while we search for ?'s (i.e. SQL placeholders).  after we're done searching, we'll put the quoted
+	# strings back.  in this way, we avoid thinking that a ? in quotes is actually a SQL placeholder without
+	# having to lex & parse the whole damn SQL string
+	my @quoted_strings;
+	$query = join('', map { ref $_ ? scalar((push @quoted_strings, $_), "{Q$#quoted_strings}") : $_ }
+		extract_multiple($query,
+		[
+			{ SQ => sub { extract_delimited($_[0], q{'}, '', q{'}) } },
+			{ DQ => sub { extract_delimited($_[0], q{"}, '', q{"}) } },
+			qr/[^'"]+/,
+		])
+	);
+	debuggit(4 => "after replacing quoted strings, query looks like:", $query);
+
+	# figure out how many standard placeholder (a.k.a. "scalar placeholder") values we should have and chop
+	# them off tne end of our parameter list first
+	# note that we replace the ?'s with an easier to identify string; this avoids having the
+	# ?-in-quoted-strings problem again
+	my $sc_placeholder_count = $query =~ s/$SCALAR_PH/{??}/g;
+	my @sc_placeholders = splice @_, -$sc_placeholder_count if $sc_placeholder_count;
+	debuggit(4 => "built placeholder vars with", scalar(@sc_placeholders), "elements");
+
+	# now put the quoted strings back (note that it's okay to have a _variable_ inside a quoted string, so we
+	# don't do anything in particular to avoid those)
+	$query =~ s/{Q(\d+)}/${$quoted_strings[$1]}/g;
+	
+	# sort out parameters according to whether they're the query (first param), hash or array placeholder
+	# (a.k.a. "non-scalar placeholder") values (any hashrefs or arrayrefs), or variables (everything else)
+	my (@ns_placeholders, @var_stuff);
+	foreach (@_)
+	{
+		if (ref $_)
+		{
+			push @ns_placeholders, $_;
+		}
+		else
+		{
+			push @var_stuff, $_;
+		}
+	}
+	my %temp_vars = @var_stuff;
+	debuggit(4 => "built temp_vars with", @var_stuff / 2, "elements");
 	debuggit(4 => "built ns_placeholders with", scalar(@ns_placeholders), "elements");
 
-	my ($query, %temp_vars) = @_;
 	my @vars = ();
 	my $calc_funcs = {};
 
 	debuggit(5 => "at top of transform:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
 	# it's a bad idea to allow queries while the data store is modified.
-	# the biggest reason is that the result set returned by do() contains
-	# a reference to the data store, so if the result sets remain in scope
-	# for some reason, the destructor won't save the data store (in fact,
-	# it won't even get called, because there's still an outstanding
-	# reference--or more--to the object).  this could produce weird results,
-	# including trying to save the same data store twice (or more) in a row
-	# with different modifications.  for that reason, we just disallow it
-	# altogether.  and since this function gets called by every main
-	# subroutine that calls queries, this is a good common place to check.
-	if ($this->{modified})
+	# the biggest reason is that the result set returned by do() contains a reference to the data store, so if
+	# the result sets remain in scope for some reason, the destructor won't save the data store (in fact, it
+	# won't even get called, because there's still an outstanding reference--or more--to the object).  this
+	# could produce weird results, including trying to save the same data store twice (or more) in a row with
+	# different modifications.  for that reason, we just disallow it altogether.  and since this function gets
+	# called by every main subroutine that calls queries, this is a good common place to check.
+	if ($this->{'modified'})
 	{
 		croak("can't execute query with config's pending; run commit_configs()");
 	}
@@ -274,7 +312,7 @@ sub _transform_query
 	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
 	debuggit(5 => "about to check for vars in", $query);
 	# variables and constants
-	while ($query =~ / { (\w+) } | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
+	while ($query =~ / { (\w+) } | (\Q{??}\E) | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
 	{
 		if ($1)															# just a variable
 		{
@@ -287,9 +325,9 @@ sub _transform_query
 				# temp_vars override previously defined vars
 				$value = $temp_vars{$varname};
 			}
-			elsif (exists $this->{vars}->{$varname})
+			elsif (exists $this->{'vars'}->{$varname})
 			{
-				$value = $this->{vars}->{$varname};
+				$value = $this->{'vars'}->{$varname};
 			}
 			else
 			{
@@ -304,16 +342,38 @@ sub _transform_query
 			substr($query, $-[0], $+[0] - $-[0]) = '?';
 			push @vars, $value;
 		}
-		elsif ($2)														# values ???
+		elsif ($2)														# ? (standard placeholder)
 		{
-			my $hash = shift @ns_placeholders;
+			# have to put the placeholder back the way it was
+			# note that if we hadn't changed the ?'s to something else, we not only would have possibly
+			# counted ?'s in quoted strings, we'd have also generated an infinite loop here
+			# (funky substring same as above)
+			substr($query, $-[0], $+[0] - $-[0]) = '?';
+			push @vars, shift @sc_placeholders;
+		}
+		elsif ($3)														# values ???
+		{
+			# since we can have multiple values here, and nowhere else, and since no other non-scalar
+			# placeholders can be used in conjunction with this one, just assume that the whole
+			# @ns_placeholders array is ours
+
+			# they're all the same, so just grab the first one
+			# (at least they damn well _better_ be all the same ...)
+			my $hash = $ns_placeholders[0];
 
 			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
 					join(',', map { _check_for_variable(PLACEHOLDER => $hash->{$_}) } sort keys %$hash) . ')';
 
-			push @vars, map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash;
+			foreach $hash (@ns_placeholders)
+			{
+				push @vars, [ map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash ];
+			}
+			debuggit(4 => "theoretically added", scalar(@ns_placeholders), "arrayrefs to var list");
+
+			# this is probably unnecessary, but just to be neat
+			undef @ns_placeholders;
 		}
-		elsif ($3)														# set ???
+		elsif ($4)														# set ???
 		{
 			my $hash = shift @ns_placeholders;
 
@@ -334,12 +394,12 @@ sub _transform_query
 	my $raw_query = $query;
 	# do *not* return a cached statement handle that is still active!
 	# this could screw up pathological cases
-	if (exists $_query_cache{$raw_query} and not $_query_cache{$raw_query}->{Active})
+	if (exists $_query_cache{$raw_query} and not $_query_cache{$raw_query}->{'Active'})
 	{
 		$sth = $_query_cache{$raw_query};
-		print "DataStore current query:\n  cached version of\n$query\n" if $this->{show_queries};
+		print "DataStore current query:\n  cached version of\n$query\n" if $this->{'show_queries'};
 	}
-	else											# do it the hard way
+	else																# do it the hard way
 	{
 		debuggit(3 => "about to check for curly braces in query", $query);
 		# this outer if protects queries with no substitutions from paying
@@ -352,7 +412,7 @@ sub _transform_query
 			{
 				my $alias = $&;
 				my $alias_name = $1;
-				my $table_name = $this->{config}->{aliases}->{$alias_name};
+				my $table_name = $this->{'config'}->{'aliases'}->{$alias_name};
 				croak("unknown alias: $alias_name") unless $table_name;
 				$query =~ s/$alias/$table_name/g;
 			}
@@ -362,9 +422,8 @@ sub _transform_query
 			{
 				my $schema = $&;
 				my $schema_name = $1;
-				my $translation = $this->{schema_translation}->($schema_name);
-				# print STDERR "schema: $schema, s name: $schema_name, ";
-				# print STDERR "translation: $translation\n";
+				my $translation = $this->{'schema_translation'}->($schema_name);
+				debuggit(4 => "schema:", $schema, "/ s name:", $schema_name, "/ translation:", $translation);
 				$query =~ s/$schema/$translation/g;
 			}
 
@@ -378,11 +437,9 @@ sub _transform_query
 				@args = split(/,\s*/, $2) if $2;
 
 				debuggit(4 => "translating function", $func_name);
-				croak("no translation scheme defined")
-						unless exists $this->{config}->{translation_type};
-				my $func_table = $funcs->{$this->{config}->{translation_type}};
-				croak("unknown translation function: $func_name")
-						unless exists $func_table->{$func_name};
+				croak("no translation scheme defined") unless exists $this->{'config'}->{'translation_type'};
+				my $func_table = $funcs->{$this->{'config'}->{'translation_type'}};
+				croak("unknown translation function: $func_name") unless exists $func_table->{$func_name};
 
 				my $func_output = $func_table->{$func_name}->(@args);
 				$query =~ s/$function/$func_output/g;
@@ -414,7 +471,7 @@ sub _transform_query
 					my $varname = $1;
 					my $spec = quotemeta($&);
 
-					$calculation =~ s/$spec/\${\$_[0]}->{vars}->{$varname}/g;
+					$calculation =~ s/$spec/\${\$_[0]}->{'vars'}->{$varname}/g;
 				}
 
 				debuggit(2 => "going to evaluate calc func:", "sub { $calculation }");
@@ -428,15 +485,15 @@ sub _transform_query
 		}
 
 		debuggit(4 => "after transform:", $query);
-		print "DataStore current query:\n$query\n" if $this->{show_queries};
+		print "DataStore current query:\n$query\n" if $this->{'show_queries'};
 
 		debuggit(5 => "before preparing query:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
-		$sth = $this->{dbh}->prepare($query);
+		$sth = $this->{'dbh'}->prepare($query);
 		unless ($sth)
 		{
-			$this->{last_err} = $this->{dbh}->errstr();
-			debuggit(5 => "prepare bombed:", $this->{last_err});
+			$this->{'last_err'} = $this->{'dbh'}->errstr();
+			debuggit(5 => "prepare bombed:", $this->{'last_err'});
 			return wantarray ? () : undef;
 		}
 		debuggit(5 => "successfully prepared query");
@@ -465,14 +522,14 @@ sub _dump_attribs
 	my $this = shift;
 	my ($msg) = @_;
 
-	foreach (keys %{$this->{config}})
+	foreach (keys %{$this->{'config'}})
 	{
-		print STDERR "  $msg: config->$_ = $this->{config}->{$_}\n";
+		print STDERR "  $msg: config->$_ = $this->{'config'}->{$_}\n";
 	}
 
-	foreach (keys %{$this->{vars}})
+	foreach (keys %{$this->{'vars'}})
 	{
-		print STDERR "  $msg: vars->$_ = $this->{vars}->{$_}\n";
+		print STDERR "  $msg: vars->$_ = $this->{'vars'}->{$_}\n";
 	}
 
 	foreach (keys %$this)
@@ -488,14 +545,12 @@ sub _dump_attribs
 sub get_password
 {
 	my ($find_server, $find_user) = @_;
-	my $pwfile = "$ENV{HOME}/" . PASSWORD_FILE;
+	my $pwfile = "$ENV{'HOME'}/" . PASSWORD_FILE;
 	debuggit(4 => "password file is", $pwfile);
 
-	croak("must have a $pwfile file in your home directory")
-			unless -e $pwfile;
-	my $pwf_mode = (stat _)[2];				# i.e., the permissions
-	croak("$pwfile must be readable and writable only by you")
-			if $pwf_mode & 077;
+	croak("must have a $pwfile file in your home directory") unless -e $pwfile;
+	my $pwf_mode = (stat _)[2];											# i.e., the permissions
+	croak("$pwfile must be readable and writable only by you") if $pwf_mode & 077;
 
 	open(PW, $pwfile) or croak("can't read file $pwfile");
 	while ( <PW> )
@@ -527,13 +582,13 @@ sub open
 	croak("data store $data_store_name not found") unless -e $ds_filename;
 
 	my $this = {};
-	$this->{name} = $data_store_name;
-	eval { $this->{config} = retrieve($ds_filename); };
-	croak("read error opening data store") unless $this->{config};
+	$this->{'name'} = $data_store_name;
+	eval { $this->{'config'} = retrieve($ds_filename); };
+	croak("read error opening data store") unless $this->{'config'};
 
 	# supply user name for this session
 	croak("must specify user to data store") unless $user_name;
-	$this->{user} = $user_name;
+	$this->{'user'} = $user_name;
 
 	# eval schema translation code if it's there
 	_make_schema_trans($this);
@@ -542,8 +597,8 @@ sub open
 	_initialize_vars($this);
 
 	# mark unmodified
-	$this->{modified} = false;
-	$this->{show_queries} = false;
+	$this->{'modified'} = false;
+	$this->{'show_queries'} = false;
 
 	_dump_attribs($this, "in open") if DEBUG >= 5;
 
@@ -563,24 +618,21 @@ sub create
 	foreach my $key (keys %attribs)
 	{
 		croak("can't create data store with unknown attribute $key")
-				unless grep { /$key/ } (
-					qw<connect_string initial_commands server user>,
-					qw<translation_type>
-				);
+				unless grep { /$key/ } ( qw<connect_string initial_commands server user translation_type>);
 	}
 
 	my $this = {};
-	$this->{name} = $data_store_name;
+	$this->{'name'} = $data_store_name;
 
 	# user has to be present, and should be moved out of config section
-	croak("must specify user to data store") unless exists $attribs{user};
-	$this->{user} = $attribs{user};
-	delete $attribs{user};
+	croak("must specify user to data store") unless exists $attribs{'user'};
+	$this->{'user'} = $attribs{'user'};
+	delete $attribs{'user'};
 
-	$this->{config} = \%attribs;
-	$this->{config}->{name} = $data_store_name;
-	$this->{modified} = true;
-	$this->{show_queries} = false;
+	$this->{'config'} = \%attribs;
+	$this->{'config'}->{'name'} = $data_store_name;
+	$this->{'modified'} = true;
+	$this->{'show_queries'} = false;
 
 	_initialize_vars($this);
 
@@ -604,16 +656,15 @@ sub commit_configs
 {
 	my $this = shift;
 
-	if ($this->{modified})
+	if ($this->{'modified'})
 	{
-		$this->{modified} = false;
+		$this->{'modified'} = false;
 
-		my $data_store_name = $this->{config}->{name};
+		my $data_store_name = $this->{'config'}->{'name'};
 		my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-		# print STDERR "destroying object, saving to file $ds_filename\n";
+		debuggit(3 => "destroying object, saving to file", $ds_filename);
 
-		croak("can't save data store specification")
-				unless store($this->{config}, $ds_filename);
+		croak("can't save data store specification") unless store($this->{'config'}, $ds_filename);
 	}
 }
 
@@ -621,7 +672,7 @@ sub commit_configs
 sub ping
 {
 	my $this = shift;
-	return $this->{dbh}->ping();
+	return $this->{'dbh'}->ping();
 }
 
 
@@ -629,7 +680,7 @@ sub last_error
 {
 	my $this = shift;
 
-	return $this->{last_err};
+	return $this->{'last_err'};
 }
 
 
@@ -638,7 +689,7 @@ sub show_queries
 	my $this = shift;
 	my $state = defined $_[0] ? $_[0] : true;
 
-	$this->{show_queries} = $state;
+	$this->{'show_queries'} = $state;
 }
 
 
@@ -651,19 +702,40 @@ sub do
 	# (note & form of sub call, which just passes our args through w/o copying)
 	my ($sth, $calc_funcs, @vars) = &_transform_query or return undef;
 
-	my $rows = $sth->execute(@vars);
-	unless ($rows)
+	my $rows = 0;
+	if (ref $vars[0] eq 'ARRAY')										# then we must be doing multiple INSERT statements
 	{
-		$this->{last_err} = $sth->errstr();
+		foreach (@vars)
+		{
+			my $sub_rows = $sth->execute(@$_);
+			if (defined $sub_rows)
+			{
+				$rows += $sub_rows;
+			}
+			else
+			{
+				$rows = undef;
+				last;
+			}
+		}
+	}
+	else
+	{
+		$rows = $sth->execute(@vars);
+	}
+
+	unless (defined $rows)
+	{
+		$this->{'last_err'} = $sth->errstr();
 		return undef;
 	}
 	debuggit(5 => "successfully executed query");
 
 	my $results = {};
-	$results->{ds} = $this;
-	$results->{rows} = $rows;
-	$results->{sth} = $sth;
-	$results->{calc_funcs} = $calc_funcs;
+	$results->{'ds'} = $this;
+	$results->{'rows'} = $rows;
+	$results->{'sth'} = $sth;
+	$results->{'calc_funcs'} = $calc_funcs;
 	bless $results, 'DataStore::ResultSet';
 
 	return $results;
@@ -674,26 +746,26 @@ sub execute
 {
 	my $this = shift;
 	my ($sql_text, %params) = @_;
-	my $delim = exists $params{delim} ? $params{delim} : ";";
+	my $delim = exists $params{'delim'} ? $params{'delim'} : ";";
 
 	my $report = "";
 	foreach my $query (split(/\s*$delim\s*\n/, $sql_text))
 	{
-		next if $query =~ /^\s*$/;			# ignore blank queries
+		next if $query =~ /^\s*$/;										# ignore blank queries
 
 		my $res = $this->do($query);
 		return undef unless defined $res;
-		if (exists $params{report})
+		if (exists $params{'report'})
 		{
 			my $rows = $res->rows_affected();
-			if ($res->{sth}->{NUM_OF_FIELDS})
+			if ($res->{'sth'}->{'NUM_OF_FIELDS'})
 			{
 				$rows = 0;
 				++$rows while $res->next_row();
 			}
 			if ($rows >= 0)
 			{
-				$report .= $params{report};
+				$report .= $params{'report'};
 				$report =~ s/%R/$rows/g;
 			}
 		}
@@ -707,9 +779,9 @@ sub begin_tran
 {
 	my $this = shift;
 
-	unless ($this->{dbh}->begin_work())
+	unless ($this->{'dbh'}->begin_work())
 	{
-		$this->{last_err} = $this->{dbh}->errstr;
+		$this->{'last_err'} = $this->{'dbh'}->errstr;
 		croak("cannot start transaction");
 	}
 
@@ -721,9 +793,9 @@ sub commit
 {
 	my $this = shift;
 
-	unless ($this->{dbh}->commit())
+	unless ($this->{'dbh'}->commit())
 	{
-		$this->{last_err} = $this->{dbh}->errstr;
+		$this->{'last_err'} = $this->{'dbh'}->errstr;
 		croak("cannot commit transaction");
 	}
 }
@@ -733,9 +805,9 @@ sub rollback
 {
 	my $this = shift;
 
-	unless ($this->{dbh}->rollback())
+	unless ($this->{'dbh'}->rollback())
 	{
-		$this->{last_err} = $this->{dbh}->errstr;
+		$this->{'last_err'} = $this->{'dbh'}->errstr;
 		croak("cannot rollback transaction");
 	}
 
@@ -753,7 +825,7 @@ sub load_data
 	my $res = &do;
 	return undef unless $res;
 
-	return DataStore::DataSet->new($res->{sth});
+	return DataStore::DataSet->new($res->{'sth'});
 }
 
 
@@ -765,7 +837,7 @@ sub append_table
 	my ($table, $data, $empty_set_okay) = @_;
 	if ($empty_set_okay and $empty_set_okay != EMPTY_SET_OKAY)
 	{
-		$this->{last_err} = "illegal option sent to append_table";
+		$this->{'last_err'} = "illegal option sent to append_table";
 		return undef;
 	}
 
@@ -779,35 +851,13 @@ sub append_table
 		}
 		else
 		{
-			$this->{last_err} = "no rows passed to append_table";
+			$this->{'last_err'} = "no rows passed to append_table";
 			return undef;
 		}
 	}
 
-	# build an insert statement
-	my @colnames = $data->colnames();
-	debuggit(3 => "column names are:", @colnames);
-	my $columns = join(',', @colnames);
-	my $placeholders = join(',', ("?") x scalar(@colnames));
-	my $query = "insert $table ($columns) values ($placeholders)";
-	my ($sth) = $this->_transform_query($query) or return undef;
-
-	foreach my $row (@$data)
-	{
-		if (DEBUG >= 4)
-		{
-			print STDERR "row: $_ => $row->{$_}\n" foreach @colnames;
-			print STDERR "sending bind values: @$row\n"
-		}
-		my $rows = $sth->execute(@$row);
-		unless ($rows)
-		{
-			$this->{last_err} = $sth->errstr();
-			return false;
-		}
-	}
-
-	return true;
+	# use ??? feature to insert all rows
+	return $this->do(qq{ insert into $table values ??? }, @$data);
 }
 
 
@@ -840,18 +890,15 @@ sub overwrite_table
 		$attributes = lc($attributes);
 
 		# translate user-defined types
-		if (exists $this->{config}->{user_types})
+		if (exists $this->{'config'}->{'user_types'})
 		{
-			$type = $this->{config}->{user_types}->{$type}
-					if exists $this->{config}->{user_types}->{$type};
+			$type = $this->{'config'}->{'user_types'}->{$type} if exists $this->{'config'}->{'user_types'}->{$type};
 		}
 
 		# translate base types
-		if (exists $this->{config}->{translation_type})
+		if (exists $this->{'config'}->{'translation_type'})
 		{
-			my $trans_table = $base_types->{
-					$this->{config}->{translation_type}
-			};
+			my $trans_table = $base_types->{ $this->{'config'}->{'translation_type'} };
 			$type = $trans_table->{$type} if exists $trans_table->{$type};
 		}
 
@@ -863,11 +910,9 @@ sub overwrite_table
 		}
 
 		# translate attributes
-		if (exists $this->{config}->{translation_type})
+		if (exists $this->{'config'}->{'translation_type'})
 		{
-			my $trans_table = $column_attributes->{
-					$this->{config}->{translation_type}
-			};
+			my $trans_table = $column_attributes->{ $this->{'config'}->{'translation_type'} };
 			$attributes = $trans_table->{$attributes} if exists $trans_table->{$attributes};
 		}
 
@@ -894,8 +939,8 @@ sub configure_type
 	my $this = shift;
 	my ($user_type, $base_type) = @_;
 
-	$this->{config}->{user_types}->{$user_type} = $base_type;
-	$this->{modified} = true;
+	$this->{'config'}->{'user_types'}->{$user_type} = $base_type;
+	$this->{'modified'} = true;
 }
 
 
@@ -904,8 +949,8 @@ sub configure_alias
 	my $this = shift;
 	my ($alias, $table_name) = @_;
 
-	$this->{config}->{aliases}->{$alias} = $table_name;
-	$this->{modified} = true;
+	$this->{'config'}->{'aliases'}->{$alias} = $table_name;
+	$this->{'modified'} = true;
 }
 
 
@@ -914,9 +959,9 @@ sub configure_schema_translation
 	my $this = shift;
 	my ($trans_code) = @_;
 
-	$this->{config}->{schema_translation_code} = $trans_code;
+	$this->{'config'}->{'schema_translation_code'} = $trans_code;
 	$this->_make_schema_trans();
-	$this->{modified} = true;
+	$this->{'modified'} = true;
 }
 
 
@@ -925,7 +970,7 @@ sub define_var
 	my $this = shift;
 	my ($varname, $value) = @_;
 
-	$this->{vars}->{$varname} = $value;
+	$this->{'vars'}->{$varname} = $value;
 }
 
 
@@ -936,21 +981,24 @@ sub define_var
 
 package DataStore::ResultSet;
 
+use strict;
+use warnings;
+
 use Carp;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::DataStore::DataRow;
 
 
 sub _get_colnum
 {
-	return $_[0]->{currow}->_get_colnum($_[1]);
+	return $_[0]->{'currow'}->_get_colnum($_[1]);
 }
 
 
 sub _get_colval
 {
-	return $_[0]->{currow}->[$_[1]];
+	return $_[0]->{'currow'}->[$_[1]];
 }
 
 
@@ -958,46 +1006,46 @@ sub next_row
 {
 	my $this = shift;
 
-	my $row = $this->{sth}->fetchrow_arrayref();
+	my $row = $this->{'sth'}->fetchrow_arrayref();
 	unless ($row)
 	{
 		# just ran out of rows?
-		return 0 if not $this->{sth}->err();
+		return 0 if not $this->{'sth'}->err();
 
 		# no, i guess it's an error
-		$this->{ds}->{last_err} = $this->{sth}->errstr();
+		$this->{'ds'}->{'last_err'} = $this->{'sth'}->errstr();
 		return undef;
 	}
-	$this->{currow} = DataStore::DataRow->new(
-			$this->{sth}->{NAME}, $this->{sth}->{NAME_hash}, $row,
-			$this->{calc_funcs}, $this->{ds}->{vars}
+	$this->{'currow'} = DataStore::DataRow->new(
+			$this->{'sth'}->{'NAME'}, $this->{'sth'}->{'NAME_hash'}, $row,
+			$this->{'calc_funcs'}, $this->{'ds'}->{'vars'}
 	);
 
-	return $this->{currow};
+	return $this->{'currow'};
 }
 
 
 sub rows_affected
 {
-	return $_[0]->{rows};
+	return $_[0]->{'rows'};
 }
 
 
 sub num_cols
 {
-	return $_[0]->{sth}->{NUM_OF_FIELDS};
+	return $_[0]->{'sth'}->{'NUM_OF_FIELDS'};
 }
 
 
 sub colnames
 {
-	return @{ $_[0]->{sth}->{NAME} };
+	return @{ $_[0]->{'sth'}->{'NAME'} };
 }
 
 
 sub col
 {
-	return $_[0]->{currow}->col($_[1]);
+	return $_[0]->{'currow'}->col($_[1]);
 }
 
 
@@ -1005,13 +1053,13 @@ sub colname
 {
 	my ($this, $colnum) = @_;
 
-	return $this->{sth}->{NAME}->[$colnum];
+	return $this->{'sth'}->{'NAME'}->[$colnum];
 }
 
 
 sub all_cols
 {
-	return @{ $_[0]->{currow} };
+	return @{ $_[0]->{'currow'} };
 }
 
 
@@ -1019,7 +1067,7 @@ sub count
 {
 	my $this = shift;
 	$this->next_row() or return undef;
-	return $this->{currow}->col(0);
+	return $this->{'currow'}->col(0);
 }
 
 
