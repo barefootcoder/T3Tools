@@ -1,35 +1,27 @@
-#! /usr/local/bin/perl -w
-
-# For RCS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # DataStore::DataRow
 #
 ###########################################################################
 #
-# This object allows both name and number access to values, similar to
-# a Perl pseudo-hash (only smarter).
+# This object allows both name and number access to values, similar to a Perl pseudo-hash (only smarter).
 #
-# NOTE: DataStore::DataRow is tested as part of DataStore.  Check out
-# ../test_DataStore for test-first stuff.
+# NOTE: DataStore::DataRow is tested as part of DataStore.  Check out ../test_DataStore for test-first stuff.
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2007 ThinkGeek
 #
 ###########################################################################
 
 ### Private ###############################################################
 
-use strict;
-
 package DataStore::DataRow::impl;
+
+use strict;
+use warnings;
 
 use Carp;
 
@@ -113,8 +105,7 @@ sub NEXTKEY
 		return $self->[KEYS]->[ $self->[ITER]++ ];
 	}
 =cut
-	return $_[0]->[KEYS]->[ $_[0]->[ITER]++ ]
-		if $_[0]->[ITER] < @{ $_[0]->[KEYS] };
+	return $_[0]->[KEYS]->[ $_[0]->[ITER]++ ] if $_[0]->[ITER] < @{ $_[0]->[KEYS] };
 	return undef;
 }
 
@@ -125,9 +116,12 @@ sub NEXTKEY
 
 package DataStore::DataRow;
 
+use strict;
+use warnings;
+
 use Carp;
 
-use Barefoot::base;
+use Barefoot;
 
 # just repeated from impl above
 use constant INDEX	=> 0;
@@ -157,8 +151,7 @@ sub new
 
 	my $this = \{};
 	my %tied_hash;
-	$$this->{impl} = tie %tied_hash, 'DataStore::DataRow::impl',
-			$fields, $index_hash, $data;
+	$$this->{impl} = tie %tied_hash, 'DataStore::DataRow::impl', $fields, $index_hash, $data;
 	$$this->{hash} = \%tied_hash;
 	$$this->{vars} = $vars;
 
@@ -173,11 +166,8 @@ sub new
 			if (substr($fields->[$i], 0, 1) eq '*')
 			{
 				my $true_colname = substr($fields->[$i], 1);
-				croak("calc column with no calc function: $true_colname")
-						unless exists $calc_funcs->{$true_colname};
-				print STDERR "function for $true_colname will return ",
-						$calc_funcs->{$true_colname}->($this), "\n"
-							if DEBUG >= 4;
+				croak("calc column with no calc function: $true_colname") unless exists $calc_funcs->{$true_colname};
+				debuggit(4 => "function for $true_colname will return", $calc_funcs->{$true_colname}->($this));
 				$data->[$i] = $calc_funcs->{$true_colname}->($this);
 			}
 		}
@@ -231,10 +221,9 @@ sub _get_colnum
 {
 	my ($this, $name) = @_;
 
-	print STDERR "checking for column name: $name\n" if DEBUG >= 3;
-	croak("unknown column name $name")
-			unless exists $$this->{impl}->[INDEX]->{$name};
-	print STDERR "found column name: $name\n" if DEBUG >= 5;
+	debuggit(3 => "checking for column name:", $name);
+	croak("unknown column name $name") unless exists $$this->{impl}->[INDEX]->{$name};
+	debuggit(5 => "found column name:", $name);
 	return $$this->{impl}->[INDEX]->{$name};
 }
 
