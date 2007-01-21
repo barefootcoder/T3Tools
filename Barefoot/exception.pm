@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For CVS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # exception
@@ -14,66 +6,60 @@
 #
 # try / catch / rethrow
 #
-# Allows use of die() as an exception, as per the example in the perlsub
-# manpage.  The only difference is that the die() message (i.e., $@) is
-# first parsed out into message, file, and line.  The message itself is
-# passed to catch as $_; the file and line are made available as $__FILE__
-# and $__LINE__, respectively (this is similar to the C/C++ macros).
+# Allows use of die() as an exception, as per the example in the perlsub manpage.  The only difference is that
+# the die() message (i.e., $@) is first parsed out into message, file, and line.  The message itself is passed
+# to catch as $_; the file and line are made available as $__FILE__ and $__LINE__, respectively (this is
+# similar to the C/C++ macros).
 #
-# Be careful not to confuse __LINE__ with $__LINE__.  __LINE__ will report
-# the current source line number.  $__LINE__ will report the line number of
-# the last exception (i.e., die()) within a try block.
+# Be careful not to confuse __LINE__ with $__LINE__.  __LINE__ will report the current source line number.
+# $__LINE__ will report the line number of the last exception (i.e., die()) within a try block.
 #
-# The rethrow command will pass on the (presumably uncaught) exception,
-# maintaining the original file and line number info.  You could use die()
-# with no arguments, but that tacks on additional file and line number info
+# The rethrow command will pass on the (presumably uncaught) exception, maintaining the original file and line
+# number info.  You could use die() with no arguments, but that tacks on additional file and line number info
 # and confuses the try block's exception parser.
 #
-#		EXAMPLE:
+#		try
+#		{
+#			some_func();
+#		}
+#		catch
+#		{
+#			# use return to exit the catch handler
+#			make_more_memory() and return if /out of memory/;
+#			return if /timeout/;										# this is okay (no error)
+#			rethrow;													# ran out of ideas
+#		};
 #
-#	try
-#	{
-#		some_func();
-#	}
-#	catch
-#	{
-#		# use return to exit the catch handler
-#		make_more_memory() and return if /out of memory/;
-#		return if /timeout/;					# this is okay (no error)
-#		rethrow;								# ran out of ideas
-#	};
-#
-# Don't forget the ending semi-colon after your catch block; that is mandatory.
+# Don't forget the ending semi-colon after your catch block; that is mandatory.  Also notice that a catch
+# block is actually an anonymous subroutine and NOT an actual block; thus you must use "return" and not
+# "last".
 #
 #
 # timeout
 #
-# Allows execution of code which may stall, specifying a number of seconds
-# after which the attempt will be terminated.  Returns true if the code
-# executed successfully (i.e., the timeout was not reached; this does not
-# necessarily mean that the code _worked_) or false if it was interrupted.
+# Allows execution of code which may stall, specifying a number of seconds after which the attempt will be
+# terminated.  Returns true if the code executed successfully (i.e., the timeout was not reached; this does
+# not necessarily mean that the code _worked_) or false if it was interrupted.
 #
-# As a special case, a timeout value of 0 causes no interruption to be
-# performed (i.e., if the code stalls, it just hangs forever).  This allows
-# a variable to be passed which may be a timeout or 0 for no timeout.
+# As a special case, a timeout value of 0 causes no interruption to be performed (i.e., if the code stalls, it
+# just hangs forever).  This allows a variable to be passed which may be a timeout or 0 for no timeout.
 #
-#		EXAMPLE:
-#
-#	my $success = timeout
-#	{
-#		while (1)						# keep trying "forever"
+#		my $success = timeout
 #		{
-#			open(FILE, "somefile");		# (some other process makes this file)
-#			sleep 1;					# (don't max the CPU!)
-#		}
-#	} 30;								# but really only try for 30 seconds
-#	die("somefile never appeared") unless $success;
-#	my $input = <FILE>;					# we're pretty sure it opened okay
+#			while (1)													# keep trying "forever"
+#			{
+#				open(FILE, "somefile");									# (some other process makes this file)
+#				sleep 1;												# (don't max the CPU!)
+#			}
+#		} 30;															# but really only try for 30 seconds
+#		die("somefile never appeared") unless $success;
+#		my $input = <FILE>;												# we're pretty sure it opened okay
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2000-2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2000-2007 Barefoot Software
 #
 ###########################################################################
 
@@ -82,6 +68,7 @@ package Barefoot::exception;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use base qw(Exporter);
 use vars qw(@EXPORT $__FILE__ $__LINE__ $__CATCH__);
@@ -89,7 +76,7 @@ use vars qw(@EXPORT $__FILE__ $__LINE__ $__CATCH__);
 
 use Carp;
 
-use Barefoot::base;
+use Barefoot;
 
 
 sub try(&@);
@@ -109,7 +96,7 @@ sub try (&@)
 {
 	my ($try, $catch) = @_;
 
-	# print STDERR "in try block\n";
+	debuggit(5 => "exception.pm: in try block");
 	eval { &$try };
 	if ($@)
 	{
@@ -153,7 +140,7 @@ sub timeout (&$)
 		}
 		catch
 		{
-			print STDERR "$0 ($$): exception is >>$_<<\n" if DEBUG >= 4;
+			debuggit(4 => "$0 ($$): exception is >>", $_, "<<");
 			if ( /^timeout$/ )
 			{
 				$timed_out = 1;
