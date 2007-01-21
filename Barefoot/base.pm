@@ -1,33 +1,30 @@
-#! /usr/local/bin/perl
-
-# For CVS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # Barefoot::base
 #
 ###########################################################################
 #
-# This module should be ideally included by other Barefoot:: modules, but
-# could be included separately if need be.  It defines the DEBUG constant,
-# which is turned on by Barefoot::debug.  It also defines the constants
+# THIS MODULE IS NOW DEPRACATED!  Please see Barefoot.pm for details on its replacement.
+#
+# Including this module will generate a depraction warning to STDERR.  If you don't like that, replace it with
+# a "use Barefoot" call instead.  You should be doing that anyway.
+#
+###########################################################################
+#
+# This module should be ideally included by other Barefoot:: modules, but could be included separately if need
+# be.  It defines the DEBUG constant, which is turned on by Barefoot::debug.  It also defines the constants
 # true and false, whose utility should be self-evident.
 #
 # See Barefoot::debug for full details on DEBUG.
 #
-# Note that the same chicken-and-egg problem you have with testing
-# Barefoot::debug applies to Barefoot::base as well; you can't get the
-# version of base.pm from your CVS working directory as you can with other
-# modules.
+# Note that the same chicken-and-egg problem you have with testing Barefoot::debug applies to Barefoot::base
+# as well; you can't get the version of base.pm from your CVS working directory as you can with other modules.
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2001-2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2001-2006 Barefoot Software
 #
 ###########################################################################
 
@@ -36,6 +33,9 @@ package Barefoot::base;
 ### Private ###############################################################
 
 use strict;
+use warnings;
+
+use Carp;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT>;
@@ -63,6 +63,9 @@ sub true();
 sub false();
 
 
+carp("WARNING! Barefoot::base is now depracated; use Barefoot instead.");
+
+
 ###########################
 # Subroutines:
 ###########################
@@ -84,8 +87,7 @@ sub import
 		{
 			# print STDERR "passing through value $master_debug_value\n";
 			# pass through DEBUG value from Barefoot package
-			eval "sub ${caller_package}::DEBUG () "
-					. "{ return $master_debug_value; }";
+			eval "sub ${caller_package}::DEBUG () { return $master_debug_value; }";
 		}
 		else
 		{
