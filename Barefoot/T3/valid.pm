@@ -11,7 +11,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -29,7 +29,7 @@ use vars qw<@EXPORT_OK>;
 use Carp;
 use Data::Dumper;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::input qw<input get_yn>;
 
 use Barefoot::T3::base;
@@ -92,13 +92,13 @@ sub get_parameter
 		# better barf)
 		croak("can't determine default value for $parmname") unless exists $db_default{$parmname};
 		$parm = $db_default{$parmname}->($parminfo);
-		print "after db default, parm is $parm\n" if DEBUG >= 3;
+		debuggit(3 => "after db default, parm is", $parm);
 
 		if (exists $objinfo->{$parmname})# pre-existing parm - higher priority
 		{
 			$parm = $objinfo->{$parmname};
 		}
-		print "after objinfo, parm is $parm\n" if DEBUG >= 3;
+		debuggit(3 => "after objinfo, parm is", $parm);
 
 		if ($parminfo->{$parmname})		# program flags - highest priority
 		{
@@ -120,7 +120,7 @@ sub get_parameter
 				$parm = $parminfo->{$parmname};
 			}
 		}
-		print "after parminfo, parm is $parm\n" if DEBUG >= 3;
+		debuggit(3 => "after parminfo, parm is", $parm);
 
 		last TRY if $parminfo->{force};
 
@@ -130,7 +130,7 @@ sub get_parameter
 		croak("can't determine valid list for $parmname")
 				unless exists $valid_function{$parmname};
 		$valid_parms = $valid_function{$parmname}->($parminfo);
-		print STDERR "valid_parms: ", Dumper($valid_parms), "\n" if DEBUG >= 4;
+		debuggit(4 => "valid_parms:", Dumper($valid_parms));
 		
 		# at this point, parm will act as our default
 		# need to save it in case user enters "?", then we can put it back
@@ -186,8 +186,8 @@ sub get_parameter
 		$objinfo->{$parmname} = $parm;
 	}
 
-	print Dumper($valid_parms), "\n" if DEBUG >= 4;
-	print wantarray ?  "will return ($parm, $valid_parms->{$parm})" : "will return $parm", "\n" if DEBUG >= 3;
+	debuggit(4 => Dumper($valid_parms));
+	debuggit(3 => wantarray ?  "will return ($parm, $valid_parms->{$parm})" : "will return", $parm);
 
 	# if force was specified, you'll get ($parm, undef)
 	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
@@ -234,7 +234,7 @@ sub valid_clients
 	my $clients = {};
 	while ($res->next_row())
 	{
-		print STDERR "valid cli: ", $res->col(0), " => ", $res->col(1), "\n" if DEBUG >= 5;
+		debuggit(5 => "valid cli:", $res->col(0), "=>", $res->col(1));
 		$clients->{$res->col(0)} = $res->col(1);
 	}
 	return $clients;
