@@ -1,18 +1,10 @@
-#! /usr/local/bin/perl
-
-# For RCS:
-# $Date: 2002/05/19 23:46:34 $
-# $Id: range.pm,v 1.5 2002/05/19 23:46:34 buddy Exp $
-# $Revision: 1.5 $
-
 ###########################################################################
 #
-# range
+# Barefoot::range
 #
 ###########################################################################
 #
-# This module contains useful functions relating to ranges of numbers.
-# The functions contained herein are:
+# This module contains useful functions relating to ranges of numbers.  The functions contained herein are:
 #
 #		range::min(@list);					# minimum number in list
 #		range::max(@list);					# maximum number in list
@@ -22,8 +14,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 1999 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 1999-2007 Barefoot Software
 #
 ###########################################################################
 
@@ -32,10 +25,11 @@ package range;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Carp;
 
-use Barefoot::base;
+use Barefoot;
 
 
 # constants for round()
@@ -43,10 +37,7 @@ use constant ROUND_OFF => 'O';
 use constant ROUND_UP => 'U';
 use constant ROUND_DOWN => 'D';
 # note that you can't use => below, as it turns the constants into identifiers
-my %_rounding_types = (ROUND_OFF, '', ROUND_UP, '', ROUND_DOWN, '');
-
-
-1;
+my %_rounding_types = (ROUND_OFF, 1, ROUND_UP, 1, ROUND_DOWN, 1);
 
 
 #
@@ -84,14 +75,14 @@ sub force
 }
 
 
-# rounding function ... note that if $whichway is not specified, it will
-# be interpreted as OFF ... $towhat defaults to 1 (naturally)
+# rounding function ... note that if $whichway is not specified, it will be interpreted as OFF ... $towhat
+# defaults to 1 (naturally)
 sub round
 {
 	my ($number, $whichway, $towhat) = @_;
-	$whichway = ROUND_OFF if !defined $whichway;
-	$towhat = 1 if !$towhat;
-	print STDERR "round: rounding $number $whichway to nearest $towhat\n" if DEBUG >= 3;
+	$whichway = ROUND_OFF unless defined $whichway;
+	$towhat = 1 unless $towhat;
+	debuggit(3 => "round: rounding", $number, $whichway, "to nearest", $towhat);
 
 	croak("illegal rounding type") unless exists $_rounding_types{$whichway};
 
@@ -104,3 +95,10 @@ sub round
 	}
 	return $number * $towhat;
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
