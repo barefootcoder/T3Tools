@@ -134,6 +134,7 @@ sub incDays
 	my $secs = _cvt_date_if_necessary($date);
 	debuggit(3 => "seconds before increment:", $secs);
 	$secs += ($inc * 24 * 60 * 60);										# increment seconds by that many days
+	$secs += 60 * 60;													# extra hour fixes DST problem
 	debuggit(3 => "seconds after increment:", $secs);
 
 	return mdy($secs);

@@ -50,6 +50,11 @@ unless ($inc_to_now eq date::today())
 	debuggit(2 => "today is", date::today());
 	die("increment with raw times failed");
 }
+unless (date::incDays('2006-10-29', 1) eq '2006-10-30')
+{
+	debuggit(2 => "10/29/06 + 1 day is", date::incDays('2006/10/29', 1));
+	die("DST test failed");
+}
 
 
 # test dayDiff a bit
