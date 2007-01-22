@@ -1,10 +1,11 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
 use strict;
+use warnings;
 
-use Barefoot::debug(1);
+use Date::Parse;
 
-use Barefoot::base;
+use Barefoot(DEBUG => 1);
 use Barefoot::date;
 
 
@@ -17,43 +18,44 @@ die("failed valid test") unless date::isValid("12-31-01");
 die("failed valid test") unless date::isValid("12-31-2001");
 die("failed valid test") unless date::isValid("31-Dec-01");
 die("failed valid test") unless date::isValid("31-Dec-2001");
-die("failed valid test") unless date::isValid("20011231");
 die("failed valid test") unless date::isValid("Dec 31 2001 12:00AM");
 # raw time values shouldn't really be considered valid dates
 die("raw time considered valid") if date::isValid(time());
 
 # test invalid ones
 die("failed invalid test") if date::isValid("bmoogle");
-die("failed invalid test") if date::isValid("14/1/01");
 die("failed invalid test") if date::isValid("1/42/01");
+
+# make sure mdy() isn't using GMT any more
+die("mdy failed GMT check") unless date::mdy(str2time("1/1/2001 10:00pm")) eq date::mdy(str2time("1/1/2001 10:00am"));
 
 
 # test today function
 #my $date_cmd = `date +"%-m/%-d/%Y"`;
 my $date_cmd = `date +"%Y-%m-%d"`;
 chomp $date_cmd;
-print "today test: date returned $date_cmd\n" if DEBUG >= 3;
+debuggit(2 => "today test: date returned", $date_cmd, "/ date::today is", date::today());
 die("today's date is wrong") unless date::today() eq $date_cmd;
 
 
 # test incDays a bit
+debuggit(2 => "date::today is", date::today(), "and inc'd by 0 is", date::incDays(date::today(), 0));
 die("increment zero test failed") unless date::incDays(date::today(), 0) eq date::today();
-my $four_days_ago = date::dateTimeSeconds(date::today()) - 4 * 24 * 60 * 60;
+my $four_days_ago = str2time(date::today()) - 4 * 24 * 60 * 60;
 my $inc_to_now = date::incDays($four_days_ago, 4);
 unless ($inc_to_now eq date::today())
 {
-	print "incDays returned $inc_to_now\n" if DEBUG >= 2;
-	print "today is ", date::today(), "\n" if DEBUG >= 2;
+	debuggit(3 => "four days ago is", $four_days_ago);
+	debuggit(2 => "incDays returned", $inc_to_now);
+	debuggit(2 => "today is", date::today());
 	die("increment with raw times failed");
 }
 
 
 # test dayDiff a bit
-die("day diff test failed") unless
-		date::dayDiff(date::incDays(date::today(), -4), date::today()) == 4;
-my $raw_diff = date::dayDiff(
-		date::dateTimeSeconds(date::incDays(date::today(), -4)),
-		date::dateTimeSeconds(date::today()));
+die("day diff test failed") unless date::dayDiff(date::incDays(date::today(), -4), date::today()) == 4;
+die("day diff test failed") unless date::dayDiff(date::incDays(date::today(), -4)) == 4;
+my $raw_diff = date::dayDiff( str2time(date::incDays(date::today(), -4)), str2time(date::today()) );
 print "raw diff is $raw_diff\n" if DEBUG >= 2;
 die("day diff with raw times failed") unless $raw_diff == 4;
 
@@ -68,24 +70,20 @@ print "ALL TESTS PASSED\n";
 
 sub test_period_funcs
 {
-	die("period_num gave wrong answer")
-			unless date::period_num('1/1/01', 7) == 1095;
-	die("period_num gave wrong answer")
-			unless date::period_num('1/1/01', 7, '1/31/1994') == 361;
-	die("period_num gave wrong answer")
-			unless date::period_num('1/1/01', 14, '1/31/1994') == 180;
+	die("period_num gave wrong answer") unless date::period_num('1/1/01', 7) == 1095;
+	die("period_num gave wrong answer") unless date::period_num('1/1/01', 7, '1/31/1994') == 361;
+	die("period_num gave wrong answer") unless date::period_num('1/1/01', 14, '1/31/1994') == 180;
+
 	# let's be tricky ... can we specify a default epoch?
 	my $output = `
-
 			perl -e '
-
-				use Barefoot::debug;
+				use Barefoot(DEBUG => 1);
 				use Barefoot::date epoch => "1/31/1994";
 
 				print date::period_num("1/1/01", 7);
 			'
 	`;
-	print STDERR "output was $output\n" if DEBUG >= 2;
+	debuggit(2 => "output was", $output);
 	die("setting default option for epoch failed") unless $output == 361;
 
 	die("period_name gave wrong answer")
