@@ -12,15 +12,13 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 1999-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 1999-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 # (based on code originally written roughly 1994, (c) Barefoot Software)
 #
 ###########################################################################
 
 use strict;
 use warnings;
-
-#use Barefoot::debug(1);
 
 use CGI;
 use File::Copy;
@@ -30,18 +28,18 @@ use Data::Dumper;
 use File::HomeDir;
 use Config::General;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
-use Barefoot::input qw< get_yn input input_text >;
 use Barefoot::date epoch => '2003-12-29';
+use Barefoot::input qw< get_yn input input_text >;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
 use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
-use Barefoot::T3::Timer qw< timer_command get_timer_info calc_date calc_time test_connection this_week_totals >;
+use Barefoot::T3::Timer qw< timer_command get_timer_info calc_date calc_time test_connection >;
 
 
 #################################
@@ -93,14 +91,14 @@ use constant Log =>
 use constant Log_Comments =>
 	'      ~~^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
-BEGIN { print STDERR "passed all use's\n" if DEBUG >= 5; }
+BEGIN { debuggit(5 => "passed all use's"); }
 
 
 #################################
-# OPTIONS AND ENVIRONMENT VARS
+# PSEUDO-GLOBAL VARIABLES
 #################################
 
-print STDERR "about to begin execution\n" if DEBUG >= 5;
+debuggit(5 => "about to begin execution");
 
 our $parminfo = {};
 our $timers = {};
@@ -123,6 +121,11 @@ tie %$commands, 'Tie::IxHash',
 	'@'	=>	"PARSE",
 );
 our ($cgi, $command, $workgroup);
+
+
+#################################
+# OPTIONS AND ENVIRONMENT VARS
+#################################
 
 if (-t STDOUT or @ARGV)
 {
@@ -168,7 +171,7 @@ my $nw_re = qr/\Q$nw\E$/;
 
 usage() unless $command;
 
-print STDERR "survived args and error checks\n" if DEBUG >= 5;
+debuggit(5 => "survived args and error checks");
 
 
 #################################
@@ -215,7 +218,7 @@ if ($command eq 'START')					# start a timer
 	{
 		if (test_connection())
 		{
-			print STDERR "given timer doesn't exist, getting new values\n" if DEBUG >= 5;
+			debuggit(5 => "given timer doesn't exist, getting new values");
 			get_timer_parameter("client");
 			get_timer_parameter("project");
 
@@ -332,7 +335,7 @@ if ($command eq 'ANNOTATE')						# annotate a timer (add comments)
 	$header .= "\nAnnotating Timer: $giventimer ($codes)\n";
 
 	my $comments = input_text('comments', $header, $opts);
-	print STDERR "got comments <<$comments>>\n" if DEBUG >= 3;
+	debuggit(3 => "got comments", "<<$comments>>");
 	if ($timers->{$giventimer}->{'comments'} and not $comments)
 	{
 		print STDERR "warning! this will remove all comments from this timer\n";
@@ -398,7 +401,7 @@ if ($command eq 'BREAKDOWN')					# break down a timer
 
 if ($command eq 'TOTAL')					# total timers by client
 {
-	print STDERR "about to start TOTAL routine\n" if DEBUG >= 5;
+	debuggit(5 => "about to start TOTAL routine");
 
 	unless (test_connection())
 	{
@@ -412,9 +415,8 @@ if ($command eq 'TOTAL')					# total timers by client
 	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
-	foreach (values %$timers)
+	foreach (t3_values $timers)
 	{
-		next unless ref $_ eq 'HASH';
 		next if exists $ignore_timers{$_->{name}};
 
 		my $client = $_->{'client'} || '???';
@@ -462,9 +464,9 @@ if ($command eq 'AVERAGE')
 	}
 
 	my $emp_id = get_emp_id($parminfo->{'user'});
-	print STDERR "average: emp_id is $emp_id\n" if DEBUG >= 2;
+	debuggit(2 => "average: emp_id is", $emp_id);
 	my $logs = get_logs($emp_id);
-	print STDERR "average: got ", scalar(@$logs), " total logs back\n" if DEBUG >= 3;
+	debuggit(3 => "average: got", scalar(@$logs), "total logs back");
 
 	my $breakout = rc_param(AVERAGE => 'breakout') || '';
 
@@ -473,7 +475,7 @@ if ($command eq 'AVERAGE')
 	{
 		my $period = date::period_name(date::period_num($_->{'log_date'}, 7), 7);
 		$weeks{$period} += $_->{'hours'};
-		print STDERR "$_->{'log_date'} ($period)     $_->{'hours'}\n" if DEBUG >= 4;
+		debuggit(4 => $_->{'log_date'}, "($period)", $_->{'hours'});
 
 		if ($_->{'proj_id'} eq $breakout)
 		{
@@ -604,7 +606,7 @@ END
 
 		if ($timer =~ /$nw_re/)					# timers for next week started early
 		{
-			print STDERR "now dealing with nw timer $timer\n" if DEBUG >= 3;
+			debuggit(3 => "now dealing with nw timer", $timer);
 			unless (exists $visited_nw_timers{$timer})
 			{
 				# just rename it to get rid of the -nw
@@ -846,7 +848,7 @@ sub get_giventimer
 sub get_timer_parameter
 {
 	my ($parmname) = @_;
-	print STDERR "wantarray is ", defined wantarray ? wantarray : "undef", "\n" if DEBUG >= 4;
+	debuggit(4 => "wantarray is", wantarray);
 
 	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{'timer'}};
@@ -957,7 +959,7 @@ sub print_parsable
 sub rounded_time
 {
 	my ($client, $time) = @_;
-	print STDERR "rounded_time: $client, $time\n" if DEBUG >= 4;
+	debuggit(4 => "rounded_time:", $client, $time);
 
 	my $hours = calc_time($time) / 60;
 
@@ -965,7 +967,7 @@ sub rounded_time
 	if (eval { ($rounding, $to_nearest) = client_rounding($client) })
 	{
 		$hours = range::round($hours, $rounding, $to_nearest);
-		print STDERR "rounding time for client $client: $rounding to $to_nearest, result $hours\n" if DEBUG >= 4;
+		debuggit(4 => "rounding time for client", $client, ":", $rounding, "to", $to_nearest, "result", $hours);
 	}
 	return $hours;
 }
@@ -1002,7 +1004,7 @@ sub gather_log_info
 
 	# a shortcut
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
-	print STDERR "$log_timer timer: ", Dumper($timer) if DEBUG >= 2;
+	debuggit(2 => $log_timer, "timer:", Dumper($timer));
 
 	# please note that the order you ask for the data elements in is
 	# *very* important ... the following things are true:
@@ -1080,7 +1082,7 @@ sub gather_log_info
 		die("\n  {Try to log this timer out again later.}\n");
 	}
 
-	print STDERR "parms after gather_log_info: ", Dumper($parminfo) if DEBUG >= 4;
+	debuggit(4 => "parms after gather_log_info:", Dumper($parminfo));
 }
 
 
@@ -1110,7 +1112,7 @@ sub get_comment
 
 	my $comments = input_text('comments', $header, $opts);
 
-	print STDERR "comments are: $comments\n" and <STDIN> if DEBUG >= 4;
+	debuggit(4 => "comments are:", $comments);
 
 	return $comments;
 }
