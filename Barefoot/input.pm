@@ -1,32 +1,29 @@
 ###########################################################################
 #
-# input
+# Barefoot::input
 #
 ###########################################################################
 #
 # General routines to help with script input.
 #
 #
-# get_yn prints a prompt, accepts input, and returns 1 (true) if the input
-# begins with 'y' or 'Y', otherwise returns 0 (false).  Default value is
-# always false.
+# get_yn() prints a prompt, accepts input, and returns 1 (true) if the input begins with 'y' or 'Y', otherwise
+# returns 0 (false).  Default value is always false.
 #
 #
-# input prints a prompt if given, will return a default value if given and
-# the user provides no input, otherwise returns whatever input the user
-# gives (chomped).
+# input() prints a prompt if given, will return a default value if given and the user provides no input,
+# otherwise returns whatever input the user gives (chomped).
 #
 #
-# menu_select works similarly to the "select" command of ksh, but with more
-# emphasis on _which_ choice you made, as opposed to _what_ the choice is.
+# menu_select() works similarly to the "select" command of ksh, but with more emphasis on _which_ choice you
+# made, as opposed to _what_ the choice is.
 #
 #		my $choice = menu_select("Pick one:", @choices);
 #		print "You chose: $choices[$choice]\n";
 #		# *NOT* print "You chose: $choice\n"; !!
 #
-# You may also use options with menu_select.  To do so, make the final
-# argument (or the last element of your menu items array; menu_select
-# obviously can't tell the difference) a reference to a hash containing the
+# You may also use options with menu_select.  To do so, make the final argument (or the last element of your
+# menu items array; menu_select obviously can't tell the difference) a reference to a hash containing the
 # options you want to set.  Like so:
 #
 #		my $choice = menu_select("Choose:", @choices, { LMARGIN => 3 });
@@ -44,8 +41,8 @@
 #						lines (see also TRUNC_MSG).  The LMARGIN and TMARGIN
 #						options do *not* apply to the header; if you want
 #						margins for your header, apply them yourself when you
-#						(default: "")
 #						build the string.  HEADER should end with a newline.
+#						(default: "")
 #		TRUNC_MSG	=>	If the header needs to be truncated, this message is
 #						printed at the bottom (i.e., underneath the HEADER,
 #						but before the TMARGIN and menu itself).  For instance,
@@ -54,13 +51,11 @@
 #						truncating HEADER.  Like HEADER, TRUNC_MSG should end
 #						with a newline.  (default: "")
 #
-#	
-#
 # #########################################################################
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 1999-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 1999-2007 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -77,7 +72,7 @@ use Perl6::Slurp;
 use Array::PrintCols;
 use File::Temp qw<tempfile>;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::range;
 use Barefoot::string;
 
@@ -89,9 +84,6 @@ use vars qw<@EXPORT_OK>;
 
 
 our ($COLS, $ROWS) = Term::Size::chars;
-
-
-1;
 
 
 #
@@ -108,7 +100,7 @@ sub get_yn
 	print "  [y/N] ";
 
 	my $yn = <STDIN>;
-	print STDERR "get_yn: got response $yn" if DEBUG >= 4;
+	debuggit(4 => "get_yn: got response", $yn);
 	return $yn =~ /^y/i;
 }
 
@@ -116,7 +108,7 @@ sub get_yn
 sub input
 {
 	my ($prompt, $default, $opts) = @_;
-	print STDERR "input: starting function\n" if DEBUG >= 5;
+	debuggit(5 => "input: starting function");
 
 	local ($|) = 1;														# autoflush stdout
 
@@ -127,31 +119,30 @@ sub input
 		print " (", $default, ")" if defined($default);
 		print "  " if defined($prompt);
 
-		print STDERR "input: about to get a line of input from stdin\n" if DEBUG >= 5;
+		debuggit(5 => "input: about to get a line of input from stdin");
 		$answer = <STDIN>;
-		print STDERR "input: got a line of input from stdin\n" if DEBUG >= 5;
+		debuggit(5 => "input: got a line of input from stdin");
 		chomp $answer;
 
-		if ($answer ne "" and exists $opts->{VALID})
+		if ($answer ne "" and exists $opts->{'VALID'})
 		{
-			unless ($opts->{VALID}->($answer))
+			unless ($opts->{'VALID'}->($answer))
 			{
-				print $opts->{VALID_ERR} if exists $opts->{VALID_ERR};
+				print $opts->{'VALID_ERR'} if exists $opts->{'VALID_ERR'};
 				redo INPUT;
 			}
 		}
 
-		if (exists $opts->{CONVERT})
+		if (exists $opts->{'CONVERT'})
 		{
-			my $converted = $opts->{CONVERT}->(
-					$answer ne "" ? $answer : $default );
+			my $converted = $opts->{'CONVERT'}->( $answer ne "" ? $answer : $default );
 			if (defined $converted)
 			{
 				return $converted;
 			}
 			else
 			{
-				print $opts->{VALID_ERR} if exists $opts->{VALID_ERR};
+				print $opts->{'VALID_ERR'} if exists $opts->{'VALID_ERR'};
 				redo INPUT;
 			}
 		}
@@ -165,7 +156,7 @@ sub input_text
 {
 	my ($name, $explan, $opts) = @_;
 	$opts ||= {};
-	print STDERR "input_text: args name $name, explanatory text <<$explan>>, opts ", Dumper($opts) if DEBUG >= 4;
+	debuggit(4 => "input_text: args name", $name, "explanatory text <<", $explan, ">>, opts ", Dumper($opts));
 
 	my $max_msg = $opts->{'MAXLEN'} ? " (maximum length $opts->{'MAXLEN'} chars)" : '';
 	my $text = $opts->{'DEFAULT'} || '';
@@ -173,7 +164,7 @@ sub input_text
 	my $error;
 	TEXT: {
 
-		print STDERR "input_text: cycled back around again\n" if DEBUG >= 5;
+		debuggit(5 => "input_text: cycled back around again");
 		if ($opts->{'EDITOR'})
 		{
 			my ($fh, $tmpfile) = tempfile();
@@ -187,7 +178,7 @@ sub input_text
 			system($opts->{'EDITOR'}, $tmpfile);
 			$text = slurp $tmpfile;
 			$text =~ s/\n?${separator}.*$//s;
-			print STDERR "input_text: text before adjustment is <<$text>>\n" if DEBUG >= 5;
+			debuggit(5 => "input_text: text before adjustment is <<", $text, ">>");
 		}
 		else
 		{
@@ -198,20 +189,20 @@ sub input_text
 			local ($/) = undef;
 			$text = input();
 
-			<STDIN>;					# HACK! don't know why this is necessary
+			<STDIN>;													# HACK! don't know why this is necessary
 		}
 
 		$text =~ s/^\s+$//mg if $opts->{'STRIP_BLANK_LINES'};			# no completely blank lines
 		$text =~ s/^\s*\n+\s*// if $opts->{'ALLTRIM'};					# no extra newlines in front
 		$text =~ s/\s*\n+\s*$// if $opts->{'ALLTRIM'};					# none at the end either
 
-		print STDERR "input_text: text after adjustments is <<$text>>\n" and <STDIN> if DEBUG >= 5;
+		debuggit(5 => "input_text: text after adjustments is <<", $text, ">>") and <STDIN>;
 
 		$error = "You must have $name" and redo TEXT if $opts->{'REQUIRED'} and not $text;
 		$error = "\u$name too long!" and redo TEXT if $opts->{'MAXLEN'} and length($text) > $opts->{'MAXLEN'};
 	}
 
-	print STDERR "input_text: final text is <<$text>>\n" and <STDIN> if DEBUG >= 4;
+	debuggit(4 => "input_text: final text is <<", $text, ">>") and <STDIN>;
 	return $text;
 }
 
@@ -223,9 +214,9 @@ sub menu_select
 	$options = pop @choices if ref $choices[-1] eq "HASH";
 
 	# set defaults in case not specified
-	$options->{LMARGIN} ||= 0;
-	$options->{SPBETWEEN} ||= 1;
-	$options->{TMARGIN} ||= 0;
+	$options->{'LMARGIN'} ||= 0;
+	$options->{'SPBETWEEN'} ||= 1;
+	$options->{'TMARGIN'} ||= 0;
 
 	my $spec = "%" . length(scalar(@choices)) . "d";
 
@@ -250,32 +241,32 @@ sub menu_select
 
 	# pointless for print_cols to sort our list
 	$Array::PrintCols::PreSorted = true;
-	my $menu = format_cols \@choices, $max_choice_len + $options->{SPBETWEEN}, $COLS, $options->{LMARGIN};
+	my $menu = format_cols \@choices, $max_choice_len + $options->{'SPBETWEEN'}, $COLS, $options->{'LMARGIN'};
 
 	# get header and make sure it will fit on screen
-	my $header = $options->{HEADER} || "";
+	my $header = $options->{'HEADER'} || "";
 	my $hlines = string::count($header, "\n");
 	my $mlines = string::count($menu, "\n");
 	# final 2 is for prompt and empty line above it
-	my $max_hlines = $ROWS - $options->{TMARGIN} - $mlines - 2;
+	my $max_hlines = $ROWS - $options->{'TMARGIN'} - $mlines - 2;
 	if ($hlines > $max_hlines)
 	{
-		if ($options->{TRUNC_MSG})
+		if ($options->{'TRUNC_MSG'})
 		{
-			$max_hlines -= string::count($options->{TRUNC_MSG}, "\n");
+			$max_hlines -= string::count($options->{'TRUNC_MSG'}, "\n");
 		}
 		else
 		{
-			$options->{TRUNC_MSG} = "";
+			$options->{'TRUNC_MSG'} = "";
 		}
 
 		$header =~ /^ ( (.*?\n){$max_hlines} ) /x;
-		$header = $1 . $options->{TRUNC_MSG};
+		$header = $1 . $options->{'TRUNC_MSG'};
 	}
 
 	MENU: {
 		print "$header";
-		print "\n" x $options->{TMARGIN};
+		print "\n" x $options->{'TMARGIN'};
 		print "$menu\n$prompt ";
 		$choice = <STDIN>;
 		print "\n";
@@ -299,3 +290,10 @@ sub menu_select
 		return $choice - 1;
 	}
 }
+
+
+###########################
+# Return a true value:
+###########################
+
+1;
