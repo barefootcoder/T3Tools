@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl
-
-# For CVS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # debug
@@ -39,8 +31,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2001-2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2000-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
 #
 ###########################################################################
 
@@ -49,6 +42,7 @@ package Barefoot::debug;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Carp;
 
@@ -86,7 +80,7 @@ sub import
 	croak("DEBUG already defined; make use statement earlier in code")
 			if defined eval "${caller_package}::DEBUG();";
 
-	$debug_value = 1 unless defined $debug_value;
+	$debug_value = 0 unless defined $debug_value;
 	eval "sub ${caller_package}::DEBUG () { return $debug_value; }";
 
 	# also have to tuck this value into the Barefoot namespace
