@@ -61,7 +61,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2006 Barefoot Software, Copyright (c) 2006 ThinkGeek
+# Copyright (c) 2006-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
 # based on ideas originally set forth in the following modules:
 #		Barefoot::debug, originally written 2000, (c) Barefoot Software
 #		Barefoot::base, originally written 2001, (c) Barefoot Software
