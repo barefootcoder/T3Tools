@@ -27,6 +27,7 @@ use base qw< Exporter >;
 use vars qw< @EXPORT_OK >;
 @EXPORT_OK = qw< one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
 
+use Barefoot;
 use Barefoot::DataStore;
 
 use Barefoot::T3::base;
@@ -52,6 +53,7 @@ sub one_datum
 sub get_emp_id
 {
 	my ($user) = @_;
+	debuggit(3 => "get_emp_id: arg is", $user);
 
 	my $res = &t3->do(q{
 		select e.emp_id
@@ -61,7 +63,7 @@ sub get_emp_id
 	},
 		user => $user,
 	);
-	die("default client query failed") unless $res and $res->next_row();
+	die("employee ID query failed") unless $res and $res->next_row();
 	return $res->col(0);
 }
 
@@ -152,7 +154,7 @@ sub get_logs
 	my ($emp_id) = @_;
 
 	my $data = &t3->load_data(q{
-		select l.proj_id, l.log_date, l.hours
+		select l.client_id, l.proj_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
 		order by l.log_date
