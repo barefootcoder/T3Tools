@@ -30,6 +30,13 @@ die("failed invalid test") if date::isValid("1/42/01");
 # make sure mdy() isn't using GMT any more
 die("mdy failed GMT check") unless date::mdy(str2time("1/1/2001 10:00pm")) eq date::mdy(str2time("1/1/2001 10:00am"));
 
+# make sure mdy() can take an arg
+die("mdy for not now fails") unless date::mdy(str2time("11/5/66")) eq '1966-11-05';
+die("mdy for date string fails") unless date::mdy("11/5/66") eq '1966-11-05';
+# similar tests for mdyt()
+die("mdyt for not now fails") unless date::mdyt(str2time("11/5/66 21:03:45")) eq '1966-11-05 21:03:45';
+die("mdyt for date string fails") unless date::mdyt("11/5/66 21:03:45") eq '1966-11-05 21:03:45';
+
 
 # test today function
 #my $date_cmd = `date +"%-m/%-d/%Y"`;

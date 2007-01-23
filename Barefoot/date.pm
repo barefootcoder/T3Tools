@@ -88,8 +88,9 @@ our %Options =
 sub _cvt_date_if_necessary
 {
 	my ($date) = @_;
+	debuggit(4 => "_cvt_date_if_necessary arg is", $date);
 
-	if ($date =~ /^\d{9,10}$/)
+	if ($date =~ /^\d{9,10}$/ or $date =~ /^-\d+$/)
 	{
 		# already epoch seconds; no need to convert
 		return $date;
@@ -128,7 +129,13 @@ sub isValid
 
 sub mdy
 {
-	return time2str($Options{'date_fmt'}, $_[0]);
+	return time2str($Options{'date_fmt'}, _cvt_date_if_necessary($_[0]));
+}
+
+
+sub mdyt
+{
+	return time2str($Options{'time_fmt'}, _cvt_date_if_necessary($_[0]));
 }
 
 
@@ -140,7 +147,7 @@ sub today
 
 sub now
 {
-	return time2str($Options{'time_fmt'}, time());
+	return mdyt(time());
 }
 
 
