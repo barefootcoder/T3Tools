@@ -21,7 +21,7 @@ package Barefoot::T3::CLI;
 use strict;
 use warnings;
 
-use Barefoot::base;
+use Barefoot;
 
 use base qw<Exporter>;
 our @EXPORT = qw< cli_common_opts cli_get_command cli_fatal >;
@@ -55,7 +55,7 @@ sub cli_get_command
 		{
 			cli_fatal(2, "you must specify exactly one command (", join(',', keys %$funcs), ")") if defined $command;
 			$command = $funcs->{$copt};
-			# print STDERR "defined command as $command\n";
+			debuggit(2 => "defined command as", $command);
 		}
 	}
 
