@@ -67,8 +67,8 @@ our %MonNumbers =
 
 our %Options =
 (
-	def_fmt		=>	'%Y-%m-%d',
-	def_tfmt	=>	'%Y-%m-%d %T',
+	date_fmt	=>	'%Y-%m-%d',
+	time_fmt	=>	'%Y-%m-%d %T',
 	epoch		=>	'1/1/1980',
 
 	overriden	=>	{},
@@ -100,6 +100,18 @@ sub _cvt_date_if_necessary
 }
 
 
+sub _epoch_secs_monday
+{
+	my $dow = (localtime($_[0]))[PART_DOW];
+
+	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
+	# now num_days will be number of days ago the last Monday was
+	my $num_days = $dow == 0 ? 6 : $dow - 1;
+
+	return time - $num_days * 24 * 60 * 60;
+}
+
+
 ###########################
 # public routines
 ###########################
@@ -116,13 +128,19 @@ sub isValid
 
 sub mdy
 {
-	return time2str($Options{'def_fmt'}, $_[0]);
+	return time2str($Options{'date_fmt'}, $_[0]);
 }
 
 
 sub today
 {
 	return mdy(time());
+}
+
+
+sub now
+{
+	return time2str($Options{'time_fmt'}, time());
 }
 
 
@@ -175,7 +193,7 @@ sub dateTimeSeconds
 {
 	my ($date, $time) = @_;
 
-	print STDERR "Barefoot::date: dateTimeSeconds() is depracated; use Date::Parse's str2time() instead\n";
+	print STDERR "Barefoot::date: dateTimeSeconds() is deprecated; use Date::Parse's str2time() instead\n";
 	$date = "$date $time" if $time;
 	return str2time($date);
 }
@@ -183,22 +201,13 @@ sub dateTimeSeconds
 
 sub MondayTime
 {
-	my $today = (gmtime(time))[PART_DOW];
-
-	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
-	# now num_days will be number of days ago the last Monday was
-	my $num_days = $today == 0 ? 6 : $today - 1;
-
-	return time - $num_days * 24 * 60 * 60;
+	return time2str($Options{'time_fmt'}, _epoch_secs_monday(time()));
 }
 
 
 sub MondayDate
 {
-	my $monday_time = MondayTime();
-	my ($day, $mon, $year) = (gmtime $monday_time)[3..5];
-	$mon += 1, $year += 1900;
-	return "$mon/$day/$year";
+	return time2str($Options{'date_fmt'}, _epoch_secs_monday(time()));
 }
 
 

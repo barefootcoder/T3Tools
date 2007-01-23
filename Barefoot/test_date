@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Date::Parse;
+use Date::Format;
 
 use Barefoot(DEBUG => 1);
 use Barefoot::date;
@@ -37,6 +38,11 @@ chomp $date_cmd;
 debuggit(2 => "today test: date returned", $date_cmd, "/ date::today is", date::today());
 die("today's date is wrong") unless date::today() eq $date_cmd;
 
+# and test now
+$date_cmd = `date +"%Y-%m-%d %T"`;
+chomp $date_cmd;
+die("now's time is wrong") unless date::now() eq $date_cmd;
+
 
 # test incDays a bit
 debuggit(2 => "date::today is", date::today(), "and inc'd by 0 is", date::incDays(date::today(), 0));
@@ -67,6 +73,18 @@ die("day diff with raw times failed") unless $raw_diff == 4;
 
 # other tests
 test_period_funcs();
+
+
+# now test with a different date format
+{
+	local $date::Options{'date_fmt'} = "%Y%m%d";
+	local $date::Options{'time_fmt'} = "%Y%m%d%H%M%S";
+
+	die("can't handle alternative date format") unless date::today() eq time2str("%Y%m%d", time());
+	die("can't handle alternative time format") unless date::now() eq time2str("%Y%m%d%H%M%S", time());
+}
+# and should be back to default here
+die("doesn't return to default") unless date::today() eq time2str("%Y-%m-%d", time());
 
 
 # everything looks good
