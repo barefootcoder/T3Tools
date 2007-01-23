@@ -10,7 +10,7 @@ use strict;
 
 use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
-@EXPORT_OK = qw<insert_time_log>;
+@EXPORT_OK = qw<>;
 
 
 use Storable;
