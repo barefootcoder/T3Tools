@@ -10,7 +10,7 @@ use Barefoot(DEBUG => 1);
 use Barefoot::range;
 use Barefoot::exception;
 use Barefoot::DataStore;
-use Barefoot::DataStore::procs;
+use Barefoot::DataStore::Procs;
 
 sub test_error(&@);
 
@@ -467,14 +467,13 @@ sub test_misc_functions
 
 	# curdate function
 	my $res = $testds->do("select {&curdate}");
-	croak("curdate query failed:", $testds->last_error())
-			unless defined $res and $res->next_row();
+	croak("curdate query failed:", $testds->last_error()) unless defined $res and $res->next_row();
 	# note: if you happen to be running this at the exact moment of midnight,
 	# I suppose it's technically possible for the RDBMS date and the Unix
 	# date to fail to match.  just run it again.
-	print STDERR "current date: from data store = ", substr($res->col(0), 0, 11),
-			", from Perl = ", time2str($date_format{$rdbms}, time()), "\n" if DEBUG >= 2;
-	die("can't get current date") unless substr($res->col(0), 0, 11) eq time2str($date_format{$rdbms}, time());
+	debuggit(2 => "current date: from data store =", substr($res->col(0), 0, 10),
+			"/ from Perl =", time2str($date_format{$rdbms}, time()));
+	die("can't get current date") unless substr($res->col(0), 0, 10) eq time2str($date_format{$rdbms}, time());
 
 	# ifnull function
 	db_assert($testds->do(q{ insert test1 values ('nul', null, 123.45) }), "couldn't insert data1 to test ifnull func");
