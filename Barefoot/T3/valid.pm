@@ -38,33 +38,31 @@ use Barefoot::T3::db_get qw<get_emp_id default_client phase_list>;
 
 our %db_default =
 (
-	employee	=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{user}) },
-	client		=>	sub {
-							$_[0]->{employee} = get_emp_id($_[0]->{user})
-									unless exists $_[0]->{employee};
-							default_client($_[0]->{employee});
-					},
-	project		=>	sub {
-							$_[0]->{employee} = get_emp_id($_[0]->{user})
-									unless exists $_[0]->{employee};
-							"";
-					},
-	phase		=>	sub { ""; },
-	'client tracking code'
-				=>	sub { ""; },
+	employee				=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{user}) },
+	client					=>	sub
+								{
+									$_[0]->{employee} = get_emp_id($_[0]->{user}) unless exists $_[0]->{employee};
+									default_client($_[0]->{employee});
+								},
+	project					=>	sub
+								{
+									$_[0]->{employee} = get_emp_id($_[0]->{user}) unless exists $_[0]->{employee};
+									"";
+								},
+	phase					=>	sub { "" },
+	'client tracking code'	=>	sub { "" },
 );
 
 our %valid_function =
 (
-	employee	=>	sub { valid_employees() },
-	client		=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
-	project		=>	sub {
-							valid_projects($_[0]->{employee}, $_[0]->{client},
-									$_[0]->{date})
-						},
-	phase		=>	sub { phase_list() },
-	'client tracking code'
-				=> sub { valid_trackings($_[0]->{client}) },
+	employee				=>	sub { valid_employees() },
+	client					=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
+	project					=>	sub
+								{
+									valid_projects($_[0]->{employee}, $_[0]->{client}, $_[0]->{date})
+								},
+	phase					=>	sub { phase_list() },
+	'client tracking code'	=> sub { valid_trackings($_[0]->{client}) },
 );
 
 
@@ -76,17 +74,13 @@ our %valid_function =
 sub get_parameter
 {
 	my ($parmname, $parminfo, $objinfo, $opts) = @_;
-	if (DEBUG >= 4)
-	{
-		print STDERR "parminfo: ", Dumper($parminfo), "\n";
-		print STDERR "wantarray is ", defined wantarray ? wantarray : "undef", "\n";
-	}
+	debuggit(4 => "get_parameter: wantarray is", wantarray, "/ parminfo:", Dumper($parminfo));
 
-	my $parm = "";					# set to empty in case we bail out early
+	my $parm = "";														# set to empty in case we bail out early
 	my $valid_parms = {};
 
-	TRY:							# try several things to figure out just
-	{								# what the parameter's value should be
+	TRY:																# try several things to figure out just
+	{																	# what the parameter's value should be
 
 		# database default is lowest priority (based on dispatch table; if we don't have such a function,
 		# better barf)
