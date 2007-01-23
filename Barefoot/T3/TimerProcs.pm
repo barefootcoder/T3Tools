@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl -w
-
-# For RCS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # Barefoot::T3::TimerProcs
@@ -28,6 +20,7 @@ package T3::TimerProcs;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 use Carp;
 use Time::Local;
@@ -38,7 +31,7 @@ use Barefoot::base;
 use Barefoot::range;
 use Barefoot::exception;
 use Barefoot::DataStore;
-use Barefoot::DataStore::procs;
+use Barefoot::DataStore::Procs;
 use Barefoot::DataStore::DataSet;
 
 use constant BAREFOOT_EPOCH => '1/31/1994';
@@ -66,7 +59,13 @@ $DataStore::procs->{calc_salary_bank} = \&calc_salary_bank;
 #
 
 
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+###########################################################################
 # helper routines
+# for internal use only
+###########################################################################
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 sub _fatal
@@ -82,7 +81,13 @@ sub _do_or_error
 }
 
 
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+###########################################################################
 # main procedures
+# for use by SQL reports
+###########################################################################
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 ###########################################################################
@@ -1710,3 +1715,76 @@ sub calc_insurance_contribution
 	# no output necessary
 	return "";
 }
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+###########################################################################
+# auxillary procedures
+# for use with sundry DataSet's
+###########################################################################
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+=comment
+sub fred
+{
+	my ($data, $sql, $match_cols, $match_val,
+			$date, $start_date, $end_date) = @_;
+
+	# build up list of top-level id's
+	# and sub it into the SQL
+	my %top_ids;
+	foreach ($@data)
+	{
+		$top_ids{$_->{$cols->[0]} = 1;
+	}
+	my $list = [ keys %top_ids ];
+	$_ = "'$_'" foreach @$list;
+	$list = join(',', @$list);
+	$sql =~ s/in\s+\(\)/in ($list)/i;
+
+	my $match_data = $ds->load_data($sql) or _fatal($ds);
+	my $matches = [];
+	foreach (@$match_data)
+	{
+		foreach my $num_matches ($#$match_cols)
+		{
+			my $curcol = $match_cols->[$num_matches];
+			if (not defined $_->{$curcol})
+			{
+				$matches->[$num_matches] = {}
+						unless defined $matches->[$num_matches];
+				my $hash = $matches->[$num_matches];
+				foreach my $mcol (@$match_cols[0..($num_matches-1)])
+				{
+					$hash = $hash->{$mcol};
+				}
+				push @{$hash->{$curcol}} = [ $_->{$match_val},
+						$_->{$start_date}, $_->{$end_date} ];
+				last;
+			}
+		}
+	}
+
+	$data->alter_dataset({
+			add_columns		=>	[ $match_val ],
+			foreach_row		=>	sub
+			{
+				MATCH_COL: foreach my $m (0..$#$match_cols)
+				{
+					my $possible_match = $matches->[$m];
+					foreach my $mcol (0..$m)
+					{
+						next MATCH_COL unless exists $possible_match->{$mcol};
+						$possible_match = $possible_match->{$mcol};
+					}
+					foreach $pm (@$possible_match)
+					{
+						if ($_->{$date} >= 
+					}
+				}
+			}
+	});
+}
+=cut

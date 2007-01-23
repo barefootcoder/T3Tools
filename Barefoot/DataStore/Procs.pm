@@ -1,8 +1,6 @@
-#! /usr/local/bin/perl
-
 ###########################################################################
 #
-# Barefoot::DataStore::procs
+# Barefoot::DataStore::Procs
 #
 ###########################################################################
 #
@@ -26,7 +24,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
 #
 ###########################################################################
 

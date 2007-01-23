@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl -w
-
-# For RCS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # Barefoot::DataStore::display
@@ -212,6 +204,7 @@ package DataStore;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 # don't try to turn on debugging here; do it in DataStore.pm instead
 
@@ -221,7 +214,7 @@ use Barefoot::string;
 use Barefoot::format;
 use Barefoot::DataStore;
 use Barefoot::T3::TimerProcs;
-use Barefoot::DataStore::procs;
+use Barefoot::DataStore::Procs;
 
 
 our %format_place =

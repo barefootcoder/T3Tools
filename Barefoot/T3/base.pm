@@ -125,7 +125,7 @@ use POSIX qw<mkfifo>;
 use Barefoot;
 use Barefoot::exception;
 use Barefoot::config_file;
-use Barefoot::DataStore::procs;
+use Barefoot::DataStore::Procs;
 
 
 our $t3;																# DataStore for singleton
