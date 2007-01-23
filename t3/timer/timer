@@ -37,9 +37,9 @@ use Barefoot::input qw< get_yn input input_text >;
 
 use Barefoot::T3::base;
 use Barefoot::T3::valid qw< get_parameter >;
+use Barefoot::T3::Timer qw< calc_date calc_time test_connection >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
 use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
-use Barefoot::T3::Timer qw< timer_command get_timer_info calc_date calc_time test_connection >;
 
 
 #################################
@@ -62,20 +62,15 @@ END
 #################################
 
 
-use constant Elapsed =>
-	'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
+use constant Elapsed =>			'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
 
-use constant Totals_Header =>
-	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
-use constant Totals =>
-	'    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
+use constant Totals_Header =>	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
+use constant Totals =>			'    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
 
 
-use constant Totals_Weekly =>
-	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<          total: @##.## hours     @<<<<<<<<<<<';
-use constant Average_Weekly =>
-	'AVERAGE WEEKLY TIME:                           @##.## hours';
+use constant Totals_Weekly =>	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<          total: @##.## hours     @<<<<<<<<<<<';
+use constant Average_Weekly =>	'AVERAGE WEEKLY TIME:                           @##.## hours';
 
 
 use constant Log =>
@@ -181,15 +176,22 @@ debuggit(5 => "survived args and error checks");
 $| = 1;
 
 
-# get the basics for our $timers collection
-try
-{
-	$timers = get_timer_info($ARGV[0], $parminfo);
-}
-catch
-{
-	error(3, $_);
-};
+# get the basics
+our $mod = T3::Module::Timer->new( user => $parminfo->{'user'} );
+$timers = $mod->readfile({
+	FOREACH		=>	sub
+					{
+						my ($timers, $timer) = @_;
+
+						# set current timer tag
+						if ($timer->{'time'} =~ /-$/)
+						{
+							debuggit(3 => "readfile: setting current timer to", $timer->{'name'});
+							$timers->{T3::CURRENT_TIMER} = $timer->{'name'};
+						}
+					}
+});
+$mod->setup_params($ARGV[0], $parminfo, $timers);
 
 
 if ($command eq 'START')					# start a timer
@@ -199,8 +201,9 @@ if ($command eq 'START')					# start a timer
 	{
 		my $todo_name = $1;
 
-		my $todo = t3_readfile(TODO => $parminfo->{'user'});
-		error(2, "can't find todo name $todo_name") unless exists $todo->{$todo_name};
+		my $todo = T3::Module::Todo->new( user => $parminfo->{'user'} );
+		my $todos = $mod->readfile();
+		error(2, "can't find todo name $todo_name") unless exists $todos->{$todo_name};
 
 		$parminfo->{'timer'} = $todo_name;
 		$parminfo->{'client'} = $todo->{'client'};
@@ -222,9 +225,7 @@ if ($command eq 'START')					# start a timer
 			get_timer_parameter("client");
 			get_timer_parameter("project");
 
-			my ($phase_needed) = proj_requirements($parminfo->{'client'},
-					$parminfo->{'project'}, calc_date(time));
-
+			my ($phase_needed) = proj_requirements($parminfo->{'client'}, $parminfo->{'project'}, calc_date(time));
 			get_timer_parameter("phase") if $phase_needed;
 		}
 		else
@@ -274,20 +275,6 @@ if ($command eq 'RENAME')					# new name for a timer
 	{
 		my $defname = $parminfo->{'newtimer'} || $parminfo->{'timer'};
 		$parminfo->{'newtimer'} = input("new name for this timer?", $defname);
-	}
-
-	if (test_connection())
-	{
-		get_timer_parameter("client");
-		get_timer_parameter("project");
-
-		my ($phase_needed, $tracking_needed, $comments_needed) =
-				proj_requirements(
-					$parminfo->{'client'}, $parminfo->{'project'},
-					calc_date(time)
-				);
-
-		get_timer_parameter("phase") if $phase_needed;
 	}
 }
 
@@ -415,7 +402,7 @@ if ($command eq 'TOTAL')					# total timers by client
 	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
-	foreach (t3_values $timers)
+	foreach ($mod->values($timers))
 	{
 		next if exists $ignore_timers{$_->{name}};
 
@@ -463,7 +450,7 @@ if ($command eq 'AVERAGE')
 		exit;
 	}
 
-	my $emp_id = get_emp_id($parminfo->{'user'});
+	my $emp_id = get_emp_id($mod->user);
 	debuggit(2 => "average: emp_id is", $emp_id);
 	my $logs = get_logs($emp_id);
 	debuggit(3 => "average: got", scalar(@$logs), "total logs back");
@@ -490,8 +477,11 @@ if ($command eq 'AVERAGE')
 		my ($start, $end) = split(' - ');
 		if ($last_date)
 		{
-			print "!!!!!!!!!!!!!!!   WARNING!  SKIPPED WEEK(S)!   !!!!!!!!!!!!!!!\n"
-					unless $start eq date::incDays($last_date, 1);
+			unless ($start eq date::incDays($last_date, 1))
+			{
+				debuggit(2 => "last date", $last_date, "start", $start);
+				print "!!!!!!!!!!!!!!!   WARNING!  SKIPPED WEEK(S)!   !!!!!!!!!!!!!!!\n";
+			}
 		}
 		$last_date = $end;
 
@@ -546,7 +536,7 @@ if ($command eq 'LOGALL')
 {
 	# since LOGALL does so much to the timer file, and does it in such tiny increments, it's a good idea to
 	# just save a complete backup of everything before we start
-	my $tfile = T3::base_filename(TIMER => $parminfo->{'user'});
+	my $tfile = $mod->base_filename;
 	my $backup = "$tfile.preLog";
 	unlink $backup if -e $backup;
 	copy($tfile, $backup);
@@ -594,7 +584,7 @@ END
 		local $parminfo->{'client'} = 'TG';
 		local $parminfo->{'project'} = 'LOG';
 		local $parminfo->{'phase'} = 'ADM';
-		timer_command('START', $parminfo, $timers);
+		$mod->timer_command('START', $parminfo, $timers);
 	}
 
 	my %visited_nw_timers;
@@ -615,7 +605,7 @@ END
 
 				$timer =~ s/$nw_re//;
 				$parminfo->{'newtimer'} = $timer;
-				timer_command('RENAME', $parminfo, $timers);
+				$mod->timer_command('RENAME', $parminfo, $timers);
 			}
 			next;
 		}
@@ -629,7 +619,7 @@ END
 			unless (get_yn("\n\ntimer $timer has no time logged this week; save it?"))
 			{
 				$parminfo->{'timer'} = $timer;
-				timer_command('CANCEL', $parminfo, $timers);
+				$mod->timer_command('CANCEL', $parminfo, $timers);
 			}
 			next;
 		}
@@ -638,7 +628,7 @@ END
 		{
 			$parminfo->{'timer'} = $timer;
 			$parminfo->{'newtimer'} = $timer . '-save';
-			timer_command('COPYINFO', $parminfo, $timers);
+			$mod->timer_command('COPYINFO', $parminfo, $timers);
 		}
 
 		# log out the timer (done)
@@ -651,7 +641,7 @@ END
 				$parminfo->{'project'} = undef;
 				$parminfo->{'phase'} = undef;
 				print_and_gather($timer);
-				timer_command('DONE', $parminfo, $timers);
+				$mod->timer_command('DONE', $parminfo, $timers);
 			};
 
 			if (exists $timers->{$timer})			# logging out failed for some reason
@@ -660,14 +650,14 @@ END
 				if (get_yn("\ndo you want to cancel this timer?"))
 				{
 					$parminfo->{'timer'} = $timer;
-					timer_command('CANCEL', $parminfo, $timers);
+					$mod->timer_command('CANCEL', $parminfo, $timers);
 					last LOG;
 				}
 
 				if (exists $timers->{$timer . '-save'})
 				{
 					$parminfo->{'timer'} = $timer . '-save';
-					timer_command('CANCEL', $parminfo, $timers);
+					$mod->timer_command('CANCEL', $parminfo, $timers);
 				}
 
 				next TIMER;
@@ -686,13 +676,13 @@ END
 			{
 				$parminfo->{'timer'} = $saved_timer;
 				$parminfo->{'newtimer'} = $timer;
-				timer_command('RENAME', $parminfo, $timers);
+				$mod->timer_command('RENAME', $parminfo, $timers);
 				$visited_nw_timers{$saved_timer} = true;		# might get a -save in here, but it doesn't really matter
 			}
 			else
 			{
 				$parminfo->{'timer'} = $saved_timer;
-				timer_command('CANCEL', $parminfo, $timers);
+				$mod->timer_command('CANCEL', $parminfo, $timers);
 			}
 		}
 
@@ -712,7 +702,7 @@ if ($command eq 'PARSE')			# special flag for use by other processes
 try
 {
 	# the main event
-	timer_command($command, $parminfo, $timers);
+	$mod->timer_command($command, $parminfo, $timers);
 }
 catch
 {
@@ -724,7 +714,7 @@ if ($command eq 'COPYINFO')
 	# why copy a timer's info unless you also wanted to start it?
 	# info is copied, let's just start it now
 	$parminfo->{'timer'} = $parminfo->{'newtimer'};
-	timer_command('START', $parminfo, $timers);
+	$mod->timer_command('START', $parminfo, $timers);
 }
 
 unless ( $command eq 'LOG' )
@@ -848,7 +838,7 @@ sub get_giventimer
 sub get_timer_parameter
 {
 	my ($parmname) = @_;
-	debuggit(4 => "wantarray is", wantarray);
+	debuggit(4 => "get_timer_parameter: wantarray is", wantarray);
 
 	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{'timer'}};
@@ -890,7 +880,7 @@ sub print_elapsed
 	print_parsable($parminfo, $timers) and return if $cgi;
 
 	#print Dumper($timers);
-	print "\nTIMERS FOR $parminfo->{'user'}:\n";
+	print "\nTIMERS FOR ", $mod->user, ":\n";
 	foreach my $tname (sort keys %$timers)
 	{
 		# ignore tags
@@ -919,7 +909,6 @@ sub print_parsable
 {
 	my ($parminfo, $timers) = @_;
 
-	my $user = $parminfo->{'user'};
 	while (my ($tname, $timer) = each %$timers)
 	{
 		next if $tname =~ /^:/;					# special markers; not real timers
@@ -930,7 +919,7 @@ sub print_parsable
 		foreach my $part (reverse split(/,/, $timer->{'time'}))
 		{
 			print "<TIMER>" if $parminfo->{'parse_fmt'} eq 'x';
-			print "$user:$tname:$client:";
+			print $mod->user, ":$tname:$client:";
 
 			my $mins = calc_time($part);
 			print "$mins:";
@@ -1023,7 +1012,7 @@ sub gather_log_info
 
 	my ($emp_id, $emp_fullname) = get_timer_parameter("employee");
 
-	# $parminfo->{'user'} may not match emp_id at this point; that's ok.
+	# $mod->user may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
 	$parminfo->{date} = my $date = input(

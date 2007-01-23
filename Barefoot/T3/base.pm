@@ -29,7 +29,7 @@ package T3;
 use strict;
 use warnings;
 
-use Barefoot::base;
+use Barefoot;
 
 
 # config file and directives for same
@@ -104,79 +104,6 @@ sub debug
 }
 
 
-BEGIN
-{
-	# cache storage
-	my (%basefiles, %histfiles);
-
-	# file extensions
-	my %base_file_ext =
-	(
-		TIMER	=>	'.timer',
-		TODO	=>	'.todo',
-	);
-	my %hist_file =
-	(
-		TIMER	=>	'timer.history',
-		TODO	=>	'todo.history',
-	);
-
-	sub base_filename
-	{
-		my ($module, $user) = @_;
-
-		# first, if we've figured this stuff out before, just return the cache
-		if (exists $basefiles{$user} and exists $basefiles{$user}->{$module})
-		{
-			return $basefiles{$user}->{$module};
-		}
-
-		# double check validity of which file
-		# (this indicates a logic error)
-		die("don't know extension for module $module") unless exists $base_file_ext{$module};
-
-		my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
-		die("don't have a directory for timer files") unless $t3dir;
-		die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
-
-		my $basefile = "$t3dir/$user" . $base_file_ext{$module};
-		print "$module base file is $basefile\n" if DEBUG >= 2;
-
-		# save in cache in case needed again
-		$basefiles{$user}->{$module} = $basefile;
-
-		return $basefile;
-	}
-
-	sub hist_filename
-	{
-		my ($module) = @_;
-
-		# first, if we've figured this stuff out before, just return the cache
-		if (exists $histfiles{$module})
-		{
-			return $histfiles{$module};
-		}
-
-		# double check validity of which file
-		# (this indicates a logic error)
-		die("don't know history file for module $module") unless exists $hist_file{$module};
-
-		my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
-		die("don't have a directory for timer files") unless $t3dir;
-		die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
-
-		my $histfile = "$t3dir/" . $hist_file{$module};
-		print "$module history file is $histfile\n" if DEBUG >= 2;
-
-		# save in cache in case needed again
-		$histfiles{$module} = $histfile;
-
-		return $histfile;
-	}
-}
-
-
 ###########################################################################
 
 package Barefoot::T3::base;
@@ -188,40 +115,20 @@ use warnings;
 
 use base qw<Exporter>;
 our @EXPORT = (
-	qw< t3 t3_config t3_username t3_filenames t3_readfile t3_writefile >,
+	qw< t3 t3_config t3_username t3_filenames >,
 	qw< t3_pipename t3_create_pipe >,
-	qw< timer_fields todo_fields t3_values >,
 );
 
 use Data::Dumper;
 use POSIX qw<mkfifo>;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::config_file;
 use Barefoot::DataStore::procs;
 
 
-use constant TEXT_SEP => "==========\n";
-
-
-our $t3;									# DataStore for singleton
-
-our %field_func =
-(
-	TIMER		=>	\&timer_fields,
-	TODO		=>	\&todo_fields,
-);
-
-our %text_fields =
-(
-	TIMER		=>	{
-						comments	=>	1,
-					},
-	TODO		=>	{
-						description	=>	1,
-					},
-);
+our $t3;																# DataStore for singleton
 
 
 # set these up so we won't have to specify them all the time
@@ -239,7 +146,7 @@ sub t3
 	unless (defined $t3)
 	{
 		my $dstore = DEBUG ? "t3test" : "T3";
-		print STDERR "opening datastore $dstore\n" if DEBUG >= 2;
+		debuggit(2 => "opening datastore", $dstore);
 		$t3 = DataStore->open($dstore, $ENV{USER})
 	}
 	return $t3;
@@ -253,14 +160,6 @@ sub t3_config
 }
 
 
-sub t3_username
-{
-	die("Invalid user.  Change username or talk to administrator.")
-			unless exists $ENV{T3_USER};
-	return $ENV{T3_USER};
-}
-
-
 sub t3_filenames
 {
 	my ($module, $user) = @_;
@@ -270,15 +169,156 @@ sub t3_filenames
 }
 
 
-sub t3_readfile
+my $pipe_dir = Barefoot::T3::base::t3_config(T3::REQUESTDIR_DIRECTIVE);
+sub t3_pipename
 {
-	my ($module, $user, $opts) = @_;
+	return $pipe_dir . "/" . $_[0];
+}
+
+sub t3_create_pipe
+{
+	my $pipe_file = t3_pipename($_[0]);
+
+	# save old umask and set it to something reasonable
+	# our pipe needs to be open to at least group access
+	my $old_umask = umask 0002;
+
+	unlink($pipe_file) if -e $pipe_file;
+	T3::debug(4, -e $pipe_file ? "pipe exists" : "pipe is gone");
+	if (mkfifo($pipe_file, 0666))
+	{
+		umask $old_umask;
+		return $pipe_file;
+	}
+	else
+	{
+		umask $old_umask;
+		return undef;
+	}
+}
+
+
+###########################################################################
+#
+# This is the base class for T3 modules.  Each module should override the functions to do their own thing.
+#
+###########################################################################
+
+package T3::Module;
+
+use Moose;
+
+use Carp;
+use Date::Format;
+use Data::Dumper;
+
+use Barefoot;
+use Barefoot::exception;
+
+
+# public attributes
+has user => (isa => 'Str', is => 'ro', required => 1, default => sub { $_[0]->cur_user() });
+
+# private attributes
+has _basefile => (is => 'rw', default => '');
+has _histfile => (is => 'rw', default => '');
+
+# these following attributes don't need to be defined here, but you have to define them in derived classes
+# if you don't, several functions will keel over dead at runtime
+#has name => (is => 'ro', default => 'MODCODE');
+#has base_file_ext => (is => 'ro', default => '.ext');
+#has hist_file => (is => 'ro', default => 'module.history');
+
+
+use constant TEXT_SEP => "==========\n";
+
+
+sub _abstract
+{
+	croak("attempt to call function of abstract base class");
+}
+
+
+sub cur_user
+{
+	die("Invalid user.  Change username or talk to administrator.") unless exists $ENV{'T3_USER'};
+	return $ENV{'T3_USER'};
+}
+
+
+###########################
+# This works just like
+#
+#		values %$thingies
+#
+# except that it picks out the tags and doesn't return them.  Makes it much easier to loop through thingies
+# (timers, todods, etc).
+#
+sub values
+{
+	my ($this, $objs) = @_;
+	debuggit(5 => "values of", Dumper($objs));
+	return map { /^:/ ? () : $objs->{$_} } keys %$objs;
+}
+
+
+sub base_filename
+{
+	my ($this) = @_;
+
+	# first, if we've figured this stuff out before, just return the cache
+	if ($this->{_basefile})
+	{
+		return $this->{_basefile};
+	}
+
+	my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
+	die("don't have a directory for timer files") unless $t3dir;
+	die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
+
+	my $basefile = "$t3dir/" . $this->user . $this->base_file_ext;
+	debuggit(2 => "base file is", $basefile);
+
+	# save in cache in case needed again
+	$this->{_basefile} = $basefile;
+
+	return $basefile;
+}
+
+
+sub hist_filename
+{
+	my ($this) = @_;
+
+	# first, if we've figured this stuff out before, just return the cache
+	if ($this->{_histfile})
+	{
+		return $this->{_histfile};
+	}
+
+	my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
+	die("don't have a directory for timer files") unless $t3dir;
+	die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
+
+	my $histfile = "$t3dir/" . $this->hist_file;
+	debuggit(2 => "history file is", $histfile);
+
+	# save in cache in case needed again
+	$this->{_histfile} = $histfile;
+
+	return $histfile;
+}
+
+
+sub readfile
+{
+	my ($this, $opts) = @_;
 	$opts ||= {};
-	print STDERR "t3_readfile: args module $module, user $user, opts ", Dumper($opts) if DEBUG >= 4;
+	debuggit(4 => "base readfile: args module", $this->name, "user", $this->user, "opts", Dumper($opts));
 
 	my $objects = {};
 
-	open(TFILE, T3::base_filename($module, $user)) or die("can't read \L$module\E file");
+	open(TFILE, $this->base_filename) or die("can't read " . lc($this->name) . " file (" . $this->base_filename . ")");
 	LINE: while ( <TFILE> )
 	{
 		if ($_ eq TEXT_SEP)
@@ -314,12 +354,12 @@ sub t3_readfile
 			}
 			else
 			{
-				die("don't know how to read tag line $tag in $module file");
+				die("don't know how to read tag line $tag in " . lc($this->name) . " file");
 			}
 		}
 
 		my $obj = {};
-		($field_func{$module}->($obj)) = split("\t", $_, -1);
+		($this->fields($obj)) = split("\t", $_, -1);
 		$objects->{$obj->{'name'}} = $obj;
 		$opts->{'FOREACH'}->($objects, $obj) if $opts->{'FOREACH'};
 	}
@@ -329,30 +369,32 @@ sub t3_readfile
 }
 
 
-sub t3_writefile
+sub writefile
 {
-	my ($module, $user, $objects, $opts) = @_;
+	my ($this, $objects, $opts) = @_;
 	$opts ||= {};
-	print STDERR "t3_writefile: args module $module, user $user, opts ", Dumper($opts) if DEBUG >= 4;
+	debuggit(4 => "base writefile: args module", $this->name, "user", $this->user, "opts", Dumper($opts));
+	debuggit(5 => "                objects", Dumper($objects));
 
 	# don't really care whether this succeeds or not
 	try
 	{
-		print STDERR "t3_writefile: in try block\n" if DEBUG >= 5;
+		debuggit(5 => "writefile: in try block");
 		# turned off temporarily until this can be fixed
-		#save_to_db($user, $timers);
+		#this->save_to_db($objects);
 	}
 	catch
 	{
-		print STDERR "t3_writefile: returning from catch block\n" if DEBUG >= 5;
+		debuggit(3 => "writefile: returning from catch block with error", $_);
 		return;															# from catch block
 	};
-	print STDERR "t3_writefile: made it past exception block\n" if DEBUG >= 5;
+	debuggit(5 => "writefile: made it past exception block");
 
-	my $tfile = T3::base_filename($module => $user);
-	print STDERR "t3_writefile: going to print to file $tfile\n" if DEBUG >= 3;
+	my $tfile = $this->base_filename;
+	debuggit(3 => "writefile: going to print to file", $tfile);
 
 	my $backup_rotate = $opts->{'BACKUP_ROTATE'};
+	debuggit(4 => "writefile: looping through", $backup_rotate, "backups");
 	while ($backup_rotate)
 	{
 		my $rfile = "$tfile.$backup_rotate";
@@ -360,20 +402,20 @@ sub t3_writefile
 		unlink $rfile if -e $rfile;
 		rename $prev_rfile, $rfile if -e $prev_rfile;
 	}
+	debuggit(5 => "finished rotating backups");
 
-	open(TFILE, ">$tfile") or die("can't write to \L$module\E file");
+	open(TFILE, ">$tfile") or die("can't write to " . lc($this->name) . " file");
 	my %text;
-	while (my ($name, $obj) = each %$objects)
+	foreach my $obj ($this->values($objects))
 	{
-		# ignore tags
-		next if substr($name, 0, 1) eq ':';
-
-		print TFILE join("\t", $field_func{$module}->($obj)), "\n";
-		foreach (keys %{$text_fields{$module}})
+		debuggit(5 => "writing object", $obj->{'name'});
+		print TFILE join("\t", $this->fields($obj)), "\n";
+		foreach ($this->text_fields)
 		{
-			$text{"$name:$_"} = $obj->{$_} if exists $obj->{$_};
+			$text{"$obj->{'name'}:$_"} = $obj->{$_} if exists $obj->{$_};
 		}
 	}
+	debuggit(5 => "finished writing main records");
 	print TFILE TEXT_SEP if %text;
 	while (my ($which, $text) = each %text)
 	{
@@ -383,42 +425,41 @@ sub t3_writefile
 }
 
 
-my $pipe_dir = Barefoot::T3::base::t3_config(T3::REQUESTDIR_DIRECTIVE);
-sub t3_pipename
+sub save_history
 {
-	return $pipe_dir . "/" . $_[0];
-}
+	my ($this, $command, $object) = @_;
+	debuggit(5 => "entering save_history function");
 
-sub t3_create_pipe
-{
-	my $pipe_file = t3_pipename($_[0]);
+	my $hfile = $this->hist_filename;
+	debuggit(3 => "going to print to file", $hfile);
+	open(HFILE, ">>$hfile") or die("can't write to history file");
 
-	# save old umask and set it to something reasonable
-	# our pipe needs to be open to at least group access
-	my $old_umask = umask 0002;
+	print HFILE join("\t", $this->cur_user, time2str("%L/%e/%Y %l:%M%P", time()),
+			$command, $this->user, $this->fields($object)), "\n";
 
-	unlink($pipe_file) if -e $pipe_file;
-	T3::debug(4, -e $pipe_file ? "pipe exists" : "pipe is gone");
-	if (mkfifo($pipe_file, 0666))
-	{
-		umask $old_umask;
-		return $pipe_file;
-	}
-	else
-	{
-		umask $old_umask;
-		return undef;
-	}
+	close(HFILE);
 }
 
 
-# THE *_fields() SUBS
+sub save_to_db
+{
+	# this one may or may not be overriden, so don't croak here
+	return 1;
+}
+
+
+###########################
+# Methods that MUST be overriden:
+###########################
+
+
+# THE fields() METHOD
 #
-# these looks very esoteric, but they just encapsulate a single place where
-# a timer, todo item, etc can be broken into their various components.
-# by having this function, the fields will always be in the same order,
-# and since the subs are marked lvalue and return slices, you can assign
-# to it too.
+# These tend to look very esoteric, but they just encapsulate a single place where your modules "things"
+# (timers, todo items, etc) can be broken into their various components.  By having this function, the fields
+# will always be in the same order, and since the method are marked lvalue and return slices, you can assign to
+# it too.
+#
 # (Warning! default context for lvalue subs in Perl is scalar, so this is
 # not going to work:
 #
@@ -430,28 +471,15 @@ sub t3_create_pipe
 #
 # don't shoot us; we didn't make the rules.)
 #
-sub timer_fields : lvalue
+sub fields																# when you override, you MUST put ": lvalue" here
 {
-	@{$_[0]}{ qw<name time client project phase posted todo_link> };
-}
-
-sub todo_fields : lvalue
-{
-	@{$_[0]}{ qw<name title client project due posted> };
+	_abstract();
 }
 
 
-###########################
-# This works just like
-#
-#		values %$thingies
-#
-# except that it picks out the tags and doesn't return them.  Makes it much easier to loop through thingies
-# (timers, todods, etc).
-#
-sub t3_values
+sub text_fields
 {
-	return map { /^:/ ? () : $_[0]->{$_} } keys %{$_[0]};
+	_abstract();
 }
 
 
