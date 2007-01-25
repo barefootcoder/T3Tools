@@ -1,11 +1,3 @@
-#! /usr/local/bin/perl -w
-
-# For CVS:
-# $Date$
-#
-# $Id$
-# $Revision$
-
 ###########################################################################
 #
 # header
@@ -16,8 +8,9 @@
 #
 # #########################################################################
 #
-# All the code herein is Class II code according to your software
-# licensing agreement.  Copyright (c) 2002 Barefoot Software.
+# All the code herein is released under the Artistic License
+#       ( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2007 Barefoot Software
 #
 ###########################################################################
 
@@ -26,6 +19,7 @@ package header;
 ### Private ###############################################################
 
 use strict;
+use warnings;
 
 
 ###########################
