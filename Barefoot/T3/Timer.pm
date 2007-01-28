@@ -10,7 +10,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -122,11 +122,13 @@ sub test_connection
 	{
 		# presumably, this means that we've been here before
 		# let's just save time and return what we found out last time
+		debuggit(4 => "Leaving test_connection w/ cached value", $connected);
 		return $connected;
 	}
 
-	$connected = &t3->ping();
-	debuggit(4 => $connected ? "Leaving test_connection w/o error" : ("test_connection got error: " . &t3->last_error()));
+	$connected = eval { &t3->ping() };
+	debuggit(4 => $connected ? "Leaving test_connection w/o error"
+			: "test_connection got error: " . (defined $connected ? &t3->last_error() : $@));
 
 	return $connected;
 }
