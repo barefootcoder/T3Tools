@@ -4,9 +4,11 @@ use strict;
 use warnings;
 
 use Carp;
+use Date::Parse;
 use Date::Format;
 
 use Barefoot(DEBUG => 1);
+use Barefoot::date;
 use Barefoot::range;
 use Barefoot::exception;
 use Barefoot::DataStore;
@@ -208,8 +210,7 @@ while ($results->next_row())
 
 
 # make sure we can create tables
-die("didn't gracefully handle illegal table name")
-		if $testds->overwrite_table("%", [ ['a', 'char(1)', 'null'] ]);
+die("didn't gracefully handle illegal table name") if $testds->overwrite_table("%", [ ['a', 'char(1)', 'null'] ]);
 
 die("can't create table: " . $testds->last_error())
 		unless $testds->overwrite_table("test1", [
@@ -232,19 +233,14 @@ die("didn't get proper number of rows (got $nrows)") unless $nrows == NUM_TEST_R
 $results = $testds->do("select * from test1");
 die("can't get resultset colnames") unless join(':', $results->colnames()) eq 'a:b:c';
 $count = 0;
-my %date_result =
-(
-	Sybase	=>	'Jan  1 2002 12:00AM',
-	mysql	=>	'2002-01-01',
-);
+my $def_date = time2str($DataStore::date_formats->{$rdbms}->{'date_out'}, str2time('1/1/2'));
 while (my $row = $results->next_row())
 {
 	++$count;
 	die("column 0 bad for row $count") unless $results->col(0) eq 'xxx';
 	die("bad name for column 0") unless $results->colname(0) eq 'a';
-	# print STDERR $results->col(1), "\n";
-	die("column 1 bad for row $count")
-			unless $results->col(1) eq $date_result{$rdbms};
+	debuggit(2 => $results->col(1), '/', $def_date);
+	die("column 1 bad for row $count") unless $results->col(1) eq $def_date;
 	die("bad name for column 1") unless $results->colname(1) eq 'b';
 	die("column 2 bad for row $count") unless $results->col(2) == 48.35;
 	die("bad name for column 2") unless $results->colname(2) eq 'c';
@@ -291,7 +287,7 @@ print STDERR "modified state is $testds->{modified}\n" if DEBUG >= 4;
 
 # quick output check
 test_output("select * from test1 where a = 'xxx'",
-		"xxx:$date_result{$rdbms}:48.35\n" x (NUM_TEST_ROWS * 2),
+		"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
 		"can't get good data on reopen");
 
 # for following tests, we need some permissions
@@ -302,22 +298,25 @@ test_show_queries();
 test_transactions();
 test_nonscalar_placeholders();
 test_update_or_insert();
+test_date_handling();
 
 # clean up our test stuff
-$testds = DataStore->open("test", $rootuser);	# have to be sa for this to work
+$testds = DataStore->open("test", $rootuser);							# have to be sa/root for this to work
 db_assert($testds->do("drop table test1"), "can't drop test table");
+db_assert($testds->do("drop table test2"), "can't drop test table");
 db_assert($testds->do("drop table {~buddy}.test1"), "can't drop test table");
 db_assert($testds->do("drop table {~guest}.test1"), "can't drop test table");
-# if we don't do the below, running the test script enough times will
-# eventually fill up the transaction log and then we're hosed
 if ($rdbms eq 'Sybase')
 {
+	# if we don't do the below, running the test script enough times will
+	# eventually fill up the transaction log and then we're hosed
 	db_assert($testds->do("dump tran $testdb with no_log"), "can't dump tran");
 }
 unlink(TEST_DS_FILE);
 
 # looks okay
 unlink "new.dstore";
+unlink "dtest.dstore";
 print "ALL TESTS PASSED\n";
 
 
@@ -377,7 +376,7 @@ sub test_aliases
 
 	# check output from alias; should be same as test1 table
 	test_output(q<select * from {@t1} where a = 'xxx'>,
-			"xxx:$date_result{$rdbms}:48.35\n" x (NUM_TEST_ROWS * 2),
+			"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
 			"select from alias failed");
 	
 	# now try a bogus alias
@@ -591,25 +590,25 @@ sub test_vars
 			"variable set to 'con' didn't work");
 	$testds->define_var("a_val", "xxx");
 	test_output("select * from test1 where a = {a_val}",
-			"xxx:$date_result{$rdbms}:48.35\n" x (NUM_TEST_ROWS * 2),
+			"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
 			"variable set to 'xxx' didn't work");
 
 	# now test temporary, or override, vars
 	$testds->do("insert test1 values
-					( {a_val}, '$date_result{$rdbms}', {c_val} )",
+					( {a_val}, '$def_date', {c_val} )",
 				a_val => 'var', c_val => 96.55)
 			or die("can't insert for temp var test");
 	test_output("select * from test1 where a = 'var'",
-			"var:$date_result{$rdbms}:96.55\n",
+			"var:$def_date:96.55\n",
 			"override vars don't work");
 
 	# now test using temporary vars + standard placeholders
 	$testds->do("insert test1 values
-					( ?, '$date_result{$rdbms}', {c_val} )",
+					( ?, '$def_date', {c_val} )",
 				c_val => 88.88, 'v?')
 			or die("can't insert for var/placeholder test");
 	test_output("select * from test1 where a = 'v?'",
-			"v?:$date_result{$rdbms}:88.88\n",
+			"v?:$def_date:88.88\n",
 			"placeholder/var mix doesn't work");
 }
 
@@ -733,10 +732,10 @@ sub test_transactions
 	test_output("select * from test1 where a = 'trn'", "", "rollback didn't work");
 
 	$testds->begin_tran() or die("begin tran failed");
-	$testds->do("insert into test1 values ('trn', '$date_result{$rdbms}', 3.03)") or die("insert for transaction failed");
+	$testds->do("insert into test1 values ('trn', '$def_date', 3.03)") or die("insert for transaction failed");
 	$testds->commit() or die("commit tran failed");
 	test_output("select * from test1 where a = 'trn'",
-			"trn:$date_result{$rdbms}:3.03\n",
+			"trn:$def_date:3.03\n",
 			"commit didn't work");
 }
 
@@ -923,4 +922,42 @@ sub test_update_or_insert
 	die("upd_or_ins update failed: " . $testds->last_error()) unless $res and $res->rows_affected() == 1;
 	die("upd_or_ins gave wrong data") unless test_values("U|I", [ 'U|I', '2001-01-01', '1.00' ]);
 	die("test1 row count screwy") unless $testds->do(q{ select count(*) from test1 })->count() == $test1_rows + 1;
+}
+
+
+sub test_date_handling
+{
+	my %date_format =
+	(
+		native	=>	$def_date,
+		string	=>	'20020101',
+		# probably should have "perl" here one day
+	);
+
+	foreach my $date_type (sort keys %date_format)							
+	{
+		debuggit(2 => "now testing", $date_type, "date handling");
+		my $ds = DataStore->create("dtest",
+				connect_string		=>	"dbi:$rdbms:server=$server;database=$testdb",
+				server				=>	$server,
+				user				=>	$rootuser,
+				translation_type	=>	$rdbms,
+				date_handling		=>	$date_type,
+		);
+		$ds->commit_configs();
+		$ds->overwrite_table("test1", [
+			[ 'a', 'char(3)', 'not null' ],
+			[ 'b', 'date', 'null' ],
+			[ 'c', 'money', 'null' ],
+		]);
+
+		debuggit(2 => $date_type, ": date module", date::mdy('1/1/2'));
+		die("date module doesn't understand $date_type date handling")
+				unless date::mdy("1/1/2002") eq $date_format{$date_type};
+		$ds->do(q{ insert into test1 values ??? }, { a => 'DTE', b => date::mdy('1/1/2002'), c => '33.33' });
+
+		my $db_date = $ds->do(q{ select b from test1 where a = 'DTE' })->count();
+		debuggit(2 => "date from DB", $db_date);
+		die("date handling for $date_type failed") unless $db_date eq $date_format{$date_type};
+	}
 }

@@ -8,6 +8,7 @@ use Date::Format;
 
 use Barefoot(DEBUG => 1);
 use Barefoot::date;
+use Barefoot::TestFirst;
 
 
 # test valid date formats
@@ -31,24 +32,20 @@ die("failed invalid test") if date::isValid("1/42/01");
 die("mdy failed GMT check") unless date::mdy(str2time("1/1/2001 10:00pm")) eq date::mdy(str2time("1/1/2001 10:00am"));
 
 # make sure mdy() can take an arg
-die("mdy for not now fails") unless date::mdy(str2time("11/5/66")) eq '1966-11-05';
-die("mdy for date string fails") unless date::mdy("11/5/66") eq '1966-11-05';
+die("mdy for not now fails") unless date::mdy(str2time("11/5/66")) eq curfmt('1966-11-05');
+die("mdy for date string fails") unless date::mdy("11/5/66") eq curfmt('1966-11-05');
 # similar tests for mdyt()
-die("mdyt for not now fails") unless date::mdyt(str2time("11/5/66 21:03:45")) eq '1966-11-05 21:03:45';
-die("mdyt for date string fails") unless date::mdyt("11/5/66 21:03:45") eq '1966-11-05 21:03:45';
+die("mdyt for not now fails") unless date::mdyt(str2time("11/5/66 21:03:45")) eq curfmt('1966-11-05 21:03:45', 1);
+die("mdyt for date string fails") unless date::mdyt("11/5/66 21:03:45") eq curfmt('1966-11-05 21:03:45', 1);
 
 
 # test today function
-#my $date_cmd = `date +"%-m/%-d/%Y"`;
-my $date_cmd = `date +"%Y-%m-%d"`;
-chomp $date_cmd;
+my $date_cmd = date_cmd();
 debuggit(2 => "today test: date returned", $date_cmd, "/ date::today is", date::today());
 die("today's date is wrong") unless date::today() eq $date_cmd;
 
 # and test now
-$date_cmd = `date +"%Y-%m-%d %T"`;
-chomp $date_cmd;
-die("now's time is wrong") unless date::now() eq $date_cmd;
+die("now's time is wrong") unless date::now() eq date_cmd(1);
 
 
 # test incDays a bit
@@ -63,7 +60,7 @@ unless ($inc_to_now eq date::today())
 	debuggit(2 => "today is", date::today());
 	die("increment with raw times failed");
 }
-unless (date::incDays('2006-10-29', 1) eq '2006-10-30')
+unless (date::incDays('2006-10-29', 1) eq curfmt('2006-10-30'))
 {
 	debuggit(2 => "10/29/06 + 1 day is", date::incDays('2006/10/29', 1));
 	die("DST test failed");
@@ -91,11 +88,56 @@ test_period_funcs();
 	die("can't handle alternative time format") unless date::now() eq time2str("%Y%m%d%H%M%S", time());
 }
 # and should be back to default here
-die("doesn't return to default") unless date::today() eq time2str("%Y-%m-%d", time());
+die("doesn't return to default") unless date::today() eq curfmt(scalar(localtime));
+
+# test options override
+# (need separate program for this test)
+verify_err { Barefoot::date->request_change_to_def_option(bmoogle => "BOOGA BOOGA!") }
+		'unknown option', 'call to request_change_to_def_option with bad attr';
+die("option override fails") unless run_proglet EXITCODE => <<END;
+	use Barefoot::date(time_fmt => '%Y%m%d%H%M%S');
+
+	Barefoot::date->request_change_to_def_option(date_fmt => '%Y-%m-%d');
+	Barefoot::date->request_change_to_def_option(time_fmt => '%Y-%m-%d');
+	die("can't override date option") unless date::mdy('12/31/97') eq '1997-12-31';
+	die("override succeeded when it shouldn't") unless date::mdyt('12/31/97 1:06pm') eq '19971231130600';
+END
 
 
 # everything looks good
 print "ALL TESTS PASSED\n";
+
+
+sub curfmt
+{
+	return time2str($_[1] ? $date::Options{'time_fmt'} : $date::Options{'date_fmt'}, str2time($_[0]));
+}
+
+
+BEGIN
+{
+	# this is a rough conversion of Date::Format specs to the specs used by the date command
+	# it probably isn't perfect, but it should be close enough
+	my %DF2date =
+	(
+		c	=>	'%D %T',
+		C	=>	'%c',
+		e	=>	'%-d',
+		L	=>	'%-m',
+	);
+	# all these are the same in both, so just translate literally
+	$DF2date{$_} = "%$_" foreach qw< % a A b B d D h H I j k l m M n p P r R s S t T U w W x X y Y z Z >;
+	# the following cannot be translated (leaving them out here causes a fatal err): %G %o %q
+
+	sub date_cmd
+	{
+		my $date_fmt = $_[0] ? $date::Options{'time_fmt'} : $date::Options{'date_fmt'};
+		$date_fmt =~ s/%(.)/exists $DF2date{$1} ? $DF2date{$1} : die("no date cmd equiv for %$1")/eg;
+		my $out = `date +"$date_fmt"`;
+		chomp $out;
+		return $out;
+	}
+}
 
 
 sub test_period_funcs
@@ -117,5 +159,6 @@ sub test_period_funcs
 	die("setting default option for epoch failed") unless $output == 361;
 
 	die("period_name gave wrong answer")
-			unless date::period_name(date::period_num('1/5/5', 7, '1/31/1994'), 7, '1/31/1994') eq '2005-01-03 - 2005-01-09';
+			unless date::period_name(date::period_num('1/5/5', 7, '1/31/1994'), 7, '1/31/1994')
+					eq join(' - ', curfmt('1/3/5'), curfmt('1/9/5'));
 }

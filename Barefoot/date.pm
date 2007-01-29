@@ -1,6 +1,6 @@
 ###########################################################################
 #
-# date
+# Barefoot::date
 #
 ###########################################################################
 #
@@ -67,8 +67,8 @@ our %MonNumbers =
 
 our %Options =
 (
-	date_fmt	=>	'%Y-%m-%d',
-	time_fmt	=>	'%Y-%m-%d %T',
+	date_fmt	=>	'%m/%d/%Y',				#'%Y-%m-%d',
+	time_fmt	=>	'%m/%d/%Y %T',			#'%Y-%m-%d %T',
 	epoch		=>	'1/1/1980',
 
 	overriden	=>	{},
@@ -251,7 +251,8 @@ sub period_name
 
 ###########################################################################
 #
-# import function (must be in "real" package as opposed to date::
+# functions that have to be in the "real" package
+# (i.e. Barefoot::date as opposed to date::
 #
 ###########################################################################
 
@@ -282,6 +283,17 @@ sub import
 			croak("cannot set unknown option $_ in date module");
 		}
 	}
+}
+
+
+sub request_change_to_def_option
+{
+	my ($class, $opt, $newval) = @_;
+
+	croak("cannot change default for unknown option $opt in date module") unless exists $Options{$opt};
+	$Options{$opt} = $newval unless $Options{'overriden'}->{$opt};
+	debuggit(3 => "request_change_to_def_option:", $opt, "to", $newval,
+			$Options{'overriden'}->{$opt} ? 'unchanged' : 'changed');
 }
 
 

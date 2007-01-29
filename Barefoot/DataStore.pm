@@ -29,6 +29,7 @@ use warnings;
 use DBI;
 use Carp;
 use Storable;
+use Data::Dumper;
 use Text::Balanced qw<:ALL>;
 
 use Barefoot;
@@ -82,6 +83,27 @@ our $column_attributes =
 						},
 };
 
+our $date_formats =
+{
+		Sybase		=>	{
+							date_in		=> '%m/%d/%Y',				time_in		=> '%m/%d/%Y %T',
+							date_out	=> '%b %e %Y %H:%M%p',		time_out	=> '%b %e %Y %H:%M%p',
+						},
+		Oracle		=>	{
+							date_in		=> '%d-%b-%Y',				time_in		=> '%d-%b-%Y %T',
+							date_out	=> '%d-%b-%Y',				time_out	=> '%d-%b-%Y %T',
+						},
+		mysql		=>	{
+							date_in		=> '%Y-%m-%d',				time_in		=> '%Y-%m-%d %T',
+							date_out	=> '%Y-%m-%d',				time_out	=> '%Y-%m-%d %T',
+						},
+
+		string		=>	{
+							date_in		=> '%Y%m%d',				time_in		=> '%Y%m%d%H%M%S',
+							date_out	=> '%Y%m%d',				time_out	=> '%Y%m%d%H%M%S',
+						},
+};
+
 our $constants =
 {
 		Sybase		=>	{
@@ -102,13 +124,8 @@ our $funcs =
 {
 		Sybase		=>	{
 							curdate			=>	sub { "getdate()" },
-													# "dateadd(hour, 1,
-													# 		getdate())"
-													# },
 							ifnull			=>	sub { "isnull($_[0], $_[1])" },
-							drop_index		=>	sub {
-													"drop index $_[0].$_[1]"
-												},
+							drop_index		=>	sub { "drop index $_[0].$_[1]" },
 							place_on		=>	sub { "on $_[0]" },
 						},
 		Oracle		=>	{
@@ -118,11 +135,9 @@ our $funcs =
 							place_on		=>	sub { "tablespace $_[0]" },
 						},
 		mysql		=>	{
-							curdate			=>	sub { "curdate()" },
+							curdate			=>	sub { "now()" },
 							ifnull			=>	sub { "ifnull($_[0], $_[1])" },
-							drop_index		=>	sub {
-													"drop index $_[1] on $_[0]"
-												},
+							drop_index		=>	sub { "drop index $_[1] on $_[0]" },
 							# no way to really implement this one AFAIK
 							place_on		=>	sub { '' },
 						},
@@ -174,7 +189,7 @@ sub _login
 				syb_failed_db_fatal => 1,
 				syb_show_sql => 1,
 			});
-		croak("can't connect to data store as user $this->{'user'}") unless $this->{'dbh'};
+		croak("can't connect to data store as user $this->{'user'}: $DBI::errstr") unless $this->{'dbh'};
 		debuggit(5 => "successfully connected");
 
 		if (exists $this->{'initial_commands'})
@@ -193,6 +208,23 @@ sub _login
 }
 
 
+sub _set_date_types
+{
+	my $this = shift;
+
+	my $trans_type = $this->{'config'}->{'translation_type'};
+	my $date_handling = $this->{'config'}->{'date_handling'} || ($trans_type ? 'native' : 'string');
+	debuggit(3 => "DataStore: setting date types to", $date_handling);
+
+	# note that we don't need to do anything here for native date handling
+	if ($date_handling eq 'string')
+	{
+		configure_type($this, date => 'char(8)');
+		configure_type($this, datetime => 'char(14)');
+	}
+}
+
+
 sub _initialize_vars
 {
 	my $this = shift;
@@ -203,7 +235,7 @@ sub _initialize_vars
 		my $constant_table = $constants->{$this->{'config'}->{'translation_type'}};
 		$this->{'vars'}->{$_} = $constant_table->{$_} foreach keys %$constant_table;
 	}
-	# _dump_attribs($this, "after var init");
+	debuggit(5 => 'DataStore::_initialize_vars: $this', $this);
 }
 
 
@@ -213,6 +245,46 @@ sub _make_schema_trans
 
 	$this->{'schema_translation'} = sub { eval $this->{'config'}->{'schema_translation_code'} }
 			if exists $this->{'config'}->{'schema_translation_code'};
+}
+
+
+sub _set_date_handling
+{
+	my $this = shift;
+	debuggit(5 => 'DataStore::_set_date_handling: $this', Dumper($this));
+
+	my $trans_type = $this->{'config'}->{'translation_type'};
+	my $date_handling = $this->{'config'}->{'date_handling'} || ($trans_type ? 'native' : 'string');
+	debuggit(3 => "DataStore: setting date handling to", $date_handling);
+
+	if ($date_handling eq 'native')
+	{
+		croak("DataStore: cannot specify native date handling without also specifying translation type") unless $trans_type;
+		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$trans_type}->{'date_in'});
+		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$trans_type}->{'time_in'});
+	}
+	else
+	{
+		croak("DataStore: unknown date handling type $date_handling") unless exists $date_formats->{$date_handling};
+		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$date_handling}->{'date_in'});
+		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$date_handling}->{'time_in'});
+	}
+}
+
+
+# just a handy place to do all these things, since all need to be done in both create() and open()
+sub _setup_internals
+{
+	my $this = shift;
+
+	# eval schema translation code if it's there
+	_make_schema_trans($this);
+
+	# set date handling correctly
+	_set_date_handling($this);
+
+	# set up variable space; fill it with constants if any
+	_initialize_vars($this);
 }
 
 
@@ -309,7 +381,7 @@ sub _transform_query
 		croak("can't execute query with config's pending; run commit_configs()");
 	}
 
-	$this->_dump_attribs("before SQL preproc") if DEBUG >= 5;
+	debuggit(5 => 'DataStore::_transform_query: before SQL preproc $this', $this);
 	debuggit(5 => "about to check for vars in", $query);
 	# variables and constants
 	while ($query =~ / { (\w+) } | (\Q{??}\E) | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
@@ -422,6 +494,7 @@ sub _transform_query
 			{
 				my $schema = $&;
 				my $schema_name = $1;
+				die("cannot translate schema $schema with no translation code") unless exists $this->{'schema_translation'};
 				my $translation = $this->{'schema_translation'}->($schema_name);
 				debuggit(4 => "schema:", $schema, "/ s name:", $schema_name, "/ translation:", $translation);
 				$query =~ s/$schema/$translation/g;
@@ -516,29 +589,6 @@ sub _transform_query
 }
 
 
-# for debugging
-sub _dump_attribs
-{
-	my $this = shift;
-	my ($msg) = @_;
-
-	foreach (keys %{$this->{'config'}})
-	{
-		print STDERR "  $msg: config->$_ = $this->{'config'}->{$_}\n";
-	}
-
-	foreach (keys %{$this->{'vars'}})
-	{
-		print STDERR "  $msg: vars->$_ = $this->{'vars'}->{$_}\n";
-	}
-
-	foreach (keys %$this)
-	{
-		print STDERR "  $msg: $_ = $this->{$_}\n" unless $_ eq 'config' or $_ eq 'vars';
-	}
-}
-
-
 # interface methods
 
 
@@ -590,17 +640,14 @@ sub open
 	croak("must specify user to data store") unless $user_name;
 	$this->{'user'} = $user_name;
 
-	# eval schema translation code if it's there
-	_make_schema_trans($this);
-
-	# set up variable space; fill it with constants if any
-	_initialize_vars($this);
+	# get our guts set up properly
+	_setup_internals($this);
 
 	# mark unmodified
 	$this->{'modified'} = false;
 	$this->{'show_queries'} = false;
 
-	_dump_attribs($this, "in open") if DEBUG >= 5;
+	debuggit(5 => 'DataStore::open: $this', Dumper($this));
 
 	bless $this, $class;
 	$this->_login();
@@ -618,7 +665,7 @@ sub create
 	foreach my $key (keys %attribs)
 	{
 		croak("can't create data store with unknown attribute $key")
-				unless grep { /$key/ } ( qw<connect_string initial_commands server user translation_type>);
+				unless grep { /$key/ } ( qw<connect_string initial_commands server user translation_type date_handling> );
 	}
 
 	my $this = {};
@@ -633,8 +680,11 @@ sub create
 	$this->{'config'}->{'name'} = $data_store_name;
 	$this->{'modified'} = true;
 	$this->{'show_queries'} = false;
+	debuggit(5 => 'DataStore::create: $this', Dumper($this));
 
-	_initialize_vars($this);
+	# get our guts set up properly
+	_set_date_types($this);
+	_setup_internals($this);
 
 	bless $this, $class;
 	$this->_login();
@@ -646,7 +696,7 @@ sub create
 sub DESTROY
 {
 	my $this = shift;
-	# $this->_dump_attribs("in dtor");
+	debuggit(5 => 'DataStore::DESTROY: $this', $this);
 
 	$this->commit_configs();
 }
@@ -672,6 +722,7 @@ sub commit_configs
 sub ping
 {
 	my $this = shift;
+	debuggit(5 => "DataStore: in ping()");
 	return $this->{'dbh'}->ping();
 }
 
