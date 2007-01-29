@@ -135,7 +135,7 @@ our $funcs =
 							place_on		=>	sub { "tablespace $_[0]" },
 						},
 		mysql		=>	{
-							curdate			=>	sub { "now()" },
+							curdate			=>	sub { "curdate()" },
 							ifnull			=>	sub { "ifnull($_[0], $_[1])" },
 							drop_index		=>	sub { "drop index $_[1] on $_[0]" },
 							# no way to really implement this one AFAIK
