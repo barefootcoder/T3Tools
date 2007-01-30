@@ -274,7 +274,8 @@ sub base_filename
 
 	my $t3dir = T3::config(T3::TIMERDIR_DIRECTIVE);
 	die("don't have a directory for timer files") unless $t3dir;
-	die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
+	# TODO: we may not need to be able to write to this directory - can't really say until we parse options!
+	#die("cannot write to directory $t3dir") unless -d $t3dir and -w _;
 
 	my $basefile = "$t3dir/" . $this->user . $this->base_file_ext;
 	debuggit(2 => "base file is", $basefile);
