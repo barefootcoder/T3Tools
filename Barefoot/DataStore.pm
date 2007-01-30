@@ -29,6 +29,7 @@ use warnings;
 use DBI;
 use Carp;
 use Storable;
+use Date::Format;
 use Data::Dumper;
 use Text::Balanced qw<:ALL>;
 
@@ -123,19 +124,22 @@ our $constants =
 our $funcs =
 {
 		Sybase		=>	{
-							curdate			=>	sub { "getdate()" },
+							today			=>	sub { "getdate()" },
+							now				=>	sub { "getdate()" },
 							ifnull			=>	sub { "isnull($_[0], $_[1])" },
 							drop_index		=>	sub { "drop index $_[0].$_[1]" },
 							place_on		=>	sub { "on $_[0]" },
 						},
 		Oracle		=>	{
-							curdate			=>	sub { "sysdate" },
+							today			=>	sub { "sysdate" },
+							now				=>	sub { "sysdate" },
 							ifnull			=>	sub { "nvl($_[0], $_[1])" },
 							drop_index		=>	sub { "drop index $_[1]" },
 							place_on		=>	sub { "tablespace $_[0]" },
 						},
 		mysql		=>	{
-							curdate			=>	sub { "curdate()" },
+							today			=>	sub { "curdate()" },
+							now				=>	sub { "now()" },
 							ifnull			=>	sub { "ifnull($_[0], $_[1])" },
 							drop_index		=>	sub { "drop index $_[1] on $_[0]" },
 							# no way to really implement this one AFAIK
@@ -144,8 +148,6 @@ our $funcs =
 };
 
 our $procs = {};														# we don't use this, but someone else might
-
-our %_query_cache;														# this is only used by _transform_query
 
 
 #
@@ -268,6 +270,19 @@ sub _set_date_handling
 		croak("DataStore: unknown date handling type $date_handling") unless exists $date_formats->{$date_handling};
 		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$date_handling}->{'date_in'});
 		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$date_handling}->{'time_in'});
+
+		# update {&today} and {&now}
+		if ($trans_type)
+		{
+			$funcs->{$trans_type}->{'today'} = sub { time2str($date_formats->{$date_handling}->{'date_in'}, time()) };
+			$funcs->{$trans_type}->{'now'} = sub { time2str($date_formats->{$date_handling}->{'time_in'}, time()) };
+		}
+	}
+
+	if ($trans_type)
+	{
+		# backwards compatibility: {&curdate} == {&today}
+		$funcs->{$trans_type}->{'curdate'} = $funcs->{$trans_type}->{'today'};
 	}
 }
 
@@ -285,6 +300,9 @@ sub _setup_internals
 
 	# set up variable space; fill it with constants if any
 	_initialize_vars($this);
+
+	# set blank query cache
+	$this->{'_query_cache'} = {};										# this is only used by _transform_query
 }
 
 
@@ -294,7 +312,7 @@ sub _check_for_variable
 	my ($which, $value) = @_;
 
 	my $is_var = defined $value && $value =~ /$VAR_VALUE/;
-	debuggit(4 => "found that", $value, $is_var ? "is" : "is not", " a variable");
+	debuggit(4 => "found that", $value, $is_var ? "is" : "is not", "a variable");
 	if ($which eq 'PLACEHOLDER')
 	{
 		# if it's a variable, just return it back; otherwise return a ? placeholder
@@ -466,9 +484,9 @@ sub _transform_query
 	my $raw_query = $query;
 	# do *not* return a cached statement handle that is still active!
 	# this could screw up pathological cases
-	if (exists $_query_cache{$raw_query} and not $_query_cache{$raw_query}->{'Active'})
+	if (exists $this->{'_query_cache'}->{$raw_query} and not $this->{'_query_cache'}->{$raw_query}->{'Active'})
 	{
-		$sth = $_query_cache{$raw_query};
+		$sth = $this->{'_query_cache'}->{$raw_query};
 		print "DataStore current query:\n  cached version of\n$query\n" if $this->{'show_queries'};
 	}
 	else																# do it the hard way
@@ -572,7 +590,7 @@ sub _transform_query
 		debuggit(5 => "successfully prepared query");
 
 		# cache the sth for next time
-		$_query_cache{$raw_query} = $sth;
+		$this->{'_query_cache'}->{$raw_query} = $sth;
 	}
 
 	debuggit(5 => "at bottom of transform:", $this->ping() ? "connected" : "NOT CONNECTED!");

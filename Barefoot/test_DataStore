@@ -937,7 +937,7 @@ sub test_date_handling
 	foreach my $date_type (sort keys %date_format)							
 	{
 		debuggit(2 => "now testing", $date_type, "date handling");
-		my $ds = DataStore->create("dtest",
+		my $ds = DataStore->create("test$date_type",
 				connect_string		=>	"dbi:$rdbms:server=$server;database=$testdb",
 				server				=>	$server,
 				user				=>	$rootuser,
@@ -949,6 +949,7 @@ sub test_date_handling
 			[ 'a', 'char(3)', 'not null' ],
 			[ 'b', 'date', 'null' ],
 			[ 'c', 'money', 'null' ],
+			[ 'd', 'datetime', 'null' ],
 		]);
 
 		debuggit(2 => $date_type, ": date module", date::mdy('1/1/2'));
@@ -959,5 +960,21 @@ sub test_date_handling
 		my $db_date = $ds->do(q{ select b from test1 where a = 'DTE' })->count();
 		debuggit(2 => "date from DB", $db_date);
 		die("date handling for $date_type failed") unless $db_date eq $date_format{$date_type};
+
+		undef $ds;
+		$ds = DataStore->open("test$date_type", $rootuser);
+		$ds->do(q{ insert into test1 values ??? }, { a => 'DTC', b => '{&today}', c => '33.33', d => '{&now}' });
+		$db_date = $ds->do(q{ select b from test1 where a = 'DTC' })->count();
+		my $db_time = $ds->do(q{ select d from test1 where a = 'DTC' })->count();
+		my $which = $date_type eq 'native' ? $rdbms : $date_type;
+		my $expected = time2str($DataStore::date_formats->{$which}->{'date_out'}, time());
+		debuggit(2 => "expected", $expected, "for", $which,
+				"format", $DataStore::date_formats->{$which}->{'date_out'}, "got", $db_date);
+		die("current date for $date_type failed") unless $db_date eq $expected;
+
+		$expected = time2str($DataStore::date_formats->{$which}->{'time_out'}, time());
+		debuggit(2 => "expected", $expected, "for", $which,
+				"format", $DataStore::date_formats->{$which}->{'time_out'}, "got", $db_date);
+		die("current time for $date_type failed") unless $db_time eq $expected;
 	}
 }
