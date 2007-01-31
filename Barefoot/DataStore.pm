@@ -34,6 +34,7 @@ use Data::Dumper;
 use Text::Balanced qw<:ALL>;
 
 use Barefoot;
+use Barefoot::date;
 use Barefoot::exception;
 use Barefoot::DataStore::DataSet;
 
