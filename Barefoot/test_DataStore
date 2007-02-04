@@ -125,6 +125,7 @@ my $testds = DataStore->create("test",
 		user				=>	$rootuser,
 		translation_type	=>	$rdbms,
 );
+$testds->show_queries() if DEBUG >= 3;
 
 # check file creation after committing config changes
 unlink(TEST_DS_FILE);
@@ -722,6 +723,7 @@ sub test_show_queries
 	$testds->do($query);
 	die("show queries didn't turn off") if -e $testfile;
 	select STDOUT;
+	$testds->show_queries() if DEBUG >= 3;
 }
 
 sub test_transactions
@@ -944,6 +946,7 @@ sub test_date_handling
 				translation_type	=>	$rdbms,
 				date_handling		=>	$date_type,
 		);
+		$ds->show_queries() if DEBUG >= 3;
 		$ds->commit_configs();
 		$ds->overwrite_table("test1", [
 			[ 'a', 'char(3)', 'not null' ],
@@ -963,6 +966,7 @@ sub test_date_handling
 
 		undef $ds;
 		$ds = DataStore->open("test$date_type", $rootuser);
+		$ds->show_queries() if DEBUG >= 3;
 		$ds->do(q{ insert into test1 values ??? }, { a => 'DTC', b => '{&today}', c => '33.33', d => '{&now}' });
 		$db_date = $ds->do(q{ select b from test1 where a = 'DTC' })->count();
 		my $db_time = $ds->do(q{ select d from test1 where a = 'DTC' })->count();
@@ -974,7 +978,29 @@ sub test_date_handling
 
 		$expected = time2str($DataStore::date_formats->{$which}->{'time_out'}, time());
 		debuggit(2 => "expected", $expected, "for", $which,
-				"format", $DataStore::date_formats->{$which}->{'time_out'}, "got", $db_date);
+				"format", $DataStore::date_formats->{$which}->{'time_out'}, "got", $db_time);
 		die("current time for $date_type failed") unless $db_time eq $expected;
+
+		# make sure functions are not getting cached
+		sleep(1);														# have to make sure we get a different timestamp
+		$ds->do(q{ insert into test1 values ??? }, { a => 'DT2', b => '{&today}', c => '33.33', d => '{&now}' });
+		my $db_time = $ds->do(q{ select d from test1 where a = 'DT2' })->count();
+		$expected = time2str($DataStore::date_formats->{$which}->{'time_out'}, time());
+		debuggit(2 => "expected", $expected, "for", $which, "got", $db_time);
+		die("cached check for $date_type failed") unless $db_time eq $expected;
+
+		foreach (qw< BEGINNING_OF_TIME END_OF_TIME >)
+		{
+			unless($ds->do(q{ insert into test1 values ??? }, { a => 'DCN', b => "{$_}", c => '33.33', d => "{$_}" }))
+			{
+				die("insert for const test for $date_type failed: " . $ds->last_error);
+			}
+			$expected = $date_type eq 'native' ? $DataStore::constants->{$rdbms}->{$_}
+					: $DataStore::date_formats->{$date_type}->{lc($_)};
+			$db_date = $ds->do(q{ select b from test1 where a = 'DCN' })->count();
+			debuggit(2 => "expected", $expected, "got", $db_date);
+			die("$_ for $date_type failed") unless $db_date eq $expected;
+			$ds->do(q{ delete from test1 where a = 'DCN' });
+		}
 	}
 }

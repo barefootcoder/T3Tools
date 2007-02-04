@@ -46,7 +46,9 @@ use constant PASSWORD_FILE => '.dbpasswd';
 my $SCALAR_PH = qr/(?<=[^?])\?(?=[^?]|$)/;
 my $HASH_PH = qr/(?:\(\s*)?\Q???\E(?:\s*\))?/;
 my $ARR_PH = $HASH_PH;
-my $VAR_VALUE = qr/^\{.+\}$/;
+
+my $QUERY_VAR = qr/\{(\w+)\}/;
+my $QUERY_SUB = qr/^\{.+\}$/;
 
 
 # load_table is just an alias for load_data
@@ -103,6 +105,8 @@ our $date_formats =
 		string		=>	{
 							date_in		=> '%Y%m%d',				time_in		=> '%Y%m%d%H%M%S',
 							date_out	=> '%Y%m%d',				time_out	=> '%Y%m%d%H%M%S',
+							beginning_of_time	=>	'00000000',
+							end_of_time			=>	'99999999',
 						},
 };
 
@@ -238,7 +242,7 @@ sub _initialize_vars
 		my $constant_table = $constants->{$this->{'config'}->{'translation_type'}};
 		$this->{'vars'}->{$_} = $constant_table->{$_} foreach keys %$constant_table;
 	}
-	debuggit(5 => 'DataStore::_initialize_vars: $this', $this);
+	debuggit(5 => 'DataStore::_initialize_vars (post): $this', Dumper($this));
 }
 
 
@@ -254,7 +258,7 @@ sub _make_schema_trans
 sub _set_date_handling
 {
 	my $this = shift;
-	debuggit(5 => 'DataStore::_set_date_handling: $this', Dumper($this));
+	debuggit(5 => 'DataStore::_set_date_handling (pre): $this', Dumper($this));
 
 	my $trans_type = $this->{'config'}->{'translation_type'};
 	my $date_handling = $this->{'config'}->{'date_handling'} || ($trans_type ? 'native' : 'string');
@@ -272,11 +276,15 @@ sub _set_date_handling
 		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$date_handling}->{'date_in'});
 		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$date_handling}->{'time_in'});
 
-		# update {&today} and {&now}
 		if ($trans_type)
 		{
+			# update {&today} and {&now}
 			$funcs->{$trans_type}->{'today'} = sub { time2str($date_formats->{$date_handling}->{'date_in'}, time()) };
 			$funcs->{$trans_type}->{'now'} = sub { time2str($date_formats->{$date_handling}->{'time_in'}, time()) };
+
+			# reset constants for BEGINNING_OF_TIME and END_OF_TIME
+			$this->{'vars'}->{'BEGINNING_OF_TIME'} = $date_formats->{$date_handling}->{'beginning_of_time'};
+			$this->{'vars'}->{'END_OF_TIME'} = $date_formats->{$date_handling}->{'end_of_time'};
 		}
 	}
 
@@ -296,11 +304,12 @@ sub _setup_internals
 	# eval schema translation code if it's there
 	_make_schema_trans($this);
 
-	# set date handling correctly
-	_set_date_handling($this);
-
 	# set up variable space; fill it with constants if any
 	_initialize_vars($this);
+
+	# set date handling correctly
+	# (this *must* be after _initialize_vars())
+	_set_date_handling($this);
 
 	# set blank query cache
 	$this->{'_query_cache'} = {};										# this is only used by _transform_query
@@ -310,23 +319,50 @@ sub _setup_internals
 # used only by _transform_query (below) while checking for ??? (non-scalar placeholders)
 sub _check_for_variable
 {
-	my ($which, $value) = @_;
+	my ($this, $which, $value, $temp_vars) = @_;
 
-	my $is_var = defined $value && $value =~ /$VAR_VALUE/;
-	debuggit(4 => "found that", $value, $is_var ? "is" : "is not", "a variable");
+	my $is_sub = defined $value && $value =~ /$QUERY_SUB/;
+	my $varname = $is_sub && $value =~ /$QUERY_VAR/ ? $1 : undef;
+	debuggit(4 => $which, "found that", $value, $is_sub ? "is" : "is not", "a substitution and",
+			$varname ? "is" : "is not", "a variable");
 	if ($which eq 'PLACEHOLDER')
 	{
-		# if it's a variable, just return it back; otherwise return a ? placeholder
-		return $is_var ? $value : '?';
+		# if it's a substitution (but not a variable!), just return it back; otherwise return a ? placeholder
+		return ($is_sub && not $varname) ? $value : '?';
 	}
 	elsif ($which eq 'BIND_VAL')
 	{
-		# if it's a variable, then there will be no bind val, so return an empty list (else return the value)
-		return $is_var ? () : $value;
+		# if it's a substitution (except for variables), then there will be no bind val, so return an empty list
+		# else return the value, which if it's a var means actually _getting_ the value
+		# (note that since vars actually are subs themselves, the order of the code was rearranged for better
+		# efficiency; that's why it doesn't match the comment above)
+		return $varname ? $this->_get_var_value($varname, $temp_vars) : $is_sub ? () : $value;
 	}
 	else
 	{
 		die("don't know what to return when checking for variable ($which)");
+	}
+}
+
+
+# grab the value for a variable (i.e. {somevar} construction)
+sub _get_var_value
+{
+	my ($this, $varname, $temp_vars) = @_;
+	debuggit(4 => "trying to get value for variable", $varname, "vars are", Dumper($temp_vars));
+
+	if (exists $temp_vars->{$varname})
+	{
+		# temp_vars override previously defined vars
+		return $temp_vars->{$varname};
+	}
+	elsif (exists $this->{'vars'}->{$varname})
+	{
+		return $this->{'vars'}->{$varname};
+	}
+	else
+	{
+		croak("variable/constant unknown: $varname");
 	}
 }
 
@@ -379,7 +415,7 @@ sub _transform_query
 			push @var_stuff, $_;
 		}
 	}
-	my %temp_vars = @var_stuff;
+	my $temp_vars = { @var_stuff };
 	debuggit(4 => "built temp_vars with", @var_stuff / 2, "elements");
 	debuggit(4 => "built ns_placeholders with", scalar(@ns_placeholders), "elements");
 
@@ -400,30 +436,17 @@ sub _transform_query
 		croak("can't execute query with config's pending; run commit_configs()");
 	}
 
-	debuggit(5 => 'DataStore::_transform_query: before SQL preproc $this', $this);
+	debuggit(5 => 'DataStore::_transform_query: before SQL preproc $this', Dumper($this));
 	debuggit(5 => "about to check for vars in", $query);
 	# variables and constants
-	while ($query =~ / { (\w+) } | (\Q{??}\E) | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
+	while ($query =~ / $QUERY_VAR | (\Q{??}\E) | (values) \s+ $HASH_PH | (set) \s+ $HASH_PH /iox)
 	{
-		if ($1)															# just a variable
+		if ($1)															# {somevar} (just a variable)
 		{
 			my $variable = $&;
 			my $varname = $1;
 
-			my $value;
-			if (exists $temp_vars{$varname})
-			{
-				# temp_vars override previously defined vars
-				$value = $temp_vars{$varname};
-			}
-			elsif (exists $this->{'vars'}->{$varname})
-			{
-				$value = $this->{'vars'}->{$varname};
-			}
-			else
-			{
-				croak("variable/constant unknown: $varname");
-			}
+			my $value = $this->_get_var_value($varname, $temp_vars);
 
 			# for variable substitution, we use placeholders and return the var values
 			# the funky substring is pretty much straight out of the perlvar manpage
@@ -452,12 +475,14 @@ sub _transform_query
 			# (at least they damn well _better_ be all the same ...)
 			my $hash = $ns_placeholders[0];
 
-			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .
-					join(',', map { _check_for_variable(PLACEHOLDER => $hash->{$_}) } sort keys %$hash) . ')';
+			my $values = join(',', map { $this->_check_for_variable(PLACEHOLDER => $hash->{$_}, $temp_vars) }
+					sort keys %$hash);
+			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .  $values . ')';
+			debuggit(3 => 'values :', $values);
 
 			foreach $hash (@ns_placeholders)
 			{
-				push @vars, [ map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash ];
+				push @vars, [ map { $this->_check_for_variable(BIND_VAL => $hash->{$_}, $temp_vars) } sort keys %$hash ];
 			}
 			debuggit(4 => "theoretically added", scalar(@ns_placeholders), "arrayrefs to var list");
 
@@ -469,10 +494,29 @@ sub _transform_query
 			my $hash = shift @ns_placeholders;
 
 			substr($query, $-[0], $+[0] - $-[0]) = 'set ' .
-					join(', ', map { "$_ = " . _check_for_variable(PLACEHOLDER => $hash->{$_}) } sort keys %$hash);
+					join(', ', map { "$_ = " . $this->_check_for_variable(PLACEHOLDER => $hash->{$_}, $temp_vars) }
+							sort keys %$hash);
 
-			push @vars, map { _check_for_variable(BIND_VAL => $hash->{$_}) } sort keys %$hash;
+			push @vars, map { $this->_check_for_variable(BIND_VAL => $hash->{$_}, $temp_vars) } sort keys %$hash;
 		}
+	}
+
+	debuggit(5 => "about to check for functions in", $query);
+	# function calls
+	while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
+	{
+		my $function = quotemeta($&);
+		my $func_name = $1;
+		my @args = ();
+		@args = split(/,\s*/, $2) if $2;
+
+		debuggit(4 => "translating function", $func_name);
+		croak("no translation scheme defined") unless exists $this->{'config'}->{'translation_type'};
+		my $func_table = $funcs->{$this->{'config'}->{'translation_type'}};
+		croak("unknown translation function: $func_name") unless exists $func_table->{$func_name};
+
+		my $func_output = $func_table->{$func_name}->(@args);
+		$query =~ s/$function/$func_output/g;
 	}
 
 	my $sth;		# statement handle for us to return at the end of it all
@@ -488,7 +532,7 @@ sub _transform_query
 	if (exists $this->{'_query_cache'}->{$raw_query} and not $this->{'_query_cache'}->{$raw_query}->{'Active'})
 	{
 		$sth = $this->{'_query_cache'}->{$raw_query};
-		print "DataStore current query:\n  cached version of\n$query\n" if $this->{'show_queries'};
+		$this->_show_query($query, true, @vars) if $this->{'show_queries'};
 	}
 	else																# do it the hard way
 	{
@@ -517,24 +561,6 @@ sub _transform_query
 				my $translation = $this->{'schema_translation'}->($schema_name);
 				debuggit(4 => "schema:", $schema, "/ s name:", $schema_name, "/ translation:", $translation);
 				$query =~ s/$schema/$translation/g;
-			}
-
-			debuggit(5 => "about to check for functions in", $query);
-			# function calls
-			while ($query =~ / {\& (\w+) (?: \s+ (.*?) )? } /x)
-			{
-				my $function = quotemeta($&);
-				my $func_name = $1;
-				my @args = ();
-				@args = split(/,\s*/, $2) if $2;
-
-				debuggit(4 => "translating function", $func_name);
-				croak("no translation scheme defined") unless exists $this->{'config'}->{'translation_type'};
-				my $func_table = $funcs->{$this->{'config'}->{'translation_type'}};
-				croak("unknown translation function: $func_name") unless exists $func_table->{$func_name};
-
-				my $func_output = $func_table->{$func_name}->(@args);
-				$query =~ s/$function/$func_output/g;
 			}
 
 			debuggit(5 => "about to check for calc cols in", $query);
@@ -577,7 +603,7 @@ sub _transform_query
 		}
 
 		debuggit(4 => "after transform:", $query);
-		print "DataStore current query:\n$query\n" if $this->{'show_queries'};
+		$this->_show_query($query, false, @vars) if $this->{'show_queries'};
 
 		debuggit(5 => "before preparing query:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
@@ -605,6 +631,19 @@ sub _transform_query
 		carp("calculated columns are being lost") if %$calc_funcs;
 		return $sth;
 	}
+}
+
+
+sub _show_query
+{
+	my ($this, $query, $cached, @vars) = @_;
+	debuggit(5 => "DataStore::_show_query: entering with bind vals", Dumper(\@vars));
+
+	print "DataStore current query:\n";
+	print "   cached version of\n" if $cached;
+	print "$query\n";
+
+	print "   bind vals: ", join(' || ', map { defined $_ ? $_ : 'NULL' } @vars), "\n" if @vars;
 }
 
 
