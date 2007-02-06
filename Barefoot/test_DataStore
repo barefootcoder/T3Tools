@@ -294,6 +294,7 @@ test_output("select * from test1 where a = 'xxx'",
 # for following tests, we need some permissions
 $testds = DataStore->open("test", $rootuser);
 
+test_create_table();
 test_load_append_replace();
 test_show_queries();
 test_transactions();
@@ -302,18 +303,23 @@ test_update_or_insert();
 test_date_handling();
 
 # clean up our test stuff
-$testds = DataStore->open("test", $rootuser);							# have to be sa/root for this to work
-db_assert($testds->do("drop table test1"), "can't drop test table");
-db_assert($testds->do("drop table test2"), "can't drop test table");
-db_assert($testds->do("drop table {~buddy}.test1"), "can't drop test table");
-db_assert($testds->do("drop table {~guest}.test1"), "can't drop test table");
-if ($rdbms eq 'Sybase')
+END
 {
-	# if we don't do the below, running the test script enough times will
-	# eventually fill up the transaction log and then we're hosed
-	db_assert($testds->do("dump tran $testdb with no_log"), "can't dump tran");
+	$testds = DataStore->open("test", $rootuser);						# have to be sa/root for this to work
+	db_assert($testds->do("drop table test1"), "can't drop test table");
+	db_assert($testds->do("drop table test2"), "can't drop test table");
+	db_assert($testds->do("drop table test3"), "can't drop test table");
+	db_assert($testds->do("drop table {~buddy}.test1"), "can't drop test table");
+	db_assert($testds->do("drop table {~guest}.test1"), "can't drop test table");
+	db_assert($testds->do("drop table {~guest}.test2"), "can't drop test table");
+	if ($rdbms eq 'Sybase')
+	{
+		# if we don't do the below, running the test script enough times will
+		# eventually fill up the transaction log and then we're hosed
+		db_assert($testds->do("dump tran $testdb with no_log"), "can't dump tran");
+	}
+	unlink(TEST_DS_FILE);
 }
-unlink(TEST_DS_FILE);
 
 # looks okay
 unlink "new.dstore";
@@ -413,6 +419,7 @@ sub test_user_types
 {
 	# now make some user defined types
 	$testds->configure_type('logical', 'boolean');
+	$testds->configure_type('short_id', 'char(3)');
 
 	# while we're here, make sure we can't call do() with config's pending
 	test_error
@@ -422,14 +429,16 @@ sub test_user_types
 	catch { /can't execute query with config's pending; run commit_configs()/ }
 	or die("didn't refuse query with pending config's");
 
-	# now make sure our defined type works
+	# now make sure our defined types work
 	$testds->commit_configs();
 	die("can't create table with user types: " . $testds->last_error())
 			unless $testds->overwrite_table("test2", [
 					[ 'a', 'char(3)', 'not null' ],
 					[ 'b', 'logical', 'null' ],
+					[ 'c', 'short_id', 'not null' ],
 			]);
 }
+
 
 sub test_indices
 {
@@ -441,6 +450,7 @@ sub test_indices
 	db_assert($testds->do("{&drop_index test1, t1}"),
 			"can't drop an index (function drop_index");
 }
+
 
 sub test_count_func
 {
@@ -456,6 +466,7 @@ sub test_count_func
 	print STDERR "expected 30, got $count\n" if DEBUG >= 2;
 	die("count() does not return proper number") unless defined $count and $count == 30;
 }
+
 
 sub test_misc_functions
 {
@@ -483,6 +494,7 @@ sub test_misc_functions
 			"test of ifnull func failed");
 }
 
+
 sub test_schema_trans
 {
 	my %schema_trans =
@@ -502,8 +514,14 @@ sub test_schema_trans
 	);
 }
 
+
 sub test_execute
 {
+	$testds->overwrite_table("test2", [
+		[ 'a', 'char(3)', 'not null' ],
+		[ 'b', 'logical', 'null' ],
+	]);
+
 	db_assert(
 			$testds->execute("
 				insert test2
@@ -777,6 +795,7 @@ sub test_calc_columns
 =cut
 }
 
+
 sub test_col_attrs
 {
 	# test IDENTITY attribute
@@ -806,6 +825,54 @@ sub test_col_attrs
 	test_output(q{ select a from test2 },
 			"1\n2\n3\n",
 			"identity column not functioning");
+}
+
+
+sub test_create_table
+{
+	my $columns = [
+		[	'a',	'int',		'IDENTITY',	],
+		[	'b',	'short_id',	'NOT NULL',	],							# user defined type (set by test_user_types())
+		[	'c',	'boolean',	'NOT NULL',	],							# base type that is translated for all RDBMSes
+	];
+	$testds->create_table('test3', $columns) or die("cannot create table: " . $testds->last_error());
+	die("create_table didn't create table")
+			unless $testds->do(q{ insert into test3 (b, c) values ('aaa', 0) })->rows_affected() == 1;
+	die("create_table doesn't save column info") unless $testds->column_type('test3', 'b') eq 'short_id';
+	my %col_info = $testds->column_type('test3', 'b');
+	die("create_table doesn't save full column info") unless $col_info{'name'} eq 'b' and $col_info{'type'} eq 'short_id'
+			and $col_info{'attributes'} eq 'not null';
+	die("column_type doesn't return native type") unless $col_info{'native_type'} eq 'char(3)';
+
+	# test overwriting (and not overwriting)
+	$testds->create_table('test3', $columns) and die("overwrote table without permission");
+	$testds->create_table('test3', $columns, { OVERWRITE => 1 }) or die("cannot overwrite table even with permission");
+	die("didn't really overwrite") unless $testds->do(q{ select count(*) from test3 })->count() == 0;
+
+	# test with schema
+	$testds->create_table('test2', $columns, { SCHEMA => 'guest' })
+			or die("cannot create schema table: " . $testds->last_error());
+	die("create_table didn't create schema table")
+			unless $testds->do(q{ insert into {~guest}.test2 (b, c) values ('aaa', 0) })->rows_affected() == 1;
+	die("create_table doesn't save column info")
+			unless $testds->column_type('test2', 'b', { SCHEMA => 'guest' }) eq 'short_id';
+	my %col_info = $testds->column_type('test2', 'b', { SCHEMA => 'guest' });
+	die("create_table doesn't save full column info") unless $col_info{'name'} eq 'b' and $col_info{'type'} eq 'short_id'
+			and $col_info{'attributes'} eq 'not null';
+	die("column_type doesn't return native type") unless $col_info{'native_type'} eq 'char(3)';
+
+	# test saving col info across DataStore open/close
+	undef $testds;
+	$testds = DataStore->open("test", $rootuser);
+	die("create_table doesn't save column info across close") unless $testds->column_type('test3', 'b') eq 'short_id';
+
+	# test getting all colinfo at once
+	my @colinfo = $testds->column_type('test3');
+	die("can't get all column info") unless @colinfo == 3;
+	die("can't get all column info in correct order") unless join('', map { $_->{'name'} } @colinfo) eq 'abc';
+	my $colinfo = $testds->column_type('test3');
+	die("can't get all column info as a ref")
+			unless @$colinfo == 3 and join('', map { $colinfo->[$_] eq $colinfo[$_] } 0..2) eq '111';
 }
 
 

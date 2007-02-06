@@ -26,6 +26,8 @@ package DataStore;
 use strict;
 use warnings;
 
+use version; our $VERSION = qv('2.0.1');
+
 use DBI;
 use Carp;
 use Storable;
@@ -313,6 +315,11 @@ sub _setup_internals
 
 	# set blank query cache
 	$this->{'_query_cache'} = {};										# this is only used by _transform_query
+
+	# read in data dictionary (if exists)
+	my $data_store_name = $this->{'config'}->{'name'};
+	my $dd_filename = "$data_store_dir/$data_store_name.ddict";
+	eval { $this->{'datadict'} = retrieve($dd_filename); };				# no big deal if this fails
 }
 
 
@@ -364,6 +371,29 @@ sub _get_var_value
 	{
 		croak("variable/constant unknown: $varname");
 	}
+}
+
+
+# check a type for possible translations: user defined types, and base types
+# returns the RDBMS native type (which may be the same as the input type)
+sub _translate_type
+{
+	my ($this, $type) = @_;
+
+	# translate user-defined types
+	if (exists $this->{'config'}->{'user_types'})
+	{
+		$type = $this->{'config'}->{'user_types'}->{$type} if exists $this->{'config'}->{'user_types'}->{$type};
+	}
+
+	# translate base types
+	if (exists $this->{'config'}->{'translation_type'})
+	{
+		my $trans_table = $base_types->{ $this->{'config'}->{'translation_type'} };
+		$type = $trans_table->{$type} if exists $trans_table->{$type};
+	}
+
+	return $type;
 }
 
 
@@ -754,7 +784,7 @@ sub create
 sub DESTROY
 {
 	my $this = shift;
-	debuggit(5 => 'DataStore::DESTROY: $this', $this);
+	debuggit(5 => 'DataStore::DESTROY: $this', Dumper($this));
 
 	$this->commit_configs();
 }
@@ -770,7 +800,7 @@ sub commit_configs
 
 		my $data_store_name = $this->{'config'}->{'name'};
 		my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-		debuggit(3 => "destroying object, saving to file", $ds_filename);
+		debuggit(3 => "DataStore::commit_configs: saving to file", $ds_filename);
 
 		croak("can't save data store specification") unless store($this->{'config'}, $ds_filename);
 	}
@@ -970,9 +1000,8 @@ sub append_table
 }
 
 
-# replace_table just deletes all rows from the table, then calls
-# append_table for you.  THIS CAN BE VERY DESTRUCTIVE! (obviously)
-# please use with caution
+# replace_table just deletes all rows from the table, then calls append_table for you.  THIS CAN BE VERY
+# DESTRUCTIVE! (obviously).  please use with caution.
 sub replace_table
 {
 	my $this = shift;
@@ -984,32 +1013,26 @@ sub replace_table
 }
 
 
-sub overwrite_table
+sub create_table
 {
-	my $this = shift;
-	my ($table_name, $columns) = @_;
+	my ($this, $table_name, $columns, $opts) = @_;
+	$opts ||= {};
+	$opts->{'DATADICT'} ||= '';
 
-	return false unless $table_name and $columns and @$columns;
+	my $schema = $opts->{'SCHEMA'} || '';
+	my $colinfo = {};
 
 	my $pk;
+	my $colnum = 0;
 	my $column_list = "(";
 	foreach my $col (@$columns)
 	{
 		my ($name, $type, $attributes) = @$col;
 		$attributes = lc($attributes);
+		my $info = { name => $name, type => $type, attributes => $attributes, order => ++$colnum };
 
-		# translate user-defined types
-		if (exists $this->{'config'}->{'user_types'})
-		{
-			$type = $this->{'config'}->{'user_types'}->{$type} if exists $this->{'config'}->{'user_types'}->{$type};
-		}
-
-		# translate base types
-		if (exists $this->{'config'}->{'translation_type'})
-		{
-			my $trans_table = $base_types->{ $this->{'config'}->{'translation_type'} };
-			$type = $trans_table->{$type} if exists $trans_table->{$type};
-		}
+		$type = $this->_translate_type($type);
+		$info->{'native_type'} = $type;
 
 		# identity columns have to generate primary keys
 		if ($attributes eq 'identity')
@@ -1027,19 +1050,70 @@ sub overwrite_table
 
 		$column_list .= ", " if length($column_list) > 1;
 		$column_list .= "$name $type $attributes";
+		$colinfo->{$name} = $info;
 	}
 	$column_list .= ", primary key ($pk)" if $pk;
 	$column_list .= ")";
 	debuggit(3 => "final column list is", $column_list);
 
-	if ($this->do("select 1 from $table_name where 1 = 0"))
+	my $table = $schema ? "{~$schema}.$table_name" : $table_name;
+	if ($opts->{'OVERWRITE'})
 	{
-		$this->do("drop table $table_name") or return false;
+		if ($this->do("select 1 from $table where 1 = 0"))
+		{
+			$this->do("drop table $table") or return false;
+		}
 	}
-	$this->do("create table $table_name $column_list") or return false;
-	#$this->do("grant select on $table_name to public") or return false;
+
+	$this->do("create table $table $column_list") or return false;
+	unless ($opts->{'DATADICT'} eq 'DONTSAVE')
+	{
+		$this->{'datadict'}->{$schema}->{$table_name} = $colinfo;
+		debuggit(4 => 'DataStore::create_table: datadict', Dumper($this->{'datadict'}));
+
+		my $data_store_name = $this->{'config'}->{'name'};
+		my $dd_filename = "$data_store_dir/$data_store_name.ddict";
+		carp("can't save data dictionary") unless store($this->{'datadict'}, $dd_filename);
+	}
 
 	return true;
+}
+
+
+sub column_type
+{
+	my $opts = ref $_[$#_] eq 'HASH' ? pop : {};
+	my ($this, $table, $column) = @_;
+	my $schema = $opts->{'SCHEMA'} || '';
+
+	my $colinfo = $this->{'datadict'}->{$schema}->{$table};
+	debuggit(3 => 'DataStore::column_type: colinfo', Dumper($colinfo));
+
+	if ($colinfo)
+	{
+		if ($column)
+		{
+			my $col = $colinfo->{$column};
+			return wantarray ? %$col : $col->{'type'} if $col;
+		}
+		else
+		{
+			$colinfo = [ sort { $a->{'order'} <=> $b->{'order'} } values %$colinfo ];
+			return wantarray ? @$colinfo : $colinfo;
+		}
+	}
+
+	return wantarray ? () : undef;
+}
+
+
+sub overwrite_table
+{
+	my $this = shift;
+	my ($table_name, $columns) = @_;
+
+	return false unless $table_name and $columns and @$columns;
+	return $this->create_table($table_name, $columns, { OVERWRITE => 1, DATADICT => 'DONTSAVE' });
 }
 
 
