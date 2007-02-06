@@ -610,13 +610,14 @@ END
 			next;
 		}
 
-		# shortcut
+		# shortcuts
 		my $thistimer = $timers->{$timer};
+		my $exists_nw = exists $timers->{$timer . $nw};
 
 		my $minutes = calc_time($thistimer->{'time'});
 		if ($minutes == 0)
 		{
-			unless (get_yn("\n\ntimer $timer has no time logged this week; save it?"))
+			unless ($exists_nw or get_yn("\n\ntimer $timer has no time logged this week; save it?"))
 			{
 				$parminfo->{'timer'} = $timer;
 				$mod->timer_command('CANCEL', $parminfo, $timers);
@@ -624,7 +625,7 @@ END
 			next;
 		}
 
-		unless (exists $timers->{$timer . $nw} or exists $timers->{$timer . '-save'})
+		unless ($exists_nw or exists $timers->{$timer . '-save'})
 		{
 			$parminfo->{'timer'} = $timer;
 			$parminfo->{'newtimer'} = $timer . '-save';
