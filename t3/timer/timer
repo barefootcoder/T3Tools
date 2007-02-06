@@ -617,7 +617,7 @@ END
 		my $minutes = calc_time($thistimer->{'time'});
 		if ($minutes == 0)
 		{
-			unless ($exists_nw or get_yn("\n\ntimer $timer has no time logged this week; save it?"))
+			if ($exists_nw or not get_yn("\n\ntimer $timer has no time logged this week; save it?"))
 			{
 				$parminfo->{'timer'} = $timer;
 				$mod->timer_command('CANCEL', $parminfo, $timers);
