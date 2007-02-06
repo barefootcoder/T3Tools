@@ -637,7 +637,8 @@ sub _transform_query
 
 		debuggit(5 => "before preparing query:", $this->ping() ? "connected" : "NOT CONNECTED!");
 
-		$sth = $this->{'dbh'}->prepare($query);
+		local $SIG{__WARN__} = sub { die $_[0] };
+		eval { $sth = $this->{'dbh'}->prepare($query) };
 		unless ($sth)
 		{
 			$this->{'last_err'} = $this->{'dbh'}->errstr();
