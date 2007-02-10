@@ -319,6 +319,7 @@ END
 		db_assert($testds->do("dump tran $testdb with no_log"), "can't dump tran");
 	}
 	unlink(TEST_DS_FILE);
+	unlink("test.ddict");
 }
 
 # looks okay
@@ -1013,6 +1014,7 @@ sub test_date_handling
 				translation_type	=>	$rdbms,
 				date_handling		=>	$date_type,
 		);
+		eval qq{ END { unlink 'test${date_type}.dstore' } };
 		$ds->show_queries() if DEBUG >= 3;
 		$ds->commit_configs();
 		$ds->overwrite_table("test1", [
