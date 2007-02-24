@@ -429,12 +429,13 @@ if ($command eq 'TOTAL')					# total timers by client
 	foreach my $client (sort keys %$totals)
 	{
 		my $total_hrs = delete $totals->{$client}->{':TOTAL'};
+		next unless $total_hrs;
 		print "-" x length(Totals_Header), "\n";
 		writeln(Totals_Header, $client, $clients{$client}, $total_hrs);
 
 		foreach my $proj (sort keys %{$totals->{$client}})
 		{
-			writeln(Totals, $proj, $projects{$proj}, $totals->{$client}->{$proj});
+			writeln(Totals, $proj, $projects{$proj}, $totals->{$client}->{$proj}) if $totals->{$client}->{$proj};;
 		}
 	}
 
