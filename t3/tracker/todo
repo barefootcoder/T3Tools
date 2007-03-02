@@ -19,15 +19,13 @@
 use strict;
 use warnings;
 
-#use Barefoot::debug(1);
-
 use Getopt::Std;
 use Tie::IxHash;
 use Date::Parse;
 use Data::Dumper;
 use Time::ParseDate;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::date;
 use Barefoot::array;
 use Barefoot::range;
@@ -36,6 +34,7 @@ use Barefoot::exception;
 use Barefoot::input qw< input get_yn menu_select $COLS $ROWS >;
 
 use Barefoot::T3::base;
+use Barefoot::T3::Todo;
 use Barefoot::T3::db_get qw< one_datum >;
 use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
@@ -67,16 +66,48 @@ _screen_width_adjust($TodoList, '@' . '<' x 34);
 
 our $TodoTask =
 	'
-    Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Date:
+    Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Due Date:
     Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
     Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    Title:        ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
+	Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    Synopsis:     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
     ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     Description:
     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 ~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+
+
+#################################
+# PSEUDO-GLOBAL VARIABLES
+#################################
+
+our $todos = {};
+
+our %menu_list;
+tie %menu_list, 'Tie::IxHash',
+(
+	"Add a task"			=>		{ func	=>	\&add_todo,			base => 1,	master => 1,	},
+	"Show task details"		=>		{ func	=>	\&todo_details,		base => 1,	master => 1,	},
+	"Edit a task"			=>		{ func	=>	\&edit_todo,		base => 1,	master => 1,	},
+	"Postpone a task"		=>		{ func	=>	\&push_date,		base => 1,	master => 0,	},
+	"Cancel a task"			=>		{ func	=>	\&cancel_todo,		base => 1,	master => 1,	},
+	"Done with a task"		=>		{ func	=>	\&complete_todo,	base => 1,	master => 0,	},
+	"Refresh task list"		=>		{ func	=>	\&refresh_list,		base => 1,	master => 1,	},
+	"Mass postpone tasks"	=>		{ func	=>	\&shift_schedule,	base => 1,	master => 0,	},
+	"Quit program"			=>		{ func	=>	sub { exit },		base => 1,	master => 1,	},
+);
+
+# the menu will get printed in three columns on an 80-column screen
+# sometime in the future, we should try to do this a bit more dynamically,
+# but for now this is good enough
+my $menu_size = range::round(scalar(keys %menu_list) / 3, range::ROUND_UP);
+# now figure maximum number of tasks we can put in our list:
+# save 2 rows for list header, 1 for separator between list and menu,
+# the number of menu lines, and 2 for the prompt after the menu
+our $max_task_list = $ROWS - 2 - 1 - $menu_size - 2;
 
 
 #################################
@@ -91,13 +122,20 @@ tie %$commands, 'Tie::IxHash',
 );
 our $command;
 
+my $mode = 'base';
 if (-t STDOUT or @ARGV)
 {
 	my $opt = {};
-	getopts('lfu:h', $opt) or usage();
+	getopts('mlfu:h', $opt) or usage();
 	cli_common_opts($parminfo, $opt);
 	$command = cli_get_command($commands, $opt);
 
+	if ($opt->{'m'})
+	{
+		$mode = 'master';
+		cli_fatal(2, "can't specify -u in master mode (-h for usage)") if exists $opt->{'u'};
+		$parminfo->{'user'} = 'MASTER';
+	}
 	usage() if defined $opt->{'h'};
 }
 else
@@ -106,40 +144,27 @@ else
 
 
 #################################
-# PSEUDO-GLOBAL VARIABLES
-#################################
-
-our $todos = {};
-
-our %menu_list;
-tie %menu_list, 'Tie::IxHash',
-(
-	"Add a task"			=>		\&add_todo,
-	"Show task details"		=>		\&todo_details,
-	"Edit a task"			=>		\&edit_todo,
-	"Postpone a task"		=>		\&push_date,
-	"Cancel a task"			=>		\&cancel_todo,
-	"Done with a task"		=>		\&complete_todo,
-	"Refresh task list"		=>		\&refresh_list,
-	"Mass postpone tasks"	=>		\&shift_schedule,
-	"Quit program"			=>		sub { exit },
-);
-
-# the menu will get printed in three columns on an 80-column screen
-# sometime in the future, we should try to do this a bit more dynamically,
-# but for now this is good enough
-my $menu_size = range::round(scalar(keys %menu_list) / 3, range::ROUND_UP);
-# now figure maximum number of tasks we can put in our list:
-# save 2 rows for list header, 1 for separator between list and menu,
-# the number of menu lines, and 2 for the prompt after the menu
-our $max_task_list = $ROWS - 2 - 1 - $menu_size - 2;
-
-
-#################################
 # main()
 #################################
 
-initialize();
+our $mod = T3::Module::Todo->new( user => $parminfo->{'user'} );
+$todos = $mod->readfile({
+	TAGS		=>	{
+						CANCELLED	=>	sub
+										{
+											my ($todos, $line) = @_;
+											$todos->{':CANCELLED'} = { map { $_ => 1 } split("\t", $line) };
+										},
+					},
+	FOREACH		=>	sub
+					{
+						my ($todos, $task) = @_;
+
+						# account for the possibility that due dates are stored as
+						# date strings instead of time numbers (as they should be)
+						$task->{'due'} = str2time($task->{'due'}) if $task->{'due'} =~ m@/@;
+					},
+});
 
 if ($command)
 {
@@ -156,11 +181,17 @@ $parminfo->{'force'} = 0;
 # infinite loop for menu and actions
 while (true)
 {
-	my @menu_choices = keys %menu_list;
+	my @menu_choices = grep { $menu_list{$_}->{$mode} } keys %menu_list;
 	my $mheader = menu_header();
-	my $command = menu_select("Choose:", @menu_choices, { LMARGIN => 2, SPBETWEEN => 3, HEADER => $mheader, TMARGIN => 1,
-			TRUNC_MSG => "<<MORE TASKS THAN SHOWN>>\n", } );
-	$menu_list{ $menu_choices[$command] }->();
+	my $command = menu_select("Choose:", @menu_choices,
+			{
+				LMARGIN => 2,
+				SPBETWEEN => 3,
+				HEADER => $mheader,
+				TMARGIN => 1,
+				TRUNC_MSG => "<<MORE TASKS THAN SHOWN>>\n",
+			});
+	$menu_list{ $menu_choices[$command] }->{'func'}->();
 }
 
 
@@ -201,7 +232,16 @@ sub add_todo
 	input_todo($new_todo);
 
 	$todos->{$new_todo->{'name'}} = $new_todo;
-	writefile();
+	try
+	{
+		save_to_db($parminfo->{'user'}, $todos);
+	}
+	catch
+	{
+		print STDERR "Warning: could not save task to the DB ($_)\n";
+		print STDERR "Your task will be saved to the DB later when the error is corrected\n";
+	};
+	$mod->writefile($todos);
 }
 
 
@@ -220,7 +260,7 @@ sub edit_todo
 
 	input_todo($todo);
 
-	writefile();
+	$mod->writefile($todos);
 }
 
 
@@ -231,7 +271,7 @@ sub push_date
 
 	$todo->{'due'} = input_date($todo->{'due'});
 
-	writefile();
+	$mod->writefile($todos);
 }
 
 
@@ -244,8 +284,8 @@ sub cancel_todo
 	if (get_yn("Are you sure you want to do this?"))
 	{
 		my $old_todo = delete $todos->{$todo->{'name'}};
-		save_history($parminfo->{'user'}, "cancel", todo_fields($old_todo));
-		writefile();
+		$mod->save_history("cancel", $old_todo);
+		$mod->writefile($todos);
 	}
 }
 
@@ -258,8 +298,8 @@ sub complete_todo
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
 		my $old_todo = delete $todos->{$todo->{'name'}};
-		save_history($parminfo->{'user'}, "complete", todo_fields($old_todo));
-		writefile();
+		$mod->save_history("complete", $old_todo);
+		$mod->writefile($todos);
 	}
 }
 
@@ -275,7 +315,7 @@ sub refresh_list
 sub shift_schedule
 {
 	# determine oldest task
-	my $oldest_todo = (sort( { $a->{'due'} <=> $b->{'due'} } values %$todos))[0];
+	my $oldest_todo = (sort( { $a->{'due'} <=> $b->{'due'} } $mod->values($todos)))[0];
 	my $old_date = $oldest_todo->{'due'};
 	writeln('Oldest task is dated @m/#d/@y.', $old_date);
 
@@ -286,13 +326,13 @@ sub shift_schedule
 	print "All tasks will be moved forward $shift_days days.\n";
 	if (get_yn("Are you sure?"))
 	{
-		foreach my $todo (values %$todos)
+		foreach my $todo ($mod->values($todos))
 		{
 			$todo->{'due'} = date::dateTimeSeconds(
 					date::incDays($todo->{'due'}, $shift_days));
 		}
 
-		writefile();
+		$mod->writefile($todos);
 	}
 }
 
@@ -304,10 +344,11 @@ sub shift_schedule
 sub usage
 {
 	error(0, "usage is:\n",
-			"    todo [-h | -lf -u user]\n",
+			"    todo [ -h | -lf { -m | -u user } ]\n",
 			"       -h: this help message\n",
+			"       -m: work with master todo list (default: work with personal list)\n",
 			"       -l: list todos and exit (default: enter interactive mode)\n",
-			"       -f: don't ask for confirmations in interactive mode\n",
+			"       -f: force (don't ask for confirmations in interactive mode)\n",
 			"       -u: work with todos for a different user\n",
 	);
 }
@@ -337,41 +378,12 @@ sub error
 }
 
 
-sub initialize
-{
-	$parminfo->{'user'} ||= t3_username();
-
-	readfile();
-}
-
-
-sub readfile
-{
-	$todos = t3_readfile(TODO => $parminfo->{'user'}, {
-		FOREACH		=>	sub
-						{
-							my ($todos, $task) = @_;
-
-							# account for the possibility that due dates are stored as
-							# date strings instead of time numbers (as they should be)
-							$task->{'due'} = str2time($task->{'due'}) if $task->{'due'} =~ m@/@;
-						}
-	});
-}
-
-
-sub writefile
-{
-	return t3_writefile(TODO => $parminfo->{'user'}, $todos);
-}
-
-
 sub todo_menu_list
 {
-	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } values %$todos;
+	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } $mod->values($todos);
 	foreach my $todo (@menu_list)
 	{
-		$todo = swrite($TodoList, todo_fields($todo)) . "\n";
+		$todo = swrite($TodoList, $mod->fields($todo)) . "\n";
 	}
 	return @menu_list;
 }
@@ -408,9 +420,10 @@ sub get_existing_todo
 
 	# retrieve full names from database
 	foreach (
-			[ "client",		"{~timer}.client",			"client_id",	false ],
-			[ "project",	"{~timer}.project",			"proj_id",		true ],
-			[ "tracking",	"{~timer}.client_tracking",	"tracking_code",true ],
+			[ 'client',		'{@client}',			'client_id',		false ],
+			[ 'project',	'{@project}',			'proj_id',			true ],
+			[ 'tracking',	'{@client_tracking}',	'tracking_code',	true ],
+#			[ 'queue',		'{@queue}',				'queue_id',			false ],
 			)
 	{
 		my ($which, $table, $id_col, $use_client) = @$_;
@@ -422,10 +435,10 @@ sub get_existing_todo
 			next;
 		}
 
-		my $query = "
-				select name from $table
-				where $id_col = '$todo->{$which}'
-			";
+		my $query = qq{
+			select name from $table
+			where $id_col = '$todo->{$which}'
+		};
 		$query .= " and client_id = '$todo->{client}'" if $use_client;
 
 		$todo->{"${which}_name"} = one_datum($query);
@@ -433,7 +446,8 @@ sub get_existing_todo
 
 	# make a copy for the format, else the field itself will get eaten
 	my $title = $todo->{'title'};
-	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name > }, $title);
+	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name queue queue_name > },
+			$title);
 	print "\n\n";
 
 	return $todo;
@@ -443,14 +457,19 @@ sub get_existing_todo
 sub input_todo
 {
 	my ($todo) = @_;
+	$parminfo->{'user'} ||= $mod->user;
 
 	$todo->{'title'} = input("Brief description (title) of the task:", $todo->{'title'});
 	$todo->{'due'} = input_date($todo->{'due'});
 
-	# need to save results in object, not parminfo
-	my $opts = { SAVE_IN_OBJECT => 1 };
+	my $opts = { SAVE_IN_OBJECT => 1 };									# need to save results in object, not parminfo
 	get_parameter("client", $parminfo, $todo, $opts);
 	get_parameter("project", $parminfo, $todo, $opts);
+#	$opts->{ALLOW_NULL} = 1;											# queues can be NULL
+#	get_parameter("queue", $parminfo, $todo, $opts);
+
+	# even if task existed before, it might have changed, so mark it unposted
+	$todo->{'posted'} = 0;
 }
 
 
@@ -482,16 +501,4 @@ sub parse_date_spec
 
 	# let parsedate do all the hard work
 	return parsedate($_[0], PREFER_FUTURE => 1);
-}
-
-
-sub save_history
-{
-	my ($user, $command, @todo_fields) = @_;
-
-	my $file = T3::hist_filename(TODO => $user);
-	open(HIST, ">>$file") or die("can't open history file $file");
-	print HIST join("\t", $ENV{USER}, date::today(), $command, $user,
-			@todo_fields), "\n";
-	close(HIST);
 }
