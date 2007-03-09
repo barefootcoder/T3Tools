@@ -65,6 +65,7 @@ sub text_fields
 
 sub save_to_db
 {
+return;
 	my ($this, $user, $tasks) = @_;
 	debuggit(5 => "Entered todo::save_to_db");
 
