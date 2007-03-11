@@ -234,7 +234,7 @@ sub add_todo
 	$todos->{$new_todo->{'name'}} = $new_todo;
 	try
 	{
-		save_to_db($parminfo->{'user'}, $todos);
+		$mod->save_to_db($parminfo->{'user'}, $todos);
 	}
 	catch
 	{
@@ -328,8 +328,7 @@ sub shift_schedule
 	{
 		foreach my $todo ($mod->values($todos))
 		{
-			$todo->{'due'} = date::dateTimeSeconds(
-					date::incDays($todo->{'due'}, $shift_days));
+			$todo->{'due'} = str2time(date::incDays($todo->{'due'}, $shift_days));
 		}
 
 		$mod->writefile($todos);
