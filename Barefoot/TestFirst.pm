@@ -35,6 +35,9 @@ use Barefoot;
 
 die("Barefoot::TestFirst not designed to run in production code!") unless DEBUG;
 
+# test scripts should demand that there be no errors
+$SIG{__WARN__} = sub { die $_[0] };
+
 
 ###########################
 # Subroutines:
