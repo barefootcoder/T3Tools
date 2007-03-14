@@ -69,8 +69,8 @@ our $TodoTask =
     Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Due Date:
     Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
     Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-	Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                                              Completed Date:
+    Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
 
     Synopsis:     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
     ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -297,8 +297,7 @@ sub complete_todo
 
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
-		my $old_todo = delete $todos->{$todo->{'name'}};
-		$mod->save_history("complete", $old_todo);
+		$todo->{'completed'} = time();
 		$mod->writefile($todos);
 	}
 }
@@ -379,7 +378,7 @@ sub error
 
 sub todo_menu_list
 {
-	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } $mod->values($todos);
+	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } grep { not $_->{'completed'} } $mod->values($todos);
 	foreach my $todo (@menu_list)
 	{
 		$todo = swrite($TodoList, $mod->fields($todo)) . "\n";
@@ -445,8 +444,8 @@ sub get_existing_todo
 
 	# make a copy for the format, else the field itself will get eaten
 	my $title = $todo->{'title'};
-	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name queue queue_name > },
-			$title);
+	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name
+			queue queue_name completed > }, $title);
 	print "\n\n";
 
 	return $todo;
