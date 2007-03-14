@@ -163,6 +163,12 @@ $todos = $mod->readfile({
 						# account for the possibility that due dates are stored as
 						# date strings instead of time numbers (as they should be)
 						$task->{'due'} = str2time($task->{'due'}) if $task->{'due'} =~ m@/@;
+
+						# queues and completed dates should be NULL (i.e. undef) if blank
+						foreach ( qw< queue completed > )
+						{
+							$task->{$_} = undef if $task->{$_} eq "";
+						}
 					},
 });
 

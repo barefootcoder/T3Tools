@@ -147,7 +147,7 @@ sub t3
 	{
 		my $dstore = DEBUG ? "t3test" : "T3";
 		debuggit(2 => "opening datastore", $dstore);
-		$t3 = DataStore->open($dstore, $ENV{USER})
+		$t3 = DataStore->open($dstore, $ENV{USER});
 	}
 	return $t3;
 }
@@ -409,6 +409,8 @@ sub writefile
 	my %text;
 	foreach my $obj ($this->values($objects))
 	{
+		no warnings 'uninitialized';									# writing undef values to the file is okay
+
 		debuggit(5 => "writing object", $obj->{'name'});
 		print TFILE join("\t", $this->fields($obj)), "\n";
 		foreach ($this->text_fields)
@@ -464,11 +466,11 @@ sub save_to_db
 # (Warning! default context for lvalue subs in Perl is scalar, so this is
 # not going to work:
 #
-#		todo_fields($todo) = split("\t");
+#		$mod->fields($todo) = split("\t");
 #
 # it ought to give you a warning.  proper syntax is this:
 #
-#		(todo_fields($todo)) = split("\t");
+#		($mod->fields($todo)) = split("\t");
 #
 # don't shoot us; we didn't make the rules.)
 #
