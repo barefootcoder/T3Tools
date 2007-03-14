@@ -110,6 +110,7 @@ sub try (&@)
 		&$catch;
 		$__CATCH__ = 0;
 	}
+	debuggit(5 => "exception.pm: leaving try block");
 }
 
 sub catch (&)
