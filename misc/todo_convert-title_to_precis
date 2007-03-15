@@ -1,0 +1,39 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+
+use Barefoot;
+use Barefoot::T3::base;
+use Barefoot::input qw< input >;
+
+
+my $wg = DEBUG ? 'test' : $ENV{T3_WORKGROUP};
+my $file = "/usr/local/t3/$wg/$ENV{USER}.todo";
+my $backup = "$file.convbak";
+
+die("can't change file $file") unless -w $file;
+print "going to update file $file ...\n";
+input("Press return to continue.");
+rename($file, $backup);
+
+my %precis;
+open(OUT, ">$file") or die("can't open output");
+open(IN, $backup) or die("can't open input");
+while ( <IN> )
+{
+	chomp;
+	my ($name, $precis, $client, $project, $due, $posted, $completed, $queue) = split("\t");
+	print OUT join("\t", $name, $client, $project, $due, $posted, $completed, $queue), "\n";
+	$precis{$name} = $precis;
+}
+close(IN);
+
+print OUT T3::Module::TEXT_SEP;
+foreach (keys %precis)
+{
+	print OUT "$_:precis:\n";
+	print OUT "$precis{$_}\n";
+	print OUT T3::Module::TEXT_SEP;
+}
+close(OUT);
