@@ -12,7 +12,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2003 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -35,6 +35,7 @@ use Barefoot::input qw< input get_yn menu_select $COLS $ROWS >;
 
 use Barefoot::T3::base;
 use Barefoot::T3::Todo;
+use Barefoot::T3::Timer qw< calc_time >;
 use Barefoot::T3::db_get qw< one_datum >;
 use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
@@ -76,8 +77,23 @@ our $TodoTask =
     ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     Description:
-    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
 ~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+
+our $TodoProgressHeader = <<'EOH';
+   Task:            Synopsis:                            Pts: Completed:
+   ===============  ===================================  ==== ========
+EOH
+
+our $TodoProgress = <<'EOF';
+   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @#.# @m/#d/@y
+EOF
+
+# adjust progress report in similar fashion to $TodoList
+_screen_width_adjust($TodoProgressHeader, 'Synopsis: ');				# note that that trailing space is crucial ...
+_screen_width_adjust($TodoProgressHeader, '=' x 35);
+_screen_width_adjust($TodoProgress, '@' . '<' x 34);
+
 
 
 #################################
@@ -97,6 +113,7 @@ tie %menu_list, 'Tie::IxHash',
 	"Done with a task"		=>		{ func	=>	\&complete_todo,	base => 1,	master => 0,	},
 	"Refresh task list"		=>		{ func	=>	\&refresh_list,		base => 1,	master => 1,	},
 	"Mass postpone tasks"	=>		{ func	=>	\&shift_schedule,	base => 1,	master => 0,	},
+	"Progress report"		=>		{ func	=>	\&report_progress,	base => 1,	master => 0,	},
 	"Quit program"			=>		{ func	=>	sub { exit },		base => 1,	master => 1,	},
 );
 
@@ -338,6 +355,34 @@ sub shift_schedule
 
 		$mod->writefile($todos);
 	}
+}
+
+
+sub report_progress
+{
+	my $timer_mod = T3::Module::Timer->new( user => $parminfo->{'user'} );
+	my $timers = $timer_mod->readfile();
+
+	my %progress_todos;
+	foreach (values %$timers)
+	{
+		debuggit(4 => "checking timer $_->{'name'} for todo link");
+		if ($_->{'todo_link'})
+		{
+			debuggit(2 => "got timer", $_->{'name'}, "for task", $_->{'todo_link'});
+			$progress_todos{$_->{'todo_link'}} += calc_time($_->{'time'});
+		}
+	}
+
+	print $TodoProgressHeader;
+	foreach (sort { $progress_todos{$b} <=> $progress_todos{$a} } keys %progress_todos)
+	{
+		my $todo = $todos->{$_};
+		my $pts = range::round($progress_todos{$_} / 60 / 6, range::ROUND_OFF, .5);
+		writeln($TodoProgress, $todo->{'name'}, $todo->{'title'}, $pts, $todo->{'completed'});
+	}
+
+	input(PRESS_RETURN);
 }
 
 
