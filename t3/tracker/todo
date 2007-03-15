@@ -53,15 +53,15 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 #################################
 
 our $TodoListHeader =
-"   Todo:            Title:                               CLI PRJ  Due by:\n" .
+"   Todo:            Precis:                              CLI PRJ  Due by:\n" .
 "   ===============  ===================================  === ===  ========";
 
 our $TodoList =
 '   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
 
-# $TodoList was designed for an 80-column screen; adjust the Title field to take up more or less space based
+# $TodoList was designed for an 80-column screen; adjust the Precis field to take up more or less space based
 # on the screen width
-_screen_width_adjust($TodoListHeader, 'Title: ');						# note that that trailing space is crucial ...
+_screen_width_adjust($TodoListHeader, 'Precis: ');						# note that that trailing space is crucial ...
 _screen_width_adjust($TodoListHeader, '=' x 35);
 _screen_width_adjust($TodoList, '@' . '<' x 34);
 
@@ -73,7 +73,7 @@ our $TodoTask =
                                                               Completed Date:
     Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
 
-    Synopsis:     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
+    Precis:       ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
     ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     Description:
@@ -81,7 +81,7 @@ our $TodoTask =
 ~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
 
 our $TodoProgressHeader = <<'EOH';
-   Task:            Synopsis:                            Pts: Completed:
+   Task:            Precis:                              Pts: Completed:
    ===============  ===================================  ==== ========
 EOH
 
@@ -90,7 +90,7 @@ our $TodoProgress = <<'EOF';
 EOF
 
 # adjust progress report in similar fashion to $TodoList
-_screen_width_adjust($TodoProgressHeader, 'Synopsis: ');				# note that that trailing space is crucial ...
+_screen_width_adjust($TodoProgressHeader, 'Precis: ');				# note that that trailing space is crucial ...
 _screen_width_adjust($TodoProgressHeader, '=' x 35);
 _screen_width_adjust($TodoProgress, '@' . '<' x 34);
 
@@ -188,6 +188,7 @@ $todos = $mod->readfile({
 						}
 					},
 });
+debuggit(5 => "read todos:", Dumper($todos));
 
 if ($command)
 {
@@ -345,12 +346,12 @@ sub shift_schedule
 	my $new_date = input_date();
 
 	my $shift_days = int(date::dayDiff($old_date, $new_date));
-	print "All tasks will be moved forward $shift_days days.\n";
+	print "All uncompleted tasks will be moved forward $shift_days days.\n";
 	if (get_yn("Are you sure?"))
 	{
 		foreach my $todo ($mod->values($todos))
 		{
-			$todo->{'due'} = str2time(date::incDays($todo->{'due'}, $shift_days));
+			$todo->{'due'} = str2time(date::incDays($todo->{'due'}, $shift_days)) unless $todo->{'completed'};
 		}
 
 		$mod->writefile($todos);
@@ -379,7 +380,7 @@ sub report_progress
 	{
 		my $todo = $todos->{$_};
 		my $pts = range::round($progress_todos{$_} / 60 / 6, range::ROUND_OFF, .5);
-		writeln($TodoProgress, $todo->{'name'}, $todo->{'title'}, $pts, $todo->{'completed'});
+		writeln($TodoProgress, $todo->{'name'}, $todo->{'precis'}, $pts, $todo->{'completed'});
 	}
 
 	input(PRESS_RETURN);
@@ -432,7 +433,7 @@ sub todo_menu_list
 	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } grep { not $_->{'completed'} } $mod->values($todos);
 	foreach my $todo (@menu_list)
 	{
-		$todo = swrite($TodoList, $mod->fields($todo)) . "\n";
+		$todo = swrite($TodoList, @$todo{qw< name precis client project due >}) . "\n";
 	}
 	return @menu_list;
 }
@@ -493,10 +494,8 @@ sub get_existing_todo
 		$todo->{"${which}_name"} = one_datum($query);
 	}
 
-	# make a copy for the format, else the field itself will get eaten
-	my $title = $todo->{'title'};
 	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name
-			queue queue_name completed > }, $title);
+			queue queue_name completed precis > });
 	print "\n\n";
 
 	return $todo;
@@ -508,7 +507,7 @@ sub input_todo
 	my ($todo) = @_;
 	$parminfo->{'user'} ||= $mod->user;
 
-	$todo->{'title'} = input("Brief description (title) of the task:", $todo->{'title'});
+	$todo->{'precis'} = input("Brief description (precis) of the task.", $todo->{'precis'});
 	$todo->{'due'} = input_date($todo->{'due'});
 
 	my $opts = { SAVE_IN_OBJECT => 1 };									# need to save results in object, not parminfo
@@ -528,13 +527,14 @@ sub input_date
 
 	my $new_date = input(
 			"When task is due:",
-			$old_date ? swrite('@m/#d/@y', $old_date) : date::today(), 
+			$old_date ? date::mdy($old_date) : date::today(), 
 			{
 				CONVERT		=>	\&parse_date_spec,
 				VALID_ERR	=>	"\a\a  >>Invalid Date!\n"
 			}
 	);
 
+	debuggit(2 => "input_date: result", $new_date);
 	return $new_date;
 }
 
@@ -548,6 +548,13 @@ sub parse_date_spec
 		$_[0] .= " days";
 	}
 
+	# this style apparently freaks parsedate out ... dunno why
+	if ($_[0] =~ /^(\d{4})(\d\d)(\d\d)$/)
+	{
+		$_[0] = "$2/$3/$1";
+	}
+
 	# let parsedate do all the hard work
+	debuggit(3 => "about to pass", $_[0], "to parsedate()");
 	return parsedate($_[0], PREFER_FUTURE => 1);
 }

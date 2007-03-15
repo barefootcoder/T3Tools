@@ -53,13 +53,13 @@ has hist_file => (is => 'ro', default => 'todo.history');
 sub fields : lvalue
 {
 	my ($this, $object) = @_;
-	@{$object}{ qw<name title client project due posted completed queue> };
+	@{$object}{qw< name client project due posted completed queue >};
 }
 
 
 sub text_fields
 {
-	return qw< description >;
+	return qw< precis description >;
 }
 
 
