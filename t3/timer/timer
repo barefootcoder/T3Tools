@@ -27,6 +27,7 @@ use Tie::IxHash;
 use Data::Dumper;
 use File::HomeDir;
 use Config::General;
+use Time::ParseDate;
 
 use Barefoot;
 use Barefoot::range;
@@ -36,6 +37,7 @@ use Barefoot::date epoch => '2003-12-29';
 use Barefoot::input qw< get_yn input input_text >;
 
 use Barefoot::T3::base;
+use Barefoot::T3::Todo;
 use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::Timer qw< calc_date calc_time test_connection >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
@@ -201,9 +203,10 @@ if ($command eq 'START')					# start a timer
 	{
 		my $todo_name = $1;
 
-		my $todo = T3::Module::Todo->new( user => $parminfo->{'user'} );
-		my $todos = $mod->readfile();
-		error(2, "can't find todo name $todo_name") unless exists $todos->{$todo_name};
+		my $todo_mod = T3::Module::Todo->new( user => $parminfo->{'user'} );
+		my $todos = $todo_mod->readfile();
+		my $todo = $todos->{$todo_name};
+		error(2, "can't find todo name $todo_name") unless $todo;
 
 		$parminfo->{'timer'} = $todo_name;
 		$parminfo->{'client'} = $todo->{'client'};
