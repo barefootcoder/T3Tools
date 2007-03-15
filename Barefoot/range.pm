@@ -6,11 +6,11 @@
 #
 # This module contains useful functions relating to ranges of numbers.  The functions contained herein are:
 #
-#		range::min(@list);					# minimum number in list
-#		range::max(@list);					# maximum number in list
-#		range::force($num, $low, $high);	# force num between high and low
-#		range::round($x, ROUND_UP);			# round number
-#		range::round($x, ROUND_OFF, .5);	# round number to arbitrary base
+#		range::min(@list);												# minimum number in list
+#		range::max(@list);												# maximum number in list
+#		range::force($num, $low, $high);								# force num between high and low
+#		range::round($x, range::ROUND_UP);								# round number
+#		range::round($x, range::ROUND_OFF, .5);							# round number to arbitrary base
 #
 # #########################################################################
 #
