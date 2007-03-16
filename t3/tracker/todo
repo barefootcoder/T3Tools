@@ -378,8 +378,10 @@ sub report_progress
 	print $TodoProgressHeader;
 	foreach (sort { $progress_todos{$b} <=> $progress_todos{$a} } keys %progress_todos)
 	{
+		next unless $progress_todos{$_} > 0;
+
 		my $todo = $todos->{$_};
-		my $pts = range::round($progress_todos{$_} / 60 / 6, range::ROUND_OFF, .5);
+		my $pts = range::max(range::round($progress_todos{$_} / 60 / 6, range::ROUND_OFF, .5), .5);
 		writeln($TodoProgress, $todo->{'name'}, $todo->{'precis'}, $pts, $todo->{'completed'});
 	}
 
