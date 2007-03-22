@@ -1,12 +1,9 @@
-#! /usr/bin/perl -w
-
-# For CVS:
-# $Date: $
-# $Id: $
-# $Revision: $
+#! /usr/bin/perl
 
 use strict;
+use warnings;
 
+use Barefoot;
 use Barefoot::DataStore;
 
 
@@ -14,7 +11,18 @@ print STDERR "You probably have to run this script as root.\n";
 
 my $server = "kimahri";
 my $sa = DataStore->create("${server}_sa",
-		connect_string		=>	"DBI:mysql:server=$server",
+		rdbms				=>	'mysql',
+		connect_string		=>	"DBI:mysql:host=$server",
 		server				=>	$server,
 		user				=>	"root",
 );
+undef $sa;
+
+$server = "cid";
+$sa = DataStore->create("${server}_sa",
+		rdbms				=>	'mysql',
+		connect_string		=>	"DBI:mysql:host=$server",
+		server				=>	$server,
+		user				=>	"root",
+);
+undef $sa;
