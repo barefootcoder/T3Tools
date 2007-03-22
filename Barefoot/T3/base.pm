@@ -132,8 +132,8 @@ our $t3;																# DataStore for singleton
 
 
 # set these up so we won't have to specify them all the time
-DataStore->update_or_insert_set_stamps(	insert => { create_user => $ENV{'USER'}, create_date => '{&curdate}' },
-										update => { chguser => $ENV{'USER'}, chgdate => '{&curdate}' });
+DataStore->update_or_insert_set_stamps(	insert => { create_user => $ENV{'USER'}, create_date => '{&now}' },
+										update => { chguser => $ENV{'USER'}, chgdate => '{&now}' });
 
 
 ###########################

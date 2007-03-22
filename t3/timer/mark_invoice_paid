@@ -1,7 +1,9 @@
 #! /usr/bin/perl
 
 use strict;
+use warnings;
 
+use Barefoot;
 use Barefoot::date;
 use Barefoot::input qw<get_yn input>;
 use Barefoot::DataStore;
@@ -68,15 +70,16 @@ sub update_invoice
 {
 	my ($pay_date, $message) = @_;
 
-	my $res = &t3->do('
-
-			update {@invoice}
-			set invoice_paydate = {pay_date},
-					chguser = {user}, chgdate = {&curdate}
-			where invoice_number = {inv_num}
-	',
-			pay_date => $pay_date, inv_num => $inv_num,
-			user => t3_username(),
+	my $res = &t3->do(q{
+		update {@invoice} set ???
+		where invoice_number = {inv_num}
+	},
+		{
+			paydate => $pay_date,
+			chguser => t3_username(),
+			chgdate => '{&now}',
+		},
+		inv_num => $inv_num,
 	) or die("can't update invoice: ", &t3->last_error());
 	die("$message: ", &t3->last_error()) unless $res->rows_affected() == 1;
 }

@@ -1,10 +1,9 @@
 #! /usr/bin/perl
 
 use strict;
+use warnings;
 
-#use Barefoot::debug(1);							# comment out for production
-
-use Barefoot::base;
+use Barefoot;
 use Barefoot::date;
 use Barefoot::DataStore;
 use Barefoot::DataStore::DataSet;
@@ -75,17 +74,15 @@ sub update_timer
 {
 	my ($message) = @_;
 
-	my $res = &t3->do('
-
-			insert {@invoice}
-				(client_id, invoice_number, invoice_amount, invoice_billdate,
-						create_user, create_date)
-			values ( {client}, {inv_num}, {total_price}, {bill_date},
-					{user}, {&curdate})
-	',
-			client => $client_id, inv_num => $inv_num,
-			total_price => $total_price, bill_date => $bill_date,
-			user => t3_username(),
+	my $res = &t3->do(q{ insert {@invoice} values ??? },
+		{
+			client_id => $client_id,
+			invoice_number => $inv_num,
+			invoice_amount => $total_price,
+			invoice_billdate => $bill_date,
+			create_user => t3_username(),
+			create_date => '{&now}',
+		},
 	) or die("can't insert into invoice: ", &t3->last_error());
 	die("$message: ", &t3->last_error()) unless $res->rows_affected() == 1;
 
@@ -97,26 +94,25 @@ sub update_timer
 	',
 			inv_num => $inv_num,
 	);
-	die("can't retrieve new invoice id: ", &t3->last_error())
-			unless $res and $res->next_row();
+	die("can't retrieve new invoice id: ", &t3->last_error()) unless $res and $res->next_row();
 	my $inv_id = $res->col('invoice_id');
-	$res->next_row();					# just to close out the result set
+	$res->next_row();													# just to close out the result set
 
-	$res = &t3->do('
-
-			update {@time_log}
-			set invoice_id = {inv_id}, chguser = {user},
-					chgdate = {&curdate}
-			where exists
-			(
-				select 1
-				from {@profit_item} pi
-				where {@time_log}.log_source = pi.log_source
-				and {@time_log}.log_id = pi.log_id
-			)
-	',
-			inv_id => $inv_id, user => t3_username(),
+	$res = &t3->do(q{
+		update {@time_log} set ???
+		where exists
+		(
+			select 1
+			from {@profit_item} pi
+			where {@time_log}.log_source = pi.log_source
+			and {@time_log}.log_id = pi.log_id
+		)
+	},
+		{
+			invoice_id => $inv_id,
+			chguser => t3_username(),
+			chgdate => '{&now}',
+		},
 	) or die("can't update time_log: ", &t3->last_error());
-	die("$message: ", &t3->last_error())
-			unless $res->rows_affected() == $num_rows;
+	die("$message: ", &t3->last_error()) unless $res->rows_affected() == $num_rows;
 }

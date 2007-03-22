@@ -286,8 +286,8 @@ sub correlated_update
 # If you have timestamps or userstamps that need to be added for every update and/or insert call, you can do
 # something like this at the top of your program:
 #
-#		update_or_insert_set_stamps(insert => { created_by => $ENV{USER}, created_on => '{&curdate}' },
-#									update => { modified_by => $ENV{USER}, modified_on => '{&curdate}' });
+#		update_or_insert_set_stamps(insert => { created_by => $ENV{USER}, created_on => '{&now}' },
+#									update => { modified_by => $ENV{USER}, modified_on => '{&now}' });
 #
 # Of course, if you do this you can only use update_or_insert with tables that contain those fields.  You may
 # also feel free to use the same hash for both insert and update, or specify only one or the other instead of
