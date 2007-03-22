@@ -29,7 +29,7 @@ use Barefoot::DataStore;
 my $user = "root";
 my $dstore = "t3test";
 my $admin_users = "buddy";
-my $all_users = "buddy,jon";
+my $all_users = "buddy,jacob";
 
 my $opt = {};
 getopts("s:U:vh", $opt);

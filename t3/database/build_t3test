@@ -42,13 +42,13 @@ my $opt = {};
 getopts("U:s:d:h", $opt);
 if (defined $opt->{h})
 {
-    print STDERR "usage: $0 [-U user] [-s datastore] [-d source_database]\n";
-    print STDERR "   defaults are -U $user -s $destds -d $srcdb\n";
+    print STDERR "usage: $0 [-U user] [-d datastore] [-s source_database]\n";
+    print STDERR "   defaults are -U $user -d $destds -s $srcdb\n";
     exit;
 }
 $user = $opt->{U} if defined $opt->{U};
-$destds = $opt->{s} if defined $opt->{s};
-$srcdb = $opt->{d} if defined $opt->{d};
+$destds = $opt->{d} if defined $opt->{s};
+$srcdb = $opt->{s} if defined $opt->{d};
 
 
 # open up the data store
@@ -57,6 +57,7 @@ try
 {
     $t3 = DataStore->open($destds, $user);
 	$t3->show_queries() if DEBUG >= 2;
+	debuggit(5 => "t3 is", Dumper($t3));
 }
 catch
 {
@@ -64,6 +65,7 @@ catch
     print STDERR "  ==>  $_\n";
     print STDERR "Please run the make_data_store script for $destds.  You may\n";
     print STDERR "have to run this script as root.\n\n";
+	exit 2;
 };
 
 
@@ -73,11 +75,11 @@ $debugflag = '-v' if DEBUG >= 2;
 system("make_t3_tables -s$destds $debugflag");
 system("make_timer_tables -s$destds $debugflag");
 system("make_tracker_tables -s$destds $debugflag");
+debuggit(5 => "t3 is", Dumper($t3));
 
 
 # now fill them up
 
-#$t3->show_queries();
 build_table_unchanged("t3", "person");
 add_rows_to_table("t3", "person",
 	[qw<	first_name		last_name		company_name	>],
@@ -139,7 +141,8 @@ build_table_unchanged("timer", "commission_payment");
 build_table("time_log", qq{
 	insert into {~timer}.time_log
 	select log_source, log_id, emp_id, client_id, proj_id, phase_id, tracking_code, log_date+0, hours, comments,
-		invoice_id, payroll_id, NULL, create_user, create_date+0, chguser, chgdate+0
+		invoice_id, payroll_id, NULL, create_user, create_date+0,
+		chguser, if(chgdate = 0 || chgdate is null, null, chgdate+0)
 	from $srcdb.{~timer}.time_log
 });
 
