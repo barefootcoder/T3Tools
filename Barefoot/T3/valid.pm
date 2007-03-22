@@ -33,36 +33,35 @@ use Barefoot;
 use Barefoot::input qw<input get_yn>;
 
 use Barefoot::T3::base;
-use Barefoot::T3::db_get qw<get_emp_id default_client phase_list>;
+use Barefoot::T3::db_get qw< get_emp_id default_client phase_list queue_list >;
 
 
 our %db_default =
 (
-	employee				=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{user}) },
+	employee				=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{'user'}) },
 	client					=>	sub
 								{
-									$_[0]->{employee} = get_emp_id($_[0]->{user}) unless exists $_[0]->{employee};
+									$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
 									default_client($_[0]->{employee});
 								},
 	project					=>	sub
 								{
-									$_[0]->{employee} = get_emp_id($_[0]->{user}) unless exists $_[0]->{employee};
+									$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
 									"";
 								},
 	phase					=>	sub { "" },
 	'client tracking code'	=>	sub { "" },
+	queue					=>	sub { "" },
 );
 
 our %valid_function =
 (
 	employee				=>	sub { valid_employees() },
 	client					=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
-	project					=>	sub
-								{
-									valid_projects($_[0]->{employee}, $_[0]->{client}, $_[0]->{date})
-								},
+	project					=>	sub { valid_projects($_[0]->{employee}, $_[0]->{client}, $_[0]->{date}) },
 	phase					=>	sub { phase_list() },
-	'client tracking code'	=> sub { valid_trackings($_[0]->{client}) },
+	'client tracking code'	=>	sub { valid_trackings($_[0]->{client}) },
+	queue					=>	sub { queue_list() },
 );
 
 
@@ -88,13 +87,13 @@ sub get_parameter
 		$parm = $db_default{$parmname}->($parminfo);
 		debuggit(3 => "after db default, parm is", $parm);
 
-		if (exists $objinfo->{$parmname})# pre-existing parm - higher priority
+		if (exists $objinfo->{$parmname})								# pre-existing parm - higher priority
 		{
 			$parm = $objinfo->{$parmname};
 		}
 		debuggit(3 => "after objinfo, parm is", $parm);
 
-		if ($parminfo->{$parmname})		# program flags - highest priority
+		if ($parminfo->{$parmname})										# program flags - highest priority
 		{
 			if ($opts->{RESTRICT_CHANGES} and exists $objinfo->{$parmname})
 			{
@@ -121,8 +120,7 @@ sub get_parameter
 		# get list of valid values (based on dispatch table; if we don't have such a function, better barf)
 		# (note that this has to be done after figuring the database default, because that might set up some
 		# values we need here)
-		croak("can't determine valid list for $parmname")
-				unless exists $valid_function{$parmname};
+		croak("can't determine valid list for $parmname") unless exists $valid_function{$parmname};
 		$valid_parms = $valid_function{$parmname}->($parminfo);
 		debuggit(4 => "valid_parms:", Dumper($valid_parms));
 		
@@ -133,10 +131,7 @@ sub get_parameter
 		# make a block so redo will work
 		PARM:
 		{
-			$parm = input(
-					"Which $parmname is this for? (? for list)",
-					$default
-			);
+			$parm = input("Which $parmname is this for? (? for list)", $default);
 			$parm = uc($parm);											# codes are all UC
 			$parm = string::trim($parm);								# no spaces
 
@@ -146,10 +141,26 @@ sub get_parameter
 				{
 					print "  {", $id, " - ", $valid_parms->{$id}, "}\n";
 				}
+				print "  / - remove value (i.e. enter NULL)\n" if $opts->{ALLOW_NULL};
 				redo PARM;
 			}
 
+			if ($parm eq "/")
+			{
+				unless ($opts->{ALLOW_NULL})
+				{
+					print "you must supply a response\n";
+					redo PARM;
+				}
+				$parm = undef;
+			}
+
 			# Checks value to be sure it's valid
+			if (not defined $parm and $opts->{ALLOW_NULL})
+			{
+				print "\u$parmname will be blank (NULL).\n";
+				last PARM;
+			}
 			foreach my $id (keys %$valid_parms)
 			{
 				if ($parm eq string::trim($id))
@@ -158,10 +169,9 @@ sub get_parameter
 					{
 						print "\u$parmname is $parm: $valid_parms->{$id}.\n";
 					}
-					else 		# ask for confirmation
+					else 												# ask for confirmation
 					{
-						redo PARM unless get_yn("\u$parmname is $parm: "
-								. "$valid_parms->{$id}; is this right?");
+						redo PARM unless get_yn("\u$parmname is $parm: $valid_parms->{$id}; is this right?");
 					}
 					$parm = $id;
 					last PARM;
@@ -184,6 +194,7 @@ sub get_parameter
 	debuggit(3 => wantarray ?  "will return ($parm, $valid_parms->{$parm})" : "will return", $parm);
 
 	# if force was specified, you'll get ($parm, undef)
+	# if ALLOW_NULL was specified and the user chooses NULL, you'll get (undef, undef)
 	return wantarray ? ($parm, $valid_parms->{$parm}) : $parm;
 }
 
@@ -195,7 +206,7 @@ sub valid_employees
 			from {~timer}.employee e, {~t3}.person pe, {~timer}.client_employee ce
 			where e.person_id = pe.person_id
 			and e.emp_id = {&ifnull ce.emp_id, e.emp_id}
-			and {&curdate} between ce.start_date and ce.end_date
+			and {&today} between ce.start_date and ce.end_date
 	");
 	die("valid employees query failed:", &t3->last_error()) unless $res;
 
@@ -212,7 +223,7 @@ sub valid_clients
 {
 	my ($emp, $date) = @_;
 
-	my $date_fld = $date ? '{date}' : '{&curdate}';
+	my $date_fld = $date ? '{date}' : '{&today}';
 	my $res = &t3->do(qq{
 			select distinct c.client_id, c.name
 			from {~timer}.client c, {~timer}.employee e, {~timer}.client_employee ce
@@ -221,7 +232,7 @@ sub valid_clients
 			and c.client_id = ce.client_id
 			and $date_fld between ce.start_date and ce.end_date
 	},
-		emp => $emp, date => $date,
+		emp => $emp, date => date::mdy($date),
 	);
 	die("valid clients query failed:", &t3->last_error()) unless $res;
 
@@ -239,7 +250,7 @@ sub valid_projects
 {
 	my ($emp, $client, $date) = @_;
 
-	my $date_fld = $date ? '{date}' : '{&curdate}';
+	my $date_fld = $date ? '{date}' : '{&today}';
 	my $res = &t3->do(qq{
 			select distinct p.proj_id, p.name
 			from {~timer}.project p, {~timer}.employee e, {~timer}.client_employee ce
@@ -255,7 +266,7 @@ sub valid_projects
 			)
 			and $date_fld between ce.start_date and ce.end_date
 	},
-		emp => $emp, client => $client, date => $date,
+		emp => $emp, client => $client, date => date::mdy($date),
 	);
 	die("valid projects query failed:", &t3->last_error()) unless $res;
 

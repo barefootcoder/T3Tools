@@ -1020,7 +1020,7 @@ sub gather_log_info
 	# $mod->user may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
-	$parminfo->{date} = my $date = input(
+	$parminfo->{'date'} = my $date = input(
 			"Date:",
 			$timer ? calc_date($timer->{'time'}) : date::today(),
 			{

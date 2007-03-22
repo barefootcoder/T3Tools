@@ -25,12 +25,24 @@ use warnings;
 
 use base qw< Exporter >;
 use vars qw< @EXPORT_OK >;
-@EXPORT_OK = qw< one_datum get_emp_id default_client client_rounding proj_requirements phase_list get_logs >;
+@EXPORT_OK = qw< one_datum get_emp_id default_client client_rounding proj_requirements phase_list queue_list get_logs >;
 
 use Barefoot;
 use Barefoot::DataStore;
 
 use Barefoot::T3::base;
+
+
+###########################
+# Helper subs:
+###########################
+
+
+sub _verify_res
+{
+	my ($res, $msg) = @_;
+	die("$msg: " . &t3->last_error()) unless $res;
+}
 
 
 ###########################
@@ -44,7 +56,8 @@ sub one_datum
 	$err_msg ||= "query failed : $query";
 
 	my $res = &t3->do($query);
-	die($err_msg) unless $res and $res->next_row();
+	_verify_res($res, $err_msg);
+	die($err_msg) unless $res->next_row();
 
 	return $res->col(0);
 }
@@ -63,8 +76,8 @@ sub get_emp_id
 	},
 		user => $user,
 	);
-	die("employee ID query failed") unless $res and $res->next_row();
-	return $res->col(0);
+	_verify_res($res, "employee ID query failed");
+	return $res->next_row->col(0);
 }
 
 
@@ -95,8 +108,7 @@ sub client_rounding
 	},
 		client => $client,
 	);
-	die("client rounding query failed:", &t3->last_error())
-			unless $res and $res->next_row();
+	die("client rounding query failed: " . &t3->last_error()) unless $res and $res->next_row();
 
 	return $res->all_cols();
 }
@@ -116,9 +128,9 @@ sub proj_requirements
 		and {date} between p.start_date and p.end_date
 		and p.project_type = pt.project_type
 	},
-		client => $client, proj => $proj, date => $date,
+		client => $client, proj => $proj, date => date::mdy($date),
 	);
-	die("project requirements query failed:", &t3->last_error()) unless $res;
+	die("project requirements query failed: " . &t3->last_error()) unless $res;
 
 	if ($res->next_row())
 	{
@@ -135,10 +147,10 @@ sub phase_list
 {
 	my $res = &t3->do(q{
 		select ph.phase_id, ph.name
-		from {~timer}.phase ph
+		from {@phase} ph
 	},
 	);
-	die("phase list query failed:", &t3->last_error()) unless $res;
+	_verify_res($res, "phase list query failed");
 
 	my $phases = {};
 	while ($res->next_row())
@@ -146,6 +158,24 @@ sub phase_list
 		$phases->{$res->col(0)} = $res->col(1);
 	}
 	return $phases;
+}
+
+
+sub queue_list
+{
+	my $res = &t3->do(q{
+		select q.queue_id, q.name
+		from {@queue} q
+	},
+	);
+	_verify_res($res, "queue list query failed");
+
+	my $queues = {};
+	while ($res->next_row())
+	{
+		$queues->{$res->col(0)} = $res->col(1);
+	}
+	return $queues;
 }
 
 
