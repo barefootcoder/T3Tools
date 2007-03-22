@@ -1,10 +1,5 @@
 #! /usr/bin/perl
 
-# For CVS:
-# $Date: 2003/03/23 20:07:36 $
-# $Id: build_t3_aliases,v 1.1 2003/03/23 20:07:36 buddy Exp $
-# $Revision: 1.1 $
-
 # create aliases for T3 data store
 
 use strict;
@@ -12,6 +7,7 @@ use warnings;
 
 use Getopt::Std;
 
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore;
 
