@@ -1,10 +1,5 @@
 #! /usr/bin/perl
 
-# For RCS:
-# $Date: 2003/11/18 00:09:05 $
-# $Id: make_t3_data_store,v 1.5 2003/11/18 00:09:05 buddy Exp $
-# $Revision: 1.5 $
-
 # create data store and database for T3 scripts
 #
 # both database and data store will only be created if they don't exist, or
@@ -18,18 +13,16 @@
 use strict;
 use warnings;
 
-#use Barefoot::debug;						# comment out for production
-
 use Getopt::Std;
 use FileHandle;
 
-use Barefoot::base;
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore;
 use Barefoot::input qw<get_yn>;
 
 
-my $server = "kimahri";
+my $server = "cid";
 my $user = "root";
 my $destdb = "t3test";
 my $dstore = "t3test";
@@ -42,8 +35,7 @@ my $opt = {};
 getopts("S:U:D:s:h", $opt);
 if (defined $opt->{h})
 {
-	print STDERR "usage: $0 [-S server] [-U username] [-D dest_db] ",
-			"[-s data_store]\n";
+	print STDERR "usage: $0 [-S server] [-U username] [-D dest_db] [-s data_store]\n";
 	print STDERR "   defaults are -S $server -U $user -D $destdb -s $dstore\n";
 	exit;
 }
@@ -51,6 +43,12 @@ $server = $opt->{S} if defined $opt->{S};
 $user = $opt->{U} if defined $opt->{U};
 $destdb = $opt->{D} if defined $opt->{D};
 $dstore = $opt->{s} if defined $opt->{s};
+
+die("you must not run this as root") if `id -u` == 0;
+print STDERR "NOTE!! you must have sudo permission to run this script\n";
+
+my $db_created = 0;
+my $ds_created = 0;
 
 
 STDOUT->autoflush();
@@ -78,12 +76,11 @@ my $create_res = $sa->do(qq{
 	create database $destdb
 });
 die("create database of $destdb failed") unless $create_res;
-# don't bother to check $?; isql always returns some funky value
 
 # double check existence via data store
 $db_exists = $sa->do($dbexists_query);
-die("cannot verify database creation:", $sa->last_error())
-		unless $db_exists->next_row();
+die("cannot verify database creation:", $sa->last_error()) unless $db_exists->next_row();
+$db_created = 1;
 
 
 DATA_STORE:
@@ -106,10 +103,11 @@ unless ($caught)
 }
 
 my $t3 = DataStore->create($dstore,
-		connect_string		=>	"dbi:mysql:server=$server;database=$destdb",
+		rdbms				=>	'mysql',
+		connect_string		=>	"dbi:mysql:host=$server;database=$destdb",
 		server				=>	$server,
 		user				=>	$user,
-		translation_type	=>	'mysql',
+		date_handling		=>	'string',
 );
 
 $t3->configure_type(unique_id => 'int');
@@ -125,7 +123,39 @@ $t3->configure_type(percentage => 'decimal(5,2)');
 
 $t3->configure_schema_translation('"$_[0]_"');
 
+my $dsfile = "/etc/data_store/$dstore.dstore";
+system("/usr/bin/sudo /bin/touch $dsfile");
+system("/usr/bin/sudo /bin/chmod 666 $dsfile");
+$t3->commit_configs();
+
 print "data store $dstore created\n";
+$ds_created = 1;
+
+
+if ($db_created)
+{
+	# make all tables
+	exit 1 unless get_yn("Recreate all tables?");
+
+	my $ddict = "/etc/data_store/$dstore.ddict";
+	system("/usr/bin/sudo /bin/touch $ddict");
+	system("/usr/bin/sudo /bin/chgrp dev $ddict");
+	system("/usr/bin/sudo /bin/chmod 664 $ddict");
+	system("./make_t3_tables");
+	system("./make_timer_tables");
+	system("./make_tracker_tables");
+	system("./make_reporting_tables");
+}
+
+if ($ds_created)
+{
+	# create all aliases
+	exit 1 unless get_yn("Recreate all aliases?");
+
+	system("./build_t3_aliases");
+}
+
+system("/usr/bin/sudo /bin/chmod 644 $dsfile");
 
 
 ######################

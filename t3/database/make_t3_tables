@@ -1,10 +1,5 @@
 #! /usr/bin/perl
 
-# For RCS:
-# $Date: 2002/06/12 20:50:12 $
-# $Id: make_t3_tables,v 1.2 2002/06/12 20:50:12 buddy Exp $
-# $Revision: 1.2 $
-
 # create base tables for T3
 
 use strict;
@@ -12,6 +7,7 @@ use warnings;
 
 use Getopt::Std;
 
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore;
 
@@ -20,11 +16,11 @@ my $user = "root";
 my $dstore = "t3test";
 
 my $opt = {};
-getopts("s:U:h", $opt);
+getopts("s:U:vh", $opt);
 if (defined $opt->{h})
 {
-	print STDERR "usage: $0 [-s data_store] [-U username]\n";
-	print STDERR "   defaults are -s $dstore -U $user\n";
+	print STDERR "usage: $0 [-s data_store] [-U username] [-d debuglevel]\n";
+	print STDERR "   defaults are -s $dstore -U $user -d0\n";
 	exit;
 }
 $user = $opt->{U} if defined $opt->{U};
@@ -35,6 +31,7 @@ my $t3;
 try
 {
 	$t3 = DataStore->open($dstore, $user);
+	$t3->show_queries() if DEBUG >= 2 or $opt->{v};
 }
 catch
 {
@@ -89,7 +86,7 @@ sub create_table
 	my ($table_name, $columns, $attribs) = @_;
 
 	print "making table t3.$table_name\n";
-	$t3->overwrite_table("{~t3}.$table_name", $columns)
+	$t3->create_table($table_name, $columns, { SCHEMA => 't3', OVERWRITE => 1 })
 			or die("couldn't create table $table_name: " . $t3->last_error());
 
 	# loop through attributes

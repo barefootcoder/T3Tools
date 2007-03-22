@@ -1,0 +1,232 @@
+#! /usr/bin/perl
+
+###########################################################################
+#
+# make_tracker_tables
+#
+###########################################################################
+#
+# Create tracker schema for T3 database
+#
+# #########################################################################
+#
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2006-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
+#
+###########################################################################
+
+use strict;
+use warnings;
+
+use Getopt::Std;
+
+use Barefoot;
+use Barefoot::exception;
+use Barefoot::DataStore;
+
+
+my $user = "root";
+my $dstore = "t3test";
+my $admin_users = "buddy";
+my $all_users = "buddy,jon";
+
+my $opt = {};
+getopts("s:U:vh", $opt);
+if (defined $opt->{h})
+{
+	print STDERR "usage: $0 [-s data_store] [-U username]\n";
+	print STDERR "   defaults are -s $dstore -U $user\n";
+	exit;
+}
+$user = $opt->{U} if defined $opt->{U};
+$dstore = $opt->{s} if defined $opt->{s};
+
+# open up the data store
+my $t3;
+try
+{
+	$t3 = DataStore->open($dstore, $user);
+	$t3->show_queries() if DEBUG >= 2 or $opt->{v};
+}
+catch
+{
+	print STDERR "\nThe T3 data store could not be opened for the following "
+			. "reason:\n";
+	print STDERR "  ==>  $_\n";
+	print STDERR "Please run the make_t3_data_store script.  You may\n";
+	print STDERR "have to run this script as root.\n\n";
+};
+
+# start making tables
+
+
+
+# queue
+
+create_table("queue",
+	[
+		[ "queue_id",		"internal_id",		"NOT NULL" ],
+		[ "name",			"short_name",		"NOT NULL" ],
+		[ "manager",		"internal_id",		"NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"queue",
+			cols	=>	"queue_id",
+		},
+	]
+);
+
+
+
+# queue_project
+
+create_table("queue_project",
+	[
+		[ "queue_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"qproj",
+			cols	=>	"queue_id, proj_id",
+		},
+	]
+);
+
+
+# task
+
+create_table("task",
+	[
+		[ "task_id",		"unique_id",		"IDENTITY" ],
+		[ "name",			"short_name",		"NOT NULL" ],
+		[ "precis",			"varchar(100)",		"NOT NULL" ],
+		[ "description",	"text",				"NULL" ],
+		[ "emp_id",			"internal_id",		"NULL" ],
+		[ "client_id",		"internal_id",		"NOT NULL" ],
+		[ "proj_id",		"internal_id",		"NOT NULL" ],
+		[ "queue_id",		"internal_id",		"NULL" ],
+		[ "est_pts",		"numeric(2,1)",		"NULL" ],
+		[ "actual_pts",		"numeric(2,1)",		"NULL" ],
+		[ "queue_rank",		"int",				"NULL" ],
+		[ "priority",		"internal_id",		"NULL" ],
+		[ "due",			"date",				"NULL" ],
+		[ "started",		"datetime",			"NULL" ],
+		[ "estimated",		"datetime",			"NULL" ],
+		[ "prioritized",	"datetime",			"NULL" ],
+		[ "accepted",		"datetime",			"NULL" ],
+		[ "completed",		"datetime",			"NULL" ],
+		[ "create_user",	"username",			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
+		[ "chguser",		"username",			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
+	],
+	[
+		{
+			type	=>	"index",
+			name	=>	"timelog_empdue",
+			cols	=>	"emp_id, due",
+		},
+		{
+			type	=>	"unique index",
+			name	=>	"emp_task",
+			cols	=>	"emp_id, name, completed",
+		},
+		{
+			type	=>	"grant insert",
+			users	=>	"$all_users",
+		},
+		{
+			type	=>	"grant update",
+			users	=>	"$all_users",
+		},
+		{
+			type	=>	"grant delete",
+			users	=>	"$all_users",
+		},
+	]
+);
+
+
+# task_note
+
+create_table("task_note",
+	[
+		[ "note_id",		"unique_id",		"IDENTITY" ],
+		[ "task_id",		"internal_id",		"NOT NULL" ],
+		[ "note_type",		"internal_id",		"NOT NULL" ],
+		[ "note",			"text",				"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"index",
+			name	=>	"task_note",
+			cols	=>	"task_id, note_type",
+		},
+	]
+);
+
+
+# note_type
+
+create_table("note_type",
+	[
+		[ "note_type",		"internal_id",		"NULL" ],
+		[ "name",			"short_name",		"NOT NULL" ],
+	],
+	[
+		{
+			type	=>	"unique index",
+			name	=>	"note_type",
+			cols	=>	"note_type",
+		},
+	]
+);
+
+
+
+######################
+# SUBS               #
+######################
+
+sub create_table
+{
+	my ($table_name, $columns, $attribs) = @_;
+
+	print "making table tracker.$table_name\n";
+	$t3->create_table($table_name, $columns, { SCHEMA => 'tracker', OVERWRITE => 1 })
+			or die("couldn't create table $table_name: " . $t3->last_error());
+
+	# loop through attributes
+	foreach my $attrib (@$attribs)
+	{
+		# create indices
+		if ($attrib->{type} =~ /index/)
+		{
+			my $query = "
+				create $attrib->{type} $attrib->{name}
+				on {~tracker}.$table_name ($attrib->{cols})
+				{&place_on index_seg}
+			";
+			$t3->do($query)
+					or die("couldn't create index $attrib->{name}: "
+							. $t3->last_error());
+		}
+
+		# grant permissions
+		if ($attrib->{type} =~ /grant/)
+		{
+			my $query = "
+				$attrib->{type} on {~tracker}.$table_name
+				to $attrib->{users}
+			";
+			$t3->do($query)
+					or die("couldn't $attrib->{type} on $table_name: "
+							. $t3->last_error());
+		}
+	}
+}

@@ -1,23 +1,36 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
 
-# For RCS:
-# $Date: 2002/06/12 20:50:41 $
+###########################################################################
 #
-# $Id: build_t3test,v 1.3 2002/06/12 20:50:41 buddy Exp $
-# $Revision: 1.3 $
-
-
-# create tables for TIMER
+# make_tracker_tables
 #
-# this builds up the tables in the T3 database from existing data in the
-# timer database, as well as some hard-coded data
+###########################################################################
+#
+# Rebuild the t3test database to be a copy of the data from the t3 database, but with possible schema changes
+# (when run without options).  You can also run it with a destds of t3 and a srcdb of some copy of t3 to get
+# new schema changes into your T3 database.
+#
+# WARNING!! This will blow away all the tables in the destination DB!  Be very very careful with this script!
+#
+# #########################################################################
+#
+# All the code herein is released under the Artistic License
+#		( http://www.perl.com/language/misc/Artistic.html )
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2007 ThinkGeek
+#
+###########################################################################
+
 
 use strict;
+use warnings;
 
 use Getopt::Std;
+use Data::Dumper;
 
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore;
+use Barefoot::T3::Todo;
 
 
 my $user = "root";
@@ -43,11 +56,11 @@ my $t3;
 try
 {
     $t3 = DataStore->open($destds, $user);
+	$t3->show_queries() if DEBUG >= 2;
 }
 catch
 {
-    print STDERR "\nThe T3 test data store could not be opened for the following "
-            . "reason:\n";
+    print STDERR "\nThe T3 test data store could not be opened for the following reason:\n";
     print STDERR "  ==>  $_\n";
     print STDERR "Please run the make_data_store script for $destds.  You may\n";
     print STDERR "have to run this script as root.\n\n";
@@ -55,33 +68,27 @@ catch
 
 
 # create the tables
-system("make_t3_tables -s$destds");
-system("make_timer_tables -s$destds");
+my $debugflag = "";
+$debugflag = '-v' if DEBUG >= 2;
+system("make_t3_tables -s$destds $debugflag");
+system("make_timer_tables -s$destds $debugflag");
+system("make_tracker_tables -s$destds $debugflag");
 
 
 # now fill them up
 
-set_identityins("t3", "person", "on");
-build_table("person", <<END);
+#$t3->show_queries();
+build_table_unchanged("t3", "person");
+add_rows_to_table("t3", "person",
+	[qw<	first_name		last_name		company_name	>],
+	[		'Jen',			'Hibler',		'ThinkGeek'		],
+	[		'Willie',		'Vadnais',		'ThinkGeek'		],
+	[		'Caroline',		'Offutt',		'ThinkGeek'		],
+);
 
-	insert {~t3}.person
-		(person_id, first_name, last_name, company_name)
-	select * from $srcdb.{~t3}.person
-	;
+build_table_unchanged("t3", "workgroup_user");
+$t3->do(q{ update {@workgroup_user} set start_date = {BEGINNING_OF_TIME} });
 
-END
-set_identityins("t3", "person", "off");
-
-set_identityins("t3", "workgroup_user", "on");
-build_table("workgroup_user", <<END);
-
-	insert {~t3}.workgroup_user
-		(wuser_id, person_id, nickname, start_date, end_date)
-	select * from $srcdb.{~t3}.workgroup_user
-	;
-
-END
-set_identityins("t3", "workgroup_user", "off");
 
 build_table_unchanged("timer", "category");
 
@@ -123,104 +130,26 @@ build_table_unchanged("timer", "sales_commission");
 
 build_table_unchanged("timer", "referral_commission");
 
-set_identityins("timer", "invoice", "on");
-build_table("invoice", <<END);
+build_table_unchanged("timer", "invoice");
 
-	insert {~timer}.invoice
-		(invoice_id, client_id, invoice_number, invoice_amount,
-				invoice_billdate, invoice_paydate,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.invoice
-	;
+build_table_unchanged("timer", "payroll");
 
-END
-set_identityins("timer", "invoice", "off");
+build_table_unchanged("timer", "commission_payment");
 
-set_identityins("timer", "payroll", "on");
-build_table("payroll", <<END);
+build_table("time_log", qq{
+	insert into {~timer}.time_log
+	select log_source, log_id, emp_id, client_id, proj_id, phase_id, tracking_code, log_date+0, hours, comments,
+		invoice_id, payroll_id, NULL, create_user, create_date+0, chguser, chgdate+0
+	from $srcdb.{~timer}.time_log
+});
 
-	insert {~timer}.payroll
-		(payroll_id, period_start, period_end, payroll_amount,
-				overhead_amount, check_date,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.payroll
-	;
+build_table_unchanged("timer", "materials_log");
 
-END
-set_identityins("timer", "payroll", "off");
-
-set_identityins("timer", "commission_payment", "on");
-build_table("commission_payment", <<END);
-
-	insert {~timer}.commission_payment
-		(payment_id, pay_type, pay_to, payment_amount,
-				check_number, check_date, comments,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.commission_payment
-	;
-
-END
-set_identityins("timer", "commission_payment", "off");
-
-db_do_or_die("alter table {~timer}.time_log "
-		. "alter log_source set default 'time_log'");
-set_identityins("timer", "time_log", "on");
-build_table("time_log", <<END);
-
-	insert {~timer}.time_log
-		(log_source, log_id, emp_id, client_id, proj_id, phase_id,
-				tracking_code, log_date, hours, comments,
-				invoice_id, payroll_id,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.time_log l
-	;
-
-END
-set_identityins("timer", "time_log", "off");
-
-db_do_or_die("alter table {~timer}.materials_log "
-		. "alter log_source set default 'materials_log'");
-set_identityins("timer", "materials_log", "on");
-build_table("materials_log", <<END);
-
-	insert {~timer}.materials_log
-		(log_source, log_id, client_id, proj_id, log_date,
-				amount_billed, amount_paid, comments, invoice_id,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.materials_log op
-	;
-
-END
-set_identityins("timer", "materials_log", "off");
-
-db_do_or_die("alter table {~timer}.class_log "
-		. "alter log_source set default 'class_log'");
-set_identityins("timer", "class_log", "on");
-build_table("class_log", <<END);
-
-	insert {~timer}.class_log
-		(log_source, log_id, client_id, proj_id, num_students, num_breaks,
-				log_date, start_time, end_time, comments, invoice_id,
-				create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.class_log
-	;
-
-END
-set_identityins("timer", "class_log", "off");
+build_table_unchanged("timer", "class_log");
 
 build_table_unchanged("timer", "commission_modifier");
 
-set_identityins("timer", "commission", "on");
-build_table("commission", <<END);
-
-	insert {~timer}.commission
-		(commission_id, comm_type, pay_type, pay_to, period_start, period_end,
-				amount, payment_id, create_user, create_date, chguser, chgdate)
-	select * from $srcdb.{~timer}.commission
-	;
-
-END
-set_identityins("timer", "commission", "off");
+build_table_unchanged("timer", "commission");
 
 build_table_unchanged("timer", "log_commission");
 
@@ -233,6 +162,30 @@ build_table_unchanged("timer", "insurance_rate");
 build_table_unchanged("timer", "insurance_contribution");
 
 
+build_table_from_scratch("tracker", "queue",
+	[qw<	queue_id	name						manager	>],
+	[		'CS',		'Customer Service',			4		],
+	[		'MCH',		'Merchants',				5		],
+	[		'EX',		'Executive',				6		],
+	[		'PRJ',		'Projects',					6		],
+	[		'FIN',		'Finance',					6		],
+	[		'SYS',		'System Administration',	1	],
+);
+
+#build_table_unchanged("tracker", "queue_project");
+
+# table: task
+read_in_todos();
+
+#build_table_unchanged("tracker", "task_note");
+
+build_table_from_scratch("tracker", "note_type",
+	[qw<	note_type	name						>],
+	[		'PRG',		'Progress',					],
+	[		'TST',		'Testing',					],
+);
+
+
 
 ######################
 # SUBS               #
@@ -243,9 +196,9 @@ sub db_do_or_die
 {
 	my ($query, $die_msg) = @_;
 
-	$t3->do($query)
-			or die("$die_msg:", $t3->last_error());
+	$t3->do($query) or die("$die_msg:", $t3->last_error());
 }
+
 
 sub build_table
 {
@@ -257,23 +210,127 @@ sub build_table
 	print $result;
 }
 
+
 sub build_table_unchanged
 {
 	my ($schema, $table) = @_;
 
-	my $query = "
-			insert {~$schema}.$table
-			select * from $srcdb.{~$schema}.$table
-			;
-	";
+	my $ident_col = 0;
+	my @cols = $t3->column_type($table, { SCHEMA => $schema });
+	foreach (@cols)
+	{
+		$ident_col = 1 if $_->{'attributes'} =~ /identity/;
+		if ($_->{'type'} eq 'date' or $_->{'type'} eq 'datetime')
+		{
+			# insert necessary date conversion below; if none necessary, just uncomment the next line
+			# $_ = $_->{'name'};
+
+			$_ = "	if($_->{'name'} = '9999-12-31', {END_OF_TIME},
+					if($_->{'name'} = 0 or $_->{'name'} is NULL, NULL,
+					if($_->{'name'} = '1000-01-01', {BEGINNING_OF_TIME},
+						$_->{'name'} + 0)))";
+		}
+		else
+		{
+			$_ = $_->{'name'};
+		}
+	}
+	my $collist = join(',', @cols);
+
+	set_identityins($schema, $table, "on") if $ident_col;
+	my $query = qq{
+		insert into {~$schema}.$table
+		select $collist from $srcdb.{~$schema}.$table
+	};
 	build_table($table, $query);
+	set_identityins($schema, $table, "off") if $ident_col;
 }
+
+
+sub build_table_from_scratch
+{
+	my ($schema, $table, $cols, @rows) = @_;
+
+	print "building $table\n";
+	add_rows_to_table($schema, $table, $cols, @rows);
+}
+
+
+sub add_rows_to_table
+{
+	my ($schema, $table, $cols, @rows) = @_;
+
+	my @values;
+	foreach my $row (@rows)
+	{
+		my $val = {};
+		$val->{$cols->[$_]} = $row->[$_] foreach 0..$#$row;
+		push @values, $val;
+	}
+
+	my $res = $t3->do(qq{ insert into {~$schema}.$table values ??? }, @values);
+	print "(", $res->rows_affected, " rows affected)\n";
+}
+
+
+sub read_in_todos
+{
+	print "building task\n";
+
+	my %empcodes =
+	(
+		buddy	=>	'BUD',
+		jacob	=>	'JAK',
+	);
+
+	my $hist_file;
+	my @rows;
+	foreach my $user (keys %empcodes)
+	{
+		my $mod = T3::Module::Todo->new( user => $user );
+		$hist_file = $mod->hist_filename unless $hist_file;
+		my $todos = $mod->readfile();
+
+		foreach my $todo ($mod->values($todos))
+		{
+			die("have no precis data for ${user}'s task $todo->{'name'}") unless $todo->{'precis'};
+			push @rows, { name => $todo->{'name'}, precis => $todo->{'precis'}, emp_id => $empcodes{$user},
+					client_id => $todo->{'client'}, proj_id => $todo->{'project'},
+					due => date::mdy($todo->{'due'}), completed => date::mdy($todo->{'completed'}),
+					create_user => $user, create_date => '{&now}' };
+		}
+	}
+
+	# get completed ones from history file
+	open(HIST, $hist_file) or die("can't open todo history file");
+	while ( <HIST> )
+	{
+		chomp;
+		my ($user, $time, $command, $owner, $name, $title, $client, $proj, $due) = split("\t");
+
+		next unless $command eq 'complete';								# don't really care about cancel's
+		next unless exists $empcodes{$owner};							# not importing Jon's stuff at this time
+		die("have no precis data for ${owner}'s task $name") unless $title;
+
+		# a couple of simple fixups
+		$time = (split(' ', $time))[0];									# lop off the time; just want the date
+		$owner = $empcodes{$owner};										# convert username to emp code
+
+		push @rows, { name => $name, precis => $title, emp_id => $owner, client_id => $client, proj_id => $proj,
+				due => date::mdy($due), completed => date::mdy($time), create_user => $user, create_date => '{&now}' };
+	}
+	close(HIST);
+
+	my $res = $t3->do(q{ insert into {@task} values ??? }, @rows);
+	die("DB error: " . $t3->last_error()) unless $res;
+	print "(", $res->rows_affected, " rows affected)\n";
+}
+
 
 sub set_identityins
 {
 	my ($schema, $table, $state) = @_;
 
 	# don't think this is necessary for mysql at all at all ...
-	# db_do_or_die("set identity_insert {~$schema}.$table $state",
-	#		"set identity insert failed for $table");
+	# db_do_or_die("set identity_insert {~$schema}.$table $state", "set identity insert failed for $table");
 }

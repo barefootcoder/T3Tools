@@ -11,6 +11,7 @@ use warnings;
 
 use Getopt::Std;
 
+use Barefoot;
 use Barefoot::exception;
 use Barefoot::DataStore;
 
@@ -18,10 +19,10 @@ use Barefoot::DataStore;
 my $user = "root";
 my $dstore = "t3test";
 my $admin_users = "buddy";
-my $all_users = "buddy,jon";
+my $all_users = "buddy,jacob";
 
 my $opt = {};
-getopts("s:U:h", $opt);
+getopts("s:U:vh", $opt);
 if (defined $opt->{h})
 {
 	print STDERR "usage: $0 [-s data_store] [-U username]\n";
@@ -36,6 +37,7 @@ my $t3;
 try
 {
 	$t3 = DataStore->open($dstore, $user);
+	$t3->show_queries() if DEBUG >= 2 or $opt->{v};
 }
 catch
 {
@@ -480,9 +482,9 @@ create_table("invoice",
 		[ "invoice_billdate",	"date",			"NOT NULL" ],
 		[ "invoice_paydate",	"date",			"NULL" ],
 		[ "create_user",		"username",		"NOT NULL" ],
-		[ "create_date",		"datetime,"		"NOT NULL" ],
+		[ "create_date",		"datetime",		"NOT NULL" ],
 		[ "chguser",			"username",		"NULL" ],
-		[ "chgdate",			"datetime,"		"NULL" ],
+		[ "chgdate",			"datetime",		"NULL" ],
 	],
 	[
 		{
@@ -518,9 +520,9 @@ create_table("payroll",
 		[ "overhead_amount",	"money",		"NULL" ],
 		[ "check_date",			"date",			"NULL" ],
 		[ "create_user",		"username",		"NOT NULL" ],
-		[ "create_date",		"datetime,"		"NOT NULL" ],
+		[ "create_date",		"datetime",		"NOT NULL" ],
 		[ "chguser",			"username",		"NULL" ],
-		[ "chgdate",			"datetime,"		"NULL" ],
+		[ "chgdate",			"datetime",		"NULL" ],
 	],
 	[
 		{
@@ -553,9 +555,9 @@ create_table("commission_payment",
 		[ "check_date",		"date",				"NOT NULL" ],
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -576,7 +578,7 @@ create_table("commission_payment",
 
 create_table("time_log",
 	[
-		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_source",		"table_name",		"NOT NULL", "default 'time_log'" ],
 		[ "log_id",			"unique_id",		"IDENTITY" ],
 		[ "emp_id",			"internal_id",		"NOT NULL" ],
 		[ "client_id",		"internal_id",		"NOT NULL" ],
@@ -588,10 +590,11 @@ create_table("time_log",
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "payroll_id",		"unique_id",		"NULL" ],
+		[ "task_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -626,7 +629,7 @@ create_table("time_log",
 
 create_table("materials_log",
 	[
-		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_source",		"table_name",		"NOT NULL", "default 'materials_log'" ],
 		[ "log_id",			"unique_id",		"IDENTITY" ],
 		[ "client_id",		"internal_id",		"NOT NULL" ],
 		[ "proj_id",		"internal_id",		"NULL" ],
@@ -636,9 +639,9 @@ create_table("materials_log",
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -655,21 +658,21 @@ create_table("materials_log",
 
 create_table("class_log",
 	[
-		[ "log_source",		"table_name",		"NOT NULL", ],
+		[ "log_source",		"table_name",		"NOT NULL", "default 'class_log'" ],
 		[ "log_id",			"unique_id",		"IDENTITY" ],
 		[ "client_id",		"internal_id",		"NOT NULL" ],
 		[ "proj_id",		"internal_id",		"NOT NULL" ],
 		[ "num_students",	"tinyint",			"NOT NULL" ],
 		[ "num_breaks",		"tinyint",			"NULL" ],
 		[ "log_date",		"date",				"NOT NULL" ],
-		[ "start_time",		"datetime,"			"NOT NULL" ],
-		[ "end_time",		"datetime,"			"NOT NULL" ],
+		[ "start_time",		"datetime",			"NOT NULL" ],
+		[ "end_time",		"datetime",			"NOT NULL" ],
 		[ "comments",		"comments_text",	"NULL" ],
 		[ "invoice_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -716,9 +719,9 @@ create_table("commission",
 		[ "amount",			"money",			"NULL" ],
 		[ "payment_id",		"unique_id",		"NULL" ],
 		[ "create_user",	"username",			"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"username",			"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -771,9 +774,9 @@ create_table("salary_bank",
 		[ "bank_amount",	"money",			"NOT NULL" ],
 		[ "payroll_id",		"unique_id",		"NOT NULL" ],
 		[ "create_user",	"varchar(20)",		"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"varchar(20)",		"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -826,9 +829,9 @@ create_table("insurance_rate",
 		[ "start_date",			"date",			"NOT NULL" ],
 		[ "end_date",			"date",			"NOT NULL" ],
 		[ "create_user",		"varchar(20)",	"NOT NULL" ],
-		[ "create_date",		"datetime,"		"NOT NULL" ],
+		[ "create_date",		"datetime",		"NOT NULL" ],
 		[ "chguser",			"varchar(20)",	"NULL" ],
-		[ "chgdate",			"datetime,"		"NULL" ],
+		[ "chgdate",			"datetime",		"NULL" ],
 	],
 	[
 		{
@@ -848,9 +851,9 @@ create_table("insurance_contribution",
 		[ "payroll_id",		"unique_id",		"NULL" ],
 		[ "amount",			"money",			"NOT NULL" ],
 		[ "create_user",	"varchar(20)",		"NOT NULL" ],
-		[ "create_date",	"datetime,"			"NOT NULL" ],
+		[ "create_date",	"datetime",			"NOT NULL" ],
 		[ "chguser",		"varchar(20)",		"NULL" ],
-		[ "chgdate",		"datetime,"			"NULL" ],
+		[ "chgdate",		"datetime",			"NULL" ],
 	],
 	[
 		{
@@ -932,7 +935,7 @@ sub create_table
 	my ($table_name, $columns, $attribs) = @_;
 
 	print "making table timer.$table_name\n";
-	$t3->overwrite_table("{~timer}.$table_name", $columns)
+	$t3->create_table($table_name, $columns, { SCHEMA => 'timer', OVERWRITE => 1 })
 			or die("couldn't create table $table_name: " . $t3->last_error());
 
 	# loop through attributes
@@ -946,9 +949,7 @@ sub create_table
 				on {~timer}.$table_name ($attrib->{cols})
 				{&place_on index_seg}
 			";
-			$t3->do($query)
-					or die("couldn't create index $attrib->{name}: "
-							. $t3->last_error());
+			$t3->do($query) or die("couldn't create index $attrib->{name}: " . $t3->last_error());
 		}
 
 		# grant permissions
@@ -958,9 +959,7 @@ sub create_table
 				$attrib->{type} on {~timer}.$table_name
 				to $attrib->{users}
 			";
-			$t3->do($query)
-					or die("couldn't $attrib->{type} on $table_name: "
-							. $t3->last_error());
+			$t3->do($query) or die("couldn't $attrib->{type} on $table_name: " . $t3->last_error());
 		}
 	}
 }
