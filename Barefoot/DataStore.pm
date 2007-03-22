@@ -37,9 +37,10 @@ use Text::Balanced qw<:ALL>;
 
 use Barefoot;
 use Barefoot::date;
-use Barefoot::exception;
 use Barefoot::DataStore::DataSet;
 
+
+use constant CONFIG_ATTRIBS => qw< rdbms server connect_string user date_handling initial_commands >;
 
 use constant EMPTY_SET_OKAY => 'EMPTY_SET_OKAY';
 
@@ -84,8 +85,64 @@ our $base_types =
 
 our $column_attributes =
 {
+		Sybase		=>	{
+							null			=>	{
+													order		=>	1,
+											},
+							'not null'		=>	{
+													order		=>	1,
+												},
+							identity		=>	{
+													order		=>	1,
+													invalidates	=>	0,
+													implies		=>	'primary key',
+													unique		=>	1,
+												},
+							default			=>	{
+													order		=>	0,
+												},
+							'primary key'	=>	{
+													order		=>	2,
+													unique		=>	1,
+												},
+						},
+		Oracle		=>	{
+							null			=>	{
+													order		=>	1,
+												},
+							'not null'		=>	{
+													order		=>	1,
+												},
+							default			=>	{
+													order		=>	0,
+												},
+							'primary key'	=>	{
+													order		=>	2,
+													unique		=>	1,
+												},
+						},
 		mysql		=>	{
-							identity	=>	'not null auto_increment',
+							null			=>	{
+													order		=>	0,
+												},
+							'not null'		=>	{
+													order		=>	0,
+												},
+							identity		=>	{
+													order		=>	2,
+													invalidates	=>	[ 0, 1 ],
+													implies		=>	'primary key',
+													translate	=>	'auto_increment',
+													unique		=>	1,
+												},
+							default			=>	{
+													order		=>	1,
+												},
+							'primary key'	=>	{
+													order		=>	3,
+													invalidates	=>	0,
+													unique		=>	1,
+												},
 						},
 };
 
@@ -94,14 +151,17 @@ our $date_formats =
 		Sybase		=>	{
 							date_in		=> '%m/%d/%Y',				time_in		=> '%m/%d/%Y %T',
 							date_out	=> '%b %e %Y %H:%M%p',		time_out	=> '%b %e %Y %H:%M%p',
+							perl_date	=> 'int',
 						},
 		Oracle		=>	{
 							date_in		=> '%d-%b-%Y',				time_in		=> '%d-%b-%Y %T',
 							date_out	=> '%d-%b-%Y',				time_out	=> '%d-%b-%Y %T',
+							perl_date	=> 'number(20)',
 						},
 		mysql		=>	{
 							date_in		=> '%Y-%m-%d',				time_in		=> '%Y-%m-%d %T',
 							date_out	=> '%Y-%m-%d',				time_out	=> '%Y-%m-%d %T',
+							perl_date	=> 'bigint(20)',
 						},
 
 		string		=>	{
@@ -109,6 +169,12 @@ our $date_formats =
 							date_out	=> '%Y%m%d',				time_out	=> '%Y%m%d%H%M%S',
 							beginning_of_time	=>	'00000000',
 							end_of_time			=>	'99999999',
+						},
+		perl		=>	{
+							date_in		=> '%s',					time_in		=> '%s',
+							date_out	=> '%s',					time_out	=> '%s',
+							beginning_of_time	=>	-2147483648,
+							end_of_time			=>	2147483647,
 						},
 };
 
@@ -176,16 +242,11 @@ sub _login
 
 		debuggit(4 => "environment for dbpasswd: user", $ENV{'USER'}, "home", $ENV{'HOME'}, "path", $ENV{'PATH'});
 		my $passwd;
-		my $pwerror = "";
-		try
+		eval
 		{
 			$passwd = get_password($server, $this->{'user'});
-		}
-		catch
-		{
-			$pwerror = " ($_)";
 		};
-		croak("can't get db password" . $pwerror) unless defined $passwd;
+		croak("can't get db password: $@") unless defined $passwd;
 
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
@@ -221,8 +282,7 @@ sub _set_date_types
 {
 	my $this = shift;
 
-	my $trans_type = $this->{'config'}->{'translation_type'};
-	my $date_handling = $this->{'config'}->{'date_handling'} || ($trans_type ? 'native' : 'string');
+	my $date_handling = $this->{'config'}->{'date_handling'} || 'native';
 	debuggit(3 => "DataStore: setting date types to", $date_handling);
 
 	# note that we don't need to do anything here for native date handling
@@ -230,6 +290,12 @@ sub _set_date_types
 	{
 		configure_type($this, date => 'char(8)');
 		configure_type($this, datetime => 'char(14)');
+	}
+	elsif ($date_handling eq 'perl')
+	{
+		my $rdbms = $this->{'config'}->{'rdbms'};
+		configure_type($this, date => $date_formats->{$rdbms}->{'perl_date'});
+		configure_type($this, datetime => $date_formats->{$rdbms}->{'perl_date'});
 	}
 }
 
@@ -239,11 +305,8 @@ sub _initialize_vars
 	my $this = shift;
 
 	$this->{'vars'} = {};
-	if (exists $this->{'config'}->{'translation_type'})
-	{
-		my $constant_table = $constants->{$this->{'config'}->{'translation_type'}};
-		$this->{'vars'}->{$_} = $constant_table->{$_} foreach keys %$constant_table;
-	}
+	my $constant_table = $constants->{$this->{'config'}->{'rdbms'}};
+	$this->{'vars'}->{$_} = $constant_table->{$_} foreach keys %$constant_table;
 	debuggit(5 => 'DataStore::_initialize_vars (post): $this', Dumper($this));
 }
 
@@ -262,15 +325,14 @@ sub _set_date_handling
 	my $this = shift;
 	debuggit(5 => 'DataStore::_set_date_handling (pre): $this', Dumper($this));
 
-	my $trans_type = $this->{'config'}->{'translation_type'};
-	my $date_handling = $this->{'config'}->{'date_handling'} || ($trans_type ? 'native' : 'string');
+	my $rdbms = $this->{'config'}->{'rdbms'};
+	my $date_handling = $this->{'config'}->{'date_handling'} || 'native';
 	debuggit(3 => "DataStore: setting date handling to", $date_handling);
 
 	if ($date_handling eq 'native')
 	{
-		croak("DataStore: cannot specify native date handling without also specifying translation type") unless $trans_type;
-		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$trans_type}->{'date_in'});
-		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$trans_type}->{'time_in'});
+		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$rdbms}->{'date_in'});
+		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$rdbms}->{'time_in'});
 	}
 	else
 	{
@@ -278,23 +340,17 @@ sub _set_date_handling
 		Barefoot::date->request_change_to_def_option(date_fmt => $date_formats->{$date_handling}->{'date_in'});
 		Barefoot::date->request_change_to_def_option(time_fmt => $date_formats->{$date_handling}->{'time_in'});
 
-		if ($trans_type)
-		{
-			# update {&today} and {&now}
-			$funcs->{$trans_type}->{'today'} = sub { time2str($date_formats->{$date_handling}->{'date_in'}, time()) };
-			$funcs->{$trans_type}->{'now'} = sub { time2str($date_formats->{$date_handling}->{'time_in'}, time()) };
+		# update {&today} and {&now}
+		$funcs->{$rdbms}->{'today'} = sub { time2str($date_formats->{$date_handling}->{'date_in'}, time()) };
+		$funcs->{$rdbms}->{'now'} = sub { time2str($date_formats->{$date_handling}->{'time_in'}, time()) };
 
-			# reset constants for BEGINNING_OF_TIME and END_OF_TIME
-			$this->{'vars'}->{'BEGINNING_OF_TIME'} = $date_formats->{$date_handling}->{'beginning_of_time'};
-			$this->{'vars'}->{'END_OF_TIME'} = $date_formats->{$date_handling}->{'end_of_time'};
-		}
+		# reset constants for BEGINNING_OF_TIME and END_OF_TIME
+		$this->{'vars'}->{'BEGINNING_OF_TIME'} = $date_formats->{$date_handling}->{'beginning_of_time'};
+		$this->{'vars'}->{'END_OF_TIME'} = $date_formats->{$date_handling}->{'end_of_time'};
 	}
 
-	if ($trans_type)
-	{
-		# backwards compatibility: {&curdate} == {&today}
-		$funcs->{$trans_type}->{'curdate'} = $funcs->{$trans_type}->{'today'};
-	}
+	# backwards compatibility: {&curdate} == {&today}
+	$funcs->{$rdbms}->{'curdate'} = $funcs->{$rdbms}->{'today'};
 }
 
 
@@ -387,13 +443,66 @@ sub _translate_type
 	}
 
 	# translate base types
-	if (exists $this->{'config'}->{'translation_type'})
-	{
-		my $trans_table = $base_types->{ $this->{'config'}->{'translation_type'} };
-		$type = $trans_table->{$type} if exists $trans_table->{$type};
-	}
+	my $trans_table = $base_types->{ $this->{'config'}->{'rdbms'} };
+	$type = $trans_table->{$type} if exists $trans_table->{$type};
 
 	return $type;
+}
+
+
+# translate column attributes (during create table)
+sub _translate_attrs
+{
+	my ($this, @attributes) = @_;
+
+	my $attr_table = $column_attributes->{ $this->{'config'}->{'rdbms'} };
+	die("no column attribute table supplied for RDBMS $this->{'config'}->{'rdbms'}") unless $attr_table;
+
+	my @xlated_attrs;
+	foreach my $attr (@attributes)
+	{
+		$attr = lc($attr);
+		my $attr_key = $attr;
+
+		my ($rule, $args);
+		if (exists $attr_table->{$attr})
+		{
+			$rule = $attr_table->{$attr};
+		}
+		else
+		{
+			($attr_key, $args) = split(' ', $attr);
+			if (exists $attr_table->{$attr_key})
+			{
+				$rule = $attr_table->{$attr_key};
+			}
+		}
+		die("lacking implementation for $this->{'config'}->{'rdbms'} attribute $attr") unless $rule;
+
+		if ($rule->{'unique'})
+		{
+			croak("can't have multiple $attr columns") if $this->{'col_attrs_seen'}->{$attr_key};
+			$this->{'col_attrs_seen'}->{$attr_key} = 1;
+		}
+
+		if ($rule->{'translate'})
+		{
+			$attr = $rule->{'translate'};
+			$attr =~ s/{}/$args/ if $args;
+		}
+
+		@xlated_attrs[$rule->{'order'}] = $attr;
+
+		# cheat by using redo to handle implied attributes
+		# this is safer than trying to tack them onto the end of the array from within the loop
+		if ($rule->{'implies'})
+		{
+			$attr = $rule->{'implies'};
+			redo;
+		}
+	}
+
+	return join(' ', grep { defined } @xlated_attrs);
 }
 
 
@@ -541,8 +650,7 @@ sub _transform_query
 		@args = split(/,\s*/, $2) if $2;
 
 		debuggit(4 => "translating function", $func_name);
-		croak("no translation scheme defined") unless exists $this->{'config'}->{'translation_type'};
-		my $func_table = $funcs->{$this->{'config'}->{'translation_type'}};
+		my $func_table = $funcs->{$this->{'config'}->{'rdbms'}};
 		croak("unknown translation function: $func_name") unless exists $func_table->{$func_name};
 
 		my $func_output = $func_table->{$func_name}->(@args);
@@ -753,13 +861,15 @@ sub create
 	# error check potential attributes
 	foreach my $key (keys %attribs)
 	{
-		croak("can't create data store with unknown attribute $key")
-				unless grep { /$key/ } ( qw<connect_string initial_commands server user translation_type date_handling> );
+		croak("can't create data store with unknown attribute $key") unless grep { /$key/ } CONFIG_ATTRIBS;
 	}
 
 	my $this = {};
 	$this->{'name'} = $data_store_name;
 
+	# RDBMS has to be present
+	croak("must specify RDBMS to data store") unless exists $attribs{'rdbms'};
+	
 	# user has to be present, and should be moved out of config section
 	croak("must specify user to data store") unless exists $attribs{'user'};
 	$this->{'user'} = $attribs{'user'};
@@ -1023,37 +1133,24 @@ sub create_table
 	my $schema = $opts->{'SCHEMA'} || '';
 	my $colinfo = {};
 
-	my $pk;
 	my $colnum = 0;
 	my $column_list = "(";
+	$this->{'col_attrs_seen'} = {};										# this is used by _translate_attrs to catch dups
 	foreach my $col (@$columns)
 	{
-		my ($name, $type, $attributes) = @$col;
-		$attributes = lc($attributes);
-		my $info = { name => $name, type => $type, attributes => $attributes, order => ++$colnum };
+		my ($name, $type, @attributes) = @$col;
+		my $info = { name => $name, type => $type, attributes => [ @attributes ], order => ++$colnum };
 
 		$type = $this->_translate_type($type);
 		$info->{'native_type'} = $type;
 
-		# identity columns have to generate primary keys
-		if ($attributes eq 'identity')
-		{
-			croak("can't have multiple IDENTITY columns") if $pk;
-			$pk = $name;
-		}
-
 		# translate attributes
-		if (exists $this->{'config'}->{'translation_type'})
-		{
-			my $trans_table = $column_attributes->{ $this->{'config'}->{'translation_type'} };
-			$attributes = $trans_table->{$attributes} if exists $trans_table->{$attributes};
-		}
+		my $attributes = $this->_translate_attrs(@attributes);
 
 		$column_list .= ", " if length($column_list) > 1;
 		$column_list .= "$name $type $attributes";
 		$colinfo->{$name} = $info;
 	}
-	$column_list .= ", primary key ($pk)" if $pk;
 	$column_list .= ")";
 	debuggit(3 => "final column list is", $column_list);
 

@@ -11,24 +11,46 @@ use Barefoot(DEBUG => 1);
 use Barefoot::date;
 use Barefoot::range;
 use Barefoot::exception;
+use Barefoot::TestFirst;
 use Barefoot::DataStore;
 use Barefoot::DataStore::Procs;
 
 sub test_error(&@);
 
 
-# alert to testing user
+###############################################################################
+# CHANGE THESE VARIABLES TO SUIT YOUR SETUP
+###############################################################################
 my $server = "kimahri";
 my $testdb = "test";
 my $rootuser = "root";
 my $rdbms = "mysql";
+my $user = $ENV{USER};
+my $testschema = "guest";
+###############################################################################
+
+# alert to testing user
 print "\nNOTICE: This script requires a certain amount of setup.\n";
 print "Make sure the following things are true if you have problems:\n";
-print "    1) The server $server is up and running.\n";
-print "    2) You have the $rootuser password in your .dbpasswd file.\n";
-print "    3) The database '$testdb' exists.\n";
-print "    4) The user 'buddy' a valid user in $testdb.\n";
-print "    5) The user 'guest' is a valid user in $testdb.\n\n";
+my $count = 0; foreach (
+	"The DB server '$server' is up and running.",
+	"The '$server' server is a $rdbms server running on the standard port.",
+	"You have a .dbpasswd file in your home directory.",
+	"Your .dbpasswd file is not accessible to anyone other than yourself.",
+	"Your .dbpasswd file contains lines of the format 'server:user:password'.",
+	"You have the '$rootuser' password for the DB server '$server' in your .dbpasswd file.",
+	"The database '$testdb' exists.",
+	"The user '$user' is a valid user in the '$testdb' DB.",
+	"You have the '$user' password for the DB server '$server' in your .dbpasswd file.",
+	"The '$rootuser' DB user can create a '$user' schema in the '$testdb' DB.",
+	"The '$rootuser' DB user can make a '$testschema' schema in the '$testdb' DB "
+			. "(may require a '$testschema' user in some RDBMSes).",
+)
+{
+	printf "    %2d) %s\n", ++$count, $_;
+}
+print "Failure to have any of these things will cause the script to fail.\n\n";
+
 
 # test failure to find data store
 test_error
@@ -49,8 +71,16 @@ or die("fake data store didn't cause weird I/O error");
 unlink("fake.dstore");
 
 
+# test to make sure create() requires an RDBMS
+test_error
+{
+	my $newds = DataStore->create("new", user => "nobody");
+}
+catch { /must specify RDBMS/ }
+or die("create didn't require RDBMS");
+
 # test creating a new data store
-my $newds = DataStore->create("new", user => "nobody");
+my $newds = DataStore->create("new", user => "nobody", rdbms => "mysql");
 die("didn't get a blank data store") unless $newds;
 die("not blessed ref (DataStore)") unless $newds->isa("DataStore");
 
@@ -93,6 +123,7 @@ die("created file with bogus attribute") if -e "bogus_attrib.dstore";
 test_error
 {
 	my $testds = DataStore->create("test",
+		rdbms				=>	$rdbms,
 		connect_string		=>	"dbi:$rdbms:server=$server",
 		server				=>	$server,
 		user				=>	"bogus",
@@ -105,8 +136,9 @@ or die("didn't detect bogus user");
 # make sure a bogus database bombs
 test_error
 {
-	print STDERR "BOGUS ERROR (if any) => ";
+	#print STDERR "BOGUS ERROR (if any) => ";
 	my $testds = DataStore->create("test",
+		rdbms				=>	$rdbms,
 		connect_string		=>	"dbi:$rdbms:server=$server;database=bogus",
 		server				=>	$server,
 		user				=>	$rootuser,
@@ -120,10 +152,10 @@ print STDERR "\n";
 # now let's create a datastore we can play with
 use constant TEST_DS_FILE => "test.dstore";
 my $testds = DataStore->create("test",
+		rdbms				=>	$rdbms,
 		connect_string		=>	"dbi:$rdbms:server=$server;database=$testdb",
 		server				=>	$server,
 		user				=>	$rootuser,
-		translation_type	=>	$rdbms,
 );
 $testds->show_queries() if DEBUG >= 3;
 
@@ -184,8 +216,9 @@ or die("didn't catch illegal column name");
 					select name
 					from sysobjects
 					where name like 'sysc%'
+					order by name
 				},
-	mysql	=>	qq{
+	mysql	=>	q{
 					select host
 					from mysql.user
 					where user = 'root'
@@ -200,12 +233,11 @@ my %correct_results =
 	Sybase	=>	[ qw<syscolumns syscomments sysconstraints> ],
 	mysql	=>	[ sort("localhost", $server) ],
 );
-my $count = 0;
+$count = 0;
 while ($results->next_row())
 {
 	print STDERR "row ", $count + 1, " value :", $results->col(0), ":\n" if DEBUG >= 4;
-	die("row " . ($count + 1) . " has incorrect value")
-			unless $results->col(0) eq $correct_results{$rdbms}->[$count];
+	die("row " . ($count + 1) . " has incorrect value") unless $results->col(0) eq $correct_results{$rdbms}->[$count];
 	++$count;
 }
 
@@ -218,21 +250,29 @@ die("can't create table: " . $testds->last_error())
 				[ 'a', 'char(3)', 'not null' ],
 				[ 'b', 'date', 'null' ],
 				[ 'c', 'money', 'null' ],
+				[ 'd', 'char(3)', 'not null', "default 'ddd'" ],
 		]);
 
 # and put data in ...
 use constant NUM_TEST_ROWS => 15;
-my $insquery = "insert into test1 values ('xxx', '2002/1/1', 48.35)\n";
+my $insquery = "insert into test1 (a,b,c) values ('xxx', '2002/1/1', 48.35)\n";
 $results = $testds->do($insquery) for 1..NUM_TEST_ROWS;
 die("can't insert values properly: " . $testds->last_error()) unless $results;
 $results = $testds->do("insert test1 select * from test1");
 die("can't insert select properly: " . $testds->last_error()) unless $results;
 my $nrows = $results->rows_affected();
 die("didn't get proper number of rows (got $nrows)") unless $nrows == NUM_TEST_ROWS;
+test_error
+{
+	$results = $testds->do(q{ insert into test1 values ('xxx', '2002/1/1', 48.35, null) });
+	die($testds->last_error()) unless $results;
+}
+catch { /cannot be null/ }
+or die("default with not null didn't work");
 
 # ... and get data back out
 $results = $testds->do("select * from test1");
-die("can't get resultset colnames") unless join(':', $results->colnames()) eq 'a:b:c';
+die("can't get resultset colnames") unless join(':', $results->colnames()) eq 'a:b:c:d';
 $count = 0;
 my $def_date = time2str($DataStore::date_formats->{$rdbms}->{'date_out'}, str2time('1/1/2'));
 while (my $row = $results->next_row())
@@ -245,8 +285,9 @@ while (my $row = $results->next_row())
 	die("bad name for column 1") unless $results->colname(1) eq 'b';
 	die("column 2 bad for row $count") unless $results->col(2) == 48.35;
 	die("bad name for column 2") unless $results->colname(2) eq 'c';
-	die("can't get row colnames")
-			unless join(':', $row->colnames()) eq 'a:b:c';
+	die("column 3 bad for row $count") unless $results->col(3) eq 'ddd';
+	die("bad name for column 3") unless $results->colname(3) eq 'd';
+	die("can't get row colnames") unless join(':', $row->colnames()) eq 'a:b:c:d';
 }
 die("didn't get proper number of rows back")
 		unless $count == NUM_TEST_ROWS * 2;
@@ -283,12 +324,12 @@ $ENV{PATH} =~ s@/usr/local/dbutils:@@;
 # make sure we can reopen our data store
 undef $testds;
 print STDERR "about to reopen test data store\n" if DEBUG >= 5;
-$testds = DataStore->open("test", "buddy");
+$testds = DataStore->open("test", $user);
 print STDERR "modified state is $testds->{modified}\n" if DEBUG >= 4;
 
 # quick output check
 test_output("select * from test1 where a = 'xxx'",
-		"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
+		"xxx:$def_date:48.35:ddd\n" x (NUM_TEST_ROWS * 2),
 		"can't get good data on reopen");
 
 # for following tests, we need some permissions
@@ -309,9 +350,9 @@ END
 	db_assert($testds->do("drop table test1"), "can't drop test table");
 	db_assert($testds->do("drop table test2"), "can't drop test table");
 	db_assert($testds->do("drop table test3"), "can't drop test table");
-	db_assert($testds->do("drop table {~buddy}.test1"), "can't drop test table");
-	db_assert($testds->do("drop table {~guest}.test1"), "can't drop test table");
-	db_assert($testds->do("drop table {~guest}.test2"), "can't drop test table");
+	db_assert($testds->do("drop table {~$user}.test1"), "can't drop test table");
+	db_assert($testds->do("drop table {~$testschema}.test1"), "can't drop test table");
+	db_assert($testds->do("drop table {~$testschema}.test2"), "can't drop test table");
 	if ($rdbms eq 'Sybase')
 	{
 		# if we don't do the below, running the test script enough times will
@@ -383,7 +424,7 @@ sub test_aliases
 	$testds->commit_configs();
 
 	# check output from alias; should be same as test1 table
-	test_output(q<select * from {@t1} where a = 'xxx'>,
+	test_output(q<select a,b,c from {@t1} where a = 'xxx'>,
 			"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
 			"select from alias failed");
 	
@@ -399,9 +440,11 @@ sub test_aliases
 
 sub test_constants
 {
-	db_assert($testds->do("insert test1 values ('con', {BEGINNING_OF_TIME}, 1.01)"), "beginning of time insert failed");
-	db_assert($testds->do("insert test1 values ('con', {END_OF_TIME}, 1.01)"), "end of time insert failed");
-	test_output("select * from test1 where a = 'con'",
+	db_assert($testds->do('insert test1 values ???', { a => 'con', b => '{BEGINNING_OF_TIME}', c => 1.01}),
+			"beginning of time insert failed");
+	db_assert($testds->do('insert test1 values ???', { a => 'con', b => '{END_OF_TIME}', c => 1.01}),
+			"end of time insert failed");
+	test_output("select a,b,c from test1 where a = 'con'",
 			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
 			"incorrect data stored for constants");
 }
@@ -488,9 +531,9 @@ sub test_misc_functions
 	die("can't get current date") unless substr($res->col(0), 0, 10) eq time2str($date_format{$rdbms}, time());
 
 	# ifnull function
-	db_assert($testds->do(q{ insert test1 values ('nul', null, 123.45) }), "couldn't insert data1 to test ifnull func");
-	db_assert($testds->do(q{ insert test1 values ('nul', null, null) }), "couldn't insert data2 to test ifnull func");
-	db_assert($testds->do(q{ insert test1 values ('nul', null, 99.99) }), "couldn't insert data3 to test ifnull func");
+	db_assert($testds->do(q{ insert test1 values ('nul', null, 123.45, '') }), "couldn't insert data1 to test ifnull func");
+	db_assert($testds->do(q{ insert test1 values ('nul', null, null, '') }), "couldn't insert data2 to test ifnull func");
+	db_assert($testds->do(q{ insert test1 values ('nul', null, 99.99, '') }), "couldn't insert data3 to test ifnull func");
 	test_output("select {&ifnull c, 99.99} from test1 where a = 'nul' order by c", "99.99\n99.99\n123.45\n",
 			"test of ifnull func failed");
 }
@@ -507,10 +550,10 @@ sub test_schema_trans
 	# define a schema translation
 	$testds->configure_schema_translation($schema_trans{$rdbms});
 	$testds->commit_configs();
-	$testds->overwrite_table('{~guest}.test1', [['a', 'int', 'null']])
+	$testds->overwrite_table("{~$testschema}.test1", [['a', 'int', 'null']])
 			or die("can't create initial table for schema testing");
 	db_assert(
-			$testds->overwrite_table('{~buddy}.test1', [['a', 'int', 'null']]),
+			$testds->overwrite_table("{~$user}.test1", [['a', 'int', 'null']]),
 			"can't create same table in different schema: "
 	);
 }
@@ -605,30 +648,30 @@ sub test_execute
 sub test_vars
 {
 	$testds->define_var("a_val", "con");
-	test_output("select * from test1 where a = {a_val}",
+	test_output("select a,b,c from test1 where a = {a_val}",
 			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
 			"variable set to 'con' didn't work");
 	$testds->define_var("a_val", "xxx");
-	test_output("select * from test1 where a = {a_val}",
+	test_output("select a,b,c from test1 where a = {a_val}",
 			"xxx:$def_date:48.35\n" x (NUM_TEST_ROWS * 2),
 			"variable set to 'xxx' didn't work");
 
 	# now test temporary, or override, vars
-	$testds->do("insert test1 values
+	$testds->do("insert test1 (a,b,c) values
 					( {a_val}, '$def_date', {c_val} )",
 				a_val => 'var', c_val => 96.55)
 			or die("can't insert for temp var test");
 	test_output("select * from test1 where a = 'var'",
-			"var:$def_date:96.55\n",
+			"var:$def_date:96.55:ddd\n",
 			"override vars don't work");
 
 	# now test using temporary vars + standard placeholders
-	$testds->do("insert test1 values
+	$testds->do("insert test1 (a,b,c) values
 					( ?, '$def_date', {c_val} )",
 				c_val => 88.88, 'v?')
 			or die("can't insert for var/placeholder test");
 	test_output("select * from test1 where a = 'v?'",
-			"v?:$def_date:88.88\n",
+			"v?:$def_date:88.88:ddd\n",
 			"placeholder/var mix doesn't work");
 }
 
@@ -658,8 +701,7 @@ sub test_load_append_replace
 			order by b
 	");
 	die("load_data returned undefined results") unless $contents;
-	die("can't get dataset colnames")
-				unless join(':', $contents->colnames()) eq 'a:b:c';
+	die("can't get dataset colnames") unless join(':', $contents->colnames()) eq 'a:b:c:d';
 	$contents->dump_set(*STDERR) if DEBUG >= 3;
 	die("contents aren't correct")
 			unless $contents->[0]->{a} eq 'con'
@@ -676,8 +718,7 @@ sub test_load_append_replace
 			order by b
 	', a => 'con');
 	die("load_data returned undefined results") unless $contents;
-	die("can't get dataset colnames")
-				unless join(':', $contents->colnames()) eq 'a:b:c';
+	die("can't get dataset colnames") unless join(':', $contents->colnames()) eq 'a:b:c:d';
 	$contents->dump_set(*STDERR) if DEBUG >= 3;
 	die("contents aren't correct")
 			unless $contents->[0]->{a} eq 'con'
@@ -694,8 +735,7 @@ sub test_load_append_replace
 			order by b
 	");
 	die("load_table returned undefined results") unless $contents;
-	die("can't get dataset colnames")
-				unless join(':', $contents->colnames()) eq 'a:b:c';
+	die("can't get dataset colnames") unless join(':', $contents->colnames()) eq 'a:b:c:d';
 	$contents->dump_set(*STDERR) if DEBUG >= 3;
 	die("contents aren't correct")
 			unless $contents->[0]->{a} eq 'con'
@@ -708,20 +748,20 @@ sub test_load_append_replace
 	print STDERR "contents has ", scalar(@$contents), " rows\n" if DEBUG >= 3;
 	$_->{c} = 2.02 foreach @$contents;
 	print STDERR "finished changing contents\n" if DEBUG >= 5;
-	die("call to append table failed")
-			unless $testds->append_table("test1", $contents);
-	test_output("
-				select * from test1
-				where a = 'con'
-				order by c, b
-			", 
-			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n"
-				. "con:$date_constants{$rdbms}->{'begin'}:2.02\ncon:$date_constants{$rdbms}->{'end'}:2.02\n",
-			"append table didn't work");
+	die("call to append table failed") unless $testds->append_table("test1", $contents);
+	test_output(q{
+		select a,b,c from test1
+		where a = 'con'
+		order by c, b
+	}, 
+		"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n"
+			. "con:$date_constants{$rdbms}->{'begin'}:2.02\ncon:$date_constants{$rdbms}->{'end'}:2.02\n",
+		"append table didn't work"
+	);
 
 	die("call to replace table failed")
 			unless $testds->replace_table("test1", $contents);
-	test_output("select * from test1 order by b",
+	test_output("select a,b,c from test1 order by b",
 			"con:$date_constants{$rdbms}->{'begin'}:2.02\ncon:$date_constants{$rdbms}->{'end'}:2.02\n",
 			"append table didn't work");
 }
@@ -748,16 +788,14 @@ sub test_show_queries
 sub test_transactions
 {
 	$testds->begin_tran() or die("begin tran failed");
-	$testds->do("insert into test1 values ('trn', '1/1/01', 0)") or die("insert for transaction failed");
+	$testds->do("insert into test1 (a,b,c) values ('trn', '1/1/01', 0)") or die("insert for transaction failed");
 	$testds->rollback() or die("rollback tran failed");
 	test_output("select * from test1 where a = 'trn'", "", "rollback didn't work");
 
 	$testds->begin_tran() or die("begin tran failed");
-	$testds->do("insert into test1 values ('trn', '$def_date', 3.03)") or die("insert for transaction failed");
+	$testds->do("insert into test1 (a,b,c) values ('trn', '$def_date', 3.03)") or die("insert for transaction failed");
 	$testds->commit() or die("commit tran failed");
-	test_output("select * from test1 where a = 'trn'",
-			"trn:$def_date:3.03\n",
-			"commit didn't work");
+	test_output("select * from test1 where a = 'trn'", "trn:$def_date:3.03:ddd\n", "commit didn't work");
 }
 
 sub test_calc_columns
@@ -818,7 +856,7 @@ sub test_col_attrs
 				[ 'c', 'int', 'identity' ],
 		]);
 	}
-	catch { /can't have multiple IDENTITY columns/ }
+	catch { /can't have multiple identity columns/ }
 	or die("didn't detect multiple identity cols");
 
 	# make sure IDENTITY is doing what's it's supposed to be doing
@@ -832,9 +870,10 @@ sub test_col_attrs
 sub test_create_table
 {
 	my $columns = [
-		[	'a',	'int',		'IDENTITY',	],
-		[	'b',	'short_id',	'NOT NULL',	],							# user defined type (set by test_user_types())
-		[	'c',	'boolean',	'NOT NULL',	],							# base type that is translated for all RDBMSes
+		[	'a',	'int',		'identity',	],
+		[	'b',	'short_id',	'not null',	],							# user defined type (set by test_user_types())
+		[	'c',	'boolean',	'not null',	],							# base type that is translated for all RDBMSes
+		[	'd',	'char(3)',	"default 'ddd'", ],						# char type with default value
 	];
 	$testds->create_table('test3', $columns) or die("cannot create table: " . $testds->last_error());
 	die("create_table didn't create table")
@@ -842,7 +881,7 @@ sub test_create_table
 	die("create_table doesn't save column info") unless $testds->column_type('test3', 'b') eq 'short_id';
 	my %col_info = $testds->column_type('test3', 'b');
 	die("create_table doesn't save full column info") unless $col_info{'name'} eq 'b' and $col_info{'type'} eq 'short_id'
-			and $col_info{'attributes'} eq 'not null';
+			and @{$col_info{'attributes'}} == 1 and $col_info{'attributes'}->[0] eq 'not null';
 	die("column_type doesn't return native type") unless $col_info{'native_type'} eq 'char(3)';
 
 	# test overwriting (and not overwriting)
@@ -851,15 +890,15 @@ sub test_create_table
 	die("didn't really overwrite") unless $testds->do(q{ select count(*) from test3 })->count() == 0;
 
 	# test with schema
-	$testds->create_table('test2', $columns, { SCHEMA => 'guest' })
+	$testds->create_table('test2', $columns, { SCHEMA => $testschema })
 			or die("cannot create schema table: " . $testds->last_error());
 	die("create_table didn't create schema table")
-			unless $testds->do(q{ insert into {~guest}.test2 (b, c) values ('aaa', 0) })->rows_affected() == 1;
+			unless $testds->do(qq{ insert into {~$testschema}.test2 (b, c) values ('aaa', 0) })->rows_affected() == 1;
 	die("create_table doesn't save column info")
-			unless $testds->column_type('test2', 'b', { SCHEMA => 'guest' }) eq 'short_id';
-	my %col_info = $testds->column_type('test2', 'b', { SCHEMA => 'guest' });
+			unless $testds->column_type('test2', 'b', { SCHEMA => $testschema }) eq 'short_id';
+	%col_info = $testds->column_type('test2', 'b', { SCHEMA => $testschema });
 	die("create_table doesn't save full column info") unless $col_info{'name'} eq 'b' and $col_info{'type'} eq 'short_id'
-			and $col_info{'attributes'} eq 'not null';
+			and @{$col_info{'attributes'}} == 1 and $col_info{'attributes'}->[0] eq 'not null';
 	die("column_type doesn't return native type") unless $col_info{'native_type'} eq 'char(3)';
 
 	# test saving col info across DataStore open/close
@@ -869,11 +908,11 @@ sub test_create_table
 
 	# test getting all colinfo at once
 	my @colinfo = $testds->column_type('test3');
-	die("can't get all column info") unless @colinfo == 3;
-	die("can't get all column info in correct order") unless join('', map { $_->{'name'} } @colinfo) eq 'abc';
+	die("can't get all column info") unless @colinfo == 4;
+	die("can't get all column info in correct order") unless join('', map { $_->{'name'} } @colinfo) eq 'abcd';
 	my $colinfo = $testds->column_type('test3');
 	die("can't get all column info as a ref")
-			unless @$colinfo == 3 and join('', map { $colinfo->[$_] eq $colinfo[$_] } 0..2) eq '111';
+			unless @$colinfo == 4 and join('', map { $colinfo->[$_] eq $colinfo[$_] } 0..3) eq '1111';
 }
 
 
@@ -1001,17 +1040,17 @@ sub test_date_handling
 	(
 		native	=>	$def_date,
 		string	=>	'20020101',
-		# probably should have "perl" here one day
+		perl	=>	1009861200,
 	);
 
 	foreach my $date_type (sort keys %date_format)							
 	{
 		debuggit(2 => "now testing", $date_type, "date handling");
 		my $ds = DataStore->create("test$date_type",
+				rdbms				=>	$rdbms,
 				connect_string		=>	"dbi:$rdbms:server=$server;database=$testdb",
 				server				=>	$server,
 				user				=>	$rootuser,
-				translation_type	=>	$rdbms,
 				date_handling		=>	$date_type,
 		);
 		eval qq{ END { unlink 'test${date_type}.dstore' } };
@@ -1053,7 +1092,7 @@ sub test_date_handling
 		# make sure functions are not getting cached
 		sleep(1);														# have to make sure we get a different timestamp
 		$ds->do(q{ insert into test1 values ??? }, { a => 'DT2', b => '{&today}', c => '33.33', d => '{&now}' });
-		my $db_time = $ds->do(q{ select d from test1 where a = 'DT2' })->count();
+		$db_time = $ds->do(q{ select d from test1 where a = 'DT2' })->count();
 		$expected = time2str($DataStore::date_formats->{$which}->{'time_out'}, time());
 		debuggit(2 => "expected", $expected, "for", $which, "got", $db_time);
 		die("cached check for $date_type failed") unless $db_time eq $expected;
