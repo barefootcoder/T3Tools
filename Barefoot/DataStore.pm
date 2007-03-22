@@ -686,7 +686,7 @@ sub _transform_query
 				my $alias = $&;
 				my $alias_name = $1;
 				my $table_name = $this->{'config'}->{'aliases'}->{$alias_name};
-				croak("unknown alias: $alias_name") unless $table_name;
+				croak("unknown table alias: $alias_name") unless $table_name;
 				$query =~ s/$alias/$table_name/g;
 			}
 

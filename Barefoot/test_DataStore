@@ -433,7 +433,7 @@ sub test_aliases
 	{
 		$testds->do('select * from {@bogus}');
 	}
-	catch { /unknown alias: bogus/ }
+	catch { /unknown table alias: bogus/ }
 	or die("didn't detect bogus alias");
 }
 
