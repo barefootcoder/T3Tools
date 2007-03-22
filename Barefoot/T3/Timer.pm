@@ -350,7 +350,30 @@ sub _remove_timer
 
 sub _insert_time_log
 {
-	my ($user, $emp, $client, $proj, $phase, $tracking, $date, $hours, $comments) = @_;
+	my ($user, $emp, $client, $proj, $phase, $tracking, $date, $hours, $comments, $task_name) = @_;
+
+	my $task_id;
+	if ($task_name)
+	{
+		my $res = &t3->do(q{
+			select task_id
+			from {@task}
+			where emp_id = ?
+			and name = ?
+			order by create_date desc
+		},
+			$emp, $task_name,
+		);
+
+		if ($res and $res->next_row)
+		{
+			$task_id = $res->col(0);
+		}
+		else
+		{
+			warn("could not retrieve task_id for task $task_name (" . &t3->last_error() . ")");
+		}
+	}
 
 	my $result = &t3->do(q{ insert into {@time_log} values ??? },
 		{
@@ -359,11 +382,12 @@ sub _insert_time_log
 			proj_id			=>	$proj,
 			phase_id		=>	$phase,
 			tracking_code	=>	$tracking,
-			log_date		=>	$date,
+			log_date		=>	date::mdy($date),
 			hours			=>	$hours,
 			comments		=>	$comments,
+			task_id			=>	$task_id,
 			create_user		=>	$user,
-			create_date		=>	'{&curdate}',
+			create_date		=>	'{&now}',
 		},
 	);
 	die("database error: ", &t3->last_error()) unless defined $result and $result->rows_affected() == 1;
@@ -561,6 +585,10 @@ sub done																# done with a timer
 		die("No such timer as $timersent");
     }
 
+	# put todo name, if any, into options for log_time to play with
+	# (okay if it's not there)
+	$opts->{'todo'} = $timers->{$timersent}->{'todo_link'};
+
 	# cheat by calling the log command, which does exactly what we need
 	$this->log_time($opts, $timers);
 	debuggit(5 => "logged time, about to call _remove_timer");
@@ -584,6 +612,8 @@ sub log_time															# log time not connected to a timer
 		die("cannot log to database without attribute $attrib") unless exists $opts->{$attrib};
 		push @insert_args, $opts->{$attrib};
 	}
+	# get the todo_link (okay if this is undefined, which it will be unless we were called from done())
+	push @insert_args, $opts->{'todo'};
 
 	# stuff it into the database (this dies if it fails)
 	_insert_time_log(@insert_args);
