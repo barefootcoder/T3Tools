@@ -129,12 +129,14 @@ sub isValid
 
 sub mdy
 {
+	return undef unless $_[0];
 	return time2str($Options{'date_fmt'}, _cvt_date_if_necessary($_[0]));
 }
 
 
 sub mdyt
 {
+	return undef unless $_[0];
 	return time2str($Options{'time_fmt'}, _cvt_date_if_necessary($_[0]));
 }
 
