@@ -73,6 +73,8 @@ die("day diff test failed") unless date::dayDiff(date::incDays(date::today(), -4
 my $raw_diff = date::dayDiff( str2time(date::incDays(date::today(), -4)), str2time(date::today()) );
 print "raw diff is $raw_diff\n" if DEBUG >= 2;
 die("day diff with raw times failed") unless $raw_diff == 4;
+# weird DST stuff throws this one off, so test it
+die("DST bug still extant") unless date::dayDiff('12/29/03', '8/8/05') == 588;
 
 
 # other tests

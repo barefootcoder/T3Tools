@@ -22,9 +22,9 @@ use strict;
 use warnings;
 
 use Carp;
-use Time::Local;
 use Date::Parse;
 use Date::Format;
+use Date::Calc qw< Delta_Days >;
 
 use Barefoot;
 use Barefoot::array;
@@ -180,8 +180,7 @@ sub dayDiff
 	my $new_secs = defined($new_date) ? _cvt_date_if_necessary($new_date) : time();
 	return undef unless defined($old_secs) and defined($new_secs);
 
-	my $diff_secs = $new_secs - $old_secs;
-	return int($diff_secs / (24 * 60 * 60));
+	return Delta_Days(split(' ', time2str('%Y %m %d', $old_secs)), split(' ', time2str('%Y %m %d', $new_secs)));
 }
 
 
