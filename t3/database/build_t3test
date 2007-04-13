@@ -81,15 +81,8 @@ debuggit(5 => "t3 is", Dumper($t3));
 # now fill them up
 
 build_table_unchanged("t3", "person");
-add_rows_to_table("t3", "person",
-	[qw<	first_name		last_name		company_name	>],
-	[		'Jen',			'Hibler',		'ThinkGeek'		],
-	[		'Willie',		'Vadnais',		'ThinkGeek'		],
-	[		'Caroline',		'Offutt',		'ThinkGeek'		],
-);
 
 build_table_unchanged("t3", "workgroup_user");
-$t3->do(q{ update {@workgroup_user} set start_date = {BEGINNING_OF_TIME} });
 
 
 build_table_unchanged("timer", "category");
@@ -138,13 +131,7 @@ build_table_unchanged("timer", "payroll");
 
 build_table_unchanged("timer", "commission_payment");
 
-build_table("time_log", qq{
-	insert into {~timer}.time_log
-	select log_source, log_id, emp_id, client_id, proj_id, phase_id, tracking_code, log_date+0, hours, comments,
-		invoice_id, payroll_id, NULL, create_user, create_date+0,
-		chguser, if(chgdate = 0 || chgdate is null, null, chgdate+0)
-	from $srcdb.{~timer}.time_log
-});
+build_table_unchanged("timer", "time_log");
 
 build_table_unchanged("timer", "materials_log");
 
@@ -165,28 +152,15 @@ build_table_unchanged("timer", "insurance_rate");
 build_table_unchanged("timer", "insurance_contribution");
 
 
-build_table_from_scratch("tracker", "queue",
-	[qw<	queue_id	name						manager	>],
-	[		'CS',		'Customer Service',			4		],
-	[		'MCH',		'Merchants',				5		],
-	[		'EX',		'Executive',				6		],
-	[		'PRJ',		'Projects',					6		],
-	[		'FIN',		'Finance',					6		],
-	[		'SYS',		'System Administration',	1	],
-);
+build_table_unchanged("tracker", "queue");
 
-#build_table_unchanged("tracker", "queue_project");
+build_table_unchanged("tracker", "queue_project");
 
-# table: task
-read_in_todos();
+build_table_unchanged("tracker", "task");
 
-#build_table_unchanged("tracker", "task_note");
+build_table_unchanged("tracker", "task_note");
 
-build_table_from_scratch("tracker", "note_type",
-	[qw<	note_type	name						>],
-	[		'PRG',		'Progress',					],
-	[		'TST',		'Testing',					],
-);
+build_table_unchanged("tracker", "note_type");
 
 
 
