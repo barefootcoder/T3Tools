@@ -65,7 +65,6 @@ sub text_fields
 
 sub save_to_db
 {
-return;
 	my ($this, $user, $tasks) = @_;
 	debuggit(5 => "Entered todo::save_to_db");
 
@@ -111,12 +110,12 @@ return;
 						and completed is NULL },
 				{
 					name		=>	$task->{'name'},
-					title		=>	$task->{'title'},
+					precis		=>	$task->{'precis'},
 					emp_id		=>	$emp,
 					client_id	=>	$task->{'client'},
 					proj_id		=>	$task->{'project'},
+					queue_id	=>	$task->{'queue'},
 					description	=>	'',
-					tracked		=>	$is_master,
 					due			=>	$task->{'due'},
 					completed	=>	undef,
 				},
