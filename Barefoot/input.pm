@@ -55,7 +55,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 1999-2007 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 1999-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -123,6 +123,12 @@ sub input
 		$answer = <STDIN>;
 		debuggit(5 => "input: got a line of input from stdin");
 		chomp $answer;
+
+		if ($opts->{'MAXLEN'} and length($answer) > $opts->{'MAXLEN'})
+		{
+			print "Input too long (maximum length is $opts->{'MAXLEN'})\n";
+			redo INPUT;
+		}
 
 		if ($answer ne "" and exists $opts->{'VALID'})
 		{
