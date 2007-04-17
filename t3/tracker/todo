@@ -53,17 +53,17 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 #################################
 
 our $TodoListHeader =
-"   Todo:            Precis:                              CLI PRJ  Due by:  Pri\n" .
-"   ===============  ===================================  === ===  ======== ===";
+"   Todo:                      Precis:                    CLI PRJ Due by:  Pri\n" .
+"   =========================  ========================== === === ======== ===";
 
 our $TodoList =
-'   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y @<<';
+'   @<<<<<<<<<<<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<< @<< @<< @m/#d/@y @<<';
 
 # $TodoList was designed for an 80-column screen; adjust the Precis field to take up more or less space based
 # on the screen width
 _screen_width_adjust($TodoListHeader, 'Precis: ');						# note that that trailing space is crucial ...
-_screen_width_adjust($TodoListHeader, '=' x 35);
-_screen_width_adjust($TodoList, '@' . '<' x 34);
+_screen_width_adjust($TodoListHeader, '=' x 26);
+_screen_width_adjust($TodoList, '@' . '<' x 25);
 
 our $TodoTask = <<'EOF';
 
@@ -84,18 +84,18 @@ our $TodoTask = <<'EOF';
 EOF
 
 our $TodoProgressHeader = <<'EOH';
-   Task:            Precis:                              Pts: Completed:
-   ===============  ===================================  ==== ========
+   Task:                      Precis:                     Pts: Completed:
+   =========================  ==========================  ==== ========
 EOH
 
 our $TodoProgress = <<'EOF';
-   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @#.# @m/#d/@y
+   @<<<<<<<<<<<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<  @#.# @m/#d/@y
 EOF
 
 # adjust progress report in similar fashion to $TodoList
 _screen_width_adjust($TodoProgressHeader, 'Precis: ');				# note that that trailing space is crucial ...
-_screen_width_adjust($TodoProgressHeader, '=' x 35);
-_screen_width_adjust($TodoProgress, '@' . '<' x 34);
+_screen_width_adjust($TodoProgressHeader, '=' x 26);
+_screen_width_adjust($TodoProgress, '@' . '<' x 25);
 
 
 
