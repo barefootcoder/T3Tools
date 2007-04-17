@@ -127,6 +127,7 @@ sub get_parameter
 		# at this point, parm will act as our default
 		# need to save it in case user enters "?", then we can put it back
 		my $default = $parm;
+		$default = '/' if $opts->{'ALLOW_NULL'} and not $default;
 
 		# make a block so redo will work
 		PARM:
