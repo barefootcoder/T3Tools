@@ -53,11 +53,11 @@ use constant PRESS_RETURN => "Press return to continue . . .";
 #################################
 
 our $TodoListHeader =
-"   Todo:            Precis:                              CLI PRJ  Due by:\n" .
-"   ===============  ===================================  === ===  ========";
+"   Todo:            Precis:                              CLI PRJ  Due by:  Pri\n" .
+"   ===============  ===================================  === ===  ======== ===";
 
 our $TodoList =
-'   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y';
+'   @<<<<<<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<  @<< @<<  @m/#d/@y @<<';
 
 # $TodoList was designed for an 80-column screen; adjust the Precis field to take up more or less space based
 # on the screen width
@@ -65,20 +65,23 @@ _screen_width_adjust($TodoListHeader, 'Precis: ');						# note that that trailin
 _screen_width_adjust($TodoListHeader, '=' x 35);
 _screen_width_adjust($TodoList, '@' . '<' x 34);
 
-our $TodoTask =
-	'
-    Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      Due Date:
-    Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
-    Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                                                              Completed Date:
-    Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<      @m/#d/@yyy
+our $TodoTask = <<'EOF';
 
-    Precis:       ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
-    ~~            ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    Client:      @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<            Priority:
+    Project:     @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              @<<
+    Tracking: @<<<<<<<<<  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                                                    Due Date:
+    Queue:       @<<      @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<            @m/#d/@yyy
+
+                                                                    Completed:
+                                                                    @m/#d/@yyy
+    Precis:      ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
+    ~~           ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     Description:
     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<&
-~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<';
+~~  ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+EOF
 
 our $TodoProgressHeader = <<'EOH';
    Task:            Precis:                              Pts: Completed:
@@ -181,8 +184,8 @@ $todos = $mod->readfile({
 						# date strings instead of time numbers (as they should be)
 						$task->{'due'} = str2time($task->{'due'}) if $task->{'due'} =~ m@/@;
 
-						# queues and completed dates should be NULL (i.e. undef) if blank
-						foreach ( qw< queue completed > )
+						# the following fields should be NULL (i.e. undef) if blank
+						foreach ( qw< queue completed priority > )
 						{
 							$task->{$_} = undef if $task->{$_} eq "";
 						}
@@ -421,12 +424,24 @@ sub error
 }
 
 
+sub cmp_pri
+{
+	my ($lhs, $rhs) = @_;
+
+	return $lhs cmp $rhs if $lhs and $rhs;
+	return -1 if $lhs;
+	return 1 if $rhs;
+	return 0;
+}
+
+
 sub todo_menu_list
 {
-	my @menu_list = sort { $a->{'due'} <=> $b->{'due'} } grep { not $_->{'completed'} } $mod->values($todos);
+	my @menu_list = sort { cmp_pri($a->{'priority'}, $b->{'priority'}) or $a->{'due'} <=> $b->{'due'} }
+			grep { not $_->{'completed'} } $mod->values($todos);
 	foreach my $todo (@menu_list)
 	{
-		$todo = swrite($TodoList, @$todo{qw< name precis client project due >}) . "\n";
+		$todo = swrite($TodoList, @$todo{qw< name precis client project due priority >}) . "\n";
 	}
 	return @menu_list;
 }
@@ -487,8 +502,8 @@ sub get_existing_todo
 		$todo->{"${which}_name"} = one_datum($query);
 	}
 
-	writeln($TodoTask, @$todo{ qw< client client_name project project_name due tracking tracking_name
-			queue queue_name completed precis > });
+	writeln($TodoTask, @$todo{ qw< client client_name project project_name priority tracking tracking_name
+			queue queue_name due completed precis > });
 	print "\n\n";
 
 	return $todo;
@@ -504,10 +519,14 @@ sub input_todo
 	$todo->{'due'} = input_date($todo->{'due'});
 
 	my $opts = { SAVE_IN_OBJECT => 1 };									# need to save results in object, not parminfo
+	my $null_opts = { %$opts, ALLOW_NULL => 1 };						# some options allow NULL values; use thie one
+
+
+	$todo->{'priority'} = input( "Priority {'/' to remove priority}:", $todo->{'priority'},
+			{ MAXLEN => 3, CONVERT => sub { uc($_[0]) } });
 	get_parameter("client", $parminfo, $todo, $opts);
 	get_parameter("project", $parminfo, $todo, $opts);
-	$opts->{ALLOW_NULL} = 1;											# queues can be NULL
-	get_parameter("queue", $parminfo, $todo, $opts);
+	get_parameter("queue", $parminfo, $todo, $null_opts);
 
 	# even if task existed before, it might have changed, so mark it unposted
 	$todo->{'posted'} = 0;

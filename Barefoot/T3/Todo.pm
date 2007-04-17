@@ -12,7 +12,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2006 Barefoot Software, Copyright (c) 2006 ThinkGeek
+# Copyright (c) 2006-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -53,7 +53,7 @@ has hist_file => (is => 'ro', default => 'todo.history');
 sub fields : lvalue
 {
 	my ($this, $object) = @_;
-	@{$object}{qw< name client project due posted completed queue >};
+	@{$object}{qw< name client project due posted completed queue priority >};
 }
 
 
@@ -114,6 +114,7 @@ sub save_to_db
 					emp_id		=>	$emp,
 					client_id	=>	$task->{'client'},
 					proj_id		=>	$task->{'project'},
+					priority	=>	$task->{'priority'},
 					queue_id	=>	$task->{'queue'},
 					description	=>	'',
 					due			=>	$task->{'due'},
