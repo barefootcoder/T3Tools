@@ -12,7 +12,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2002-2006 Barefoot Software, Copyright (c) 2004-2006 ThinkGeek
+# Copyright (c) 2002-2007 Barefoot Software, Copyright (c) 2004-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -28,6 +28,7 @@ use vars qw< @EXPORT_OK >;
 @EXPORT_OK = qw< one_datum get_emp_id default_client client_rounding proj_requirements phase_list queue_list get_logs >;
 
 use Barefoot;
+use Barefoot::date;
 use Barefoot::DataStore;
 
 use Barefoot::T3::base;
@@ -181,15 +182,33 @@ sub queue_list
 
 sub get_logs
 {
-	my ($emp_id) = @_;
+	my ($emp_id, $opts) = @_;
+	$opts ||= {};
+
+	my $start_date = '{BEGINNING_OF_TIME}';
+	my $end_date = '{END_OF_TIME}';
+	if ($opts->{'DATE'})
+	{
+		if ($opts->{'DATE'} eq 'THIS_WEEK')
+		{
+			$start_date = date::MondayDate();
+			$end_date = date::incDays($start_date, 6);
+		}
+		else
+		{
+			die("get logs: don't know how to set date for $opts->{'DATE'}");
+		}
+	}
+	debuggit(3 => "get_logs: start date", $start_date, "end date", $end_date);
 
 	my $data = &t3->load_data(q{
 		select l.client_id, l.proj_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
+		and l.log_date between {start} and {end}
 		order by l.log_date
 	},
-		emp => $emp_id,
+		emp => $emp_id, start => $start_date, end => $end_date,
 	);
 	die("get logs query failed:", &t3->last_error()) unless $data;
 

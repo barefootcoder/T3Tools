@@ -399,8 +399,6 @@ if ($command eq 'TOTAL')					# total timers by client
 		exit;
 	}
 
-	my %clients;
-	my %projects;
 	my $totals = {};
 	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
@@ -412,21 +410,31 @@ if ($command eq 'TOTAL')					# total timers by client
 		my $client = $_->{'client'} || '???';
 		my $proj = $_->{'project'} || '???';
 
-		unless (exists $totals->{$client})
-		{
-			$clients{$client} = eval { one_datum("select name from {~timer}.client where client_id = '$client'") } || '???';
-			$totals->{$client} = {};
-		}
-		unless (exists $totals->{$client}->{$proj})
-		{
-			$projects{$proj} = eval { one_datum("select name from {~timer}.project where proj_id = '$proj'") } || '???';
-			$totals->{$client}->{$proj} = 0;
-		}
+		my $hrs = rounded_time($client, $_->{'time'});
+		$hrs = $min_time if calc_time($_->{'time'}) > 0 and $hrs < $min_time;
+		$totals->{$client}->{$proj} += $hrs;
+		$totals->{$client}->{':TOTAL'} += $hrs;
+	}
 
-		my $mins = rounded_time($client, $_->{'time'});
-		$mins = $min_time if calc_time($_->{'time'}) > 0 and $mins < $min_time;
-		$totals->{$client}->{$proj} += $mins;
-		$totals->{$client}->{':TOTAL'} += $mins;
+	my $emp_id = get_emp_id($mod->user);
+	my $logs = get_logs($emp_id, { DATE => 'THIS_WEEK' });
+	debuggit(2 => "found", scalar(@$logs), "logs in the DB to total");
+	foreach (@$logs)
+	{
+		my $hrs = $_->{'hours'};
+		$totals->{$_->{'client_id'}}->{$_->{'proj_id'}} += $hrs;
+		$totals->{$_->{'client_id'}}->{':TOTAL'} += $hrs;
+	}
+
+	my (%clients, %projects);
+	foreach my $client (keys %$totals)
+	{
+		$clients{$client} = eval { one_datum("select name from {~timer}.client where client_id = '$client'") } || '???';
+		foreach my $proj (keys %{$totals->{$client}})
+		{
+			my $proj_query = "select name from {~timer}.project where client_id = '$client' and proj_id = '$proj'";
+			$projects{$client}->{$proj} = eval { one_datum($proj_query) } || '???';
+		}
 	}
 
 	foreach my $client (sort keys %$totals)
@@ -438,7 +446,7 @@ if ($command eq 'TOTAL')					# total timers by client
 
 		foreach my $proj (sort keys %{$totals->{$client}})
 		{
-			writeln(Totals, $proj, $projects{$proj}, $totals->{$client}->{$proj}) if $totals->{$client}->{$proj};;
+			writeln(Totals, $proj, $projects{$client}->{$proj}, $totals->{$client}->{$proj}) if $totals->{$client}->{$proj};
 		}
 	}
 
