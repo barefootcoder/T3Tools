@@ -24,7 +24,7 @@ use warnings;
 use Carp;
 use Date::Parse;
 use Date::Format;
-use Date::Calc qw< Delta_Days >;
+use Date::Calc qw< Today Now Delta_Days Add_Delta_Days Monday_of_Week Week_of_Year Mktime Localtime >;
 
 use Barefoot;
 use Barefoot::array;
@@ -101,18 +101,6 @@ sub _cvt_date_if_necessary
 }
 
 
-sub _epoch_secs_monday
-{
-	my $dow = (localtime($_[0]))[PART_DOW];
-
-	# if 0 (Sunday), use 6 days, else subtract 1 (Monday)
-	# now num_days will be number of days ago the last Monday was
-	my $num_days = $dow == 0 ? 6 : $dow - 1;
-
-	return time - $num_days * 24 * 60 * 60;
-}
-
-
 ###########################
 # public routines
 ###########################
@@ -158,13 +146,9 @@ sub incDays
 	my ($date, $inc) = @_;
 	debuggit(3 => "incDays: args are", $date, $inc);
 
-	my $secs = _cvt_date_if_necessary($date);
-	debuggit(3 => "seconds before increment:", $secs);
-	$secs += ($inc * 24 * 60 * 60);										# increment seconds by that many days
-	$secs += 60 * 60;													# extra hour fixes DST problem
-	debuggit(3 => "seconds after increment:", $secs);
-
-	return mdy($secs);
+	my @incdate = Add_Delta_Days((Localtime(_cvt_date_if_necessary($date)))[0,1,2], $inc);
+	debuggit(3 => "return from AddDelta is", @incdate, "and then converts to", Mktime(@incdate, 0,0,0));
+	return mdy(Mktime(@incdate, 0,0,0));
 }
 
 
@@ -209,13 +193,13 @@ sub dateTimeSeconds
 
 sub MondayTime
 {
-	return time2str($Options{'time_fmt'}, _epoch_secs_monday(time()));
+	return time2str($Options{'time_fmt'}, Mktime(Monday_of_Week(Week_of_Year(Today())), Now()));
 }
 
 
 sub MondayDate
 {
-	return time2str($Options{'date_fmt'}, _epoch_secs_monday(time()));
+	return time2str($Options{'date_fmt'}, Mktime(Monday_of_Week(Week_of_Year(Today())), 0,0,0));
 }
 
 
