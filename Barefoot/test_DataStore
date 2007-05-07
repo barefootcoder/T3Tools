@@ -657,40 +657,46 @@ sub test_vars
 			"variable set to 'xxx' didn't work");
 
 	# now test temporary, or override, vars
-	$testds->do("insert test1 (a,b,c) values
-					( {a_val}, '$def_date', {c_val} )",
-				a_val => 'var', c_val => 96.55)
+	$testds->do("insert test1 (a,b,c) values ( {a_val}, '$def_date', {c_val} )", a_val => 'var', c_val => 96.55)
 			or die("can't insert for temp var test");
 	test_output("select * from test1 where a = 'var'",
 			"var:$def_date:96.55:ddd\n",
 			"override vars don't work");
 
 	# now test using temporary vars + standard placeholders
-	$testds->do("insert test1 (a,b,c) values
-					( ?, '$def_date', {c_val} )",
-				c_val => 88.88, 'v?')
+	$testds->do("insert test1 (a,b,c) values ( ?, '$def_date', {c_val} )", c_val => 88.88, 'v?')
 			or die("can't insert for var/placeholder test");
 	test_output("select * from test1 where a = 'v?'",
 			"v?:$def_date:88.88:ddd\n",
 			"placeholder/var mix doesn't work");
+
+	# now test using another var _as_ the value for a temporary var
+	# (note this only works with vars, not standard placeholders (at least at this time))
+	$testds->do(q{ insert test1 (a,b,c) values ( ?, {date}, {c_val} ) }, date => '{END_OF_TIME}', c_val => 6.66, 'vv')
+			or die("can't insert for var/var test");
+	test_output("select * from test1 where a = 'vv'",
+			"vv:$date_constants{$rdbms}->{'end'}:6.66:ddd\n",
+			"var/var mix doesn't work");
 }
 
 sub test_conditionals
 {
 	$testds->define_var("a_val", "con");
-	test_output("
-				select * from test1
-				where a = {a_val}				{?a_val}
-			", 
-			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
-			"positive conditional didn't work");
-	test_output("
-				select * from test1
-				where a ='{a_val}
-				and b = {BEGINNING_OF_TIME}		{!a_val}
-			", 
-			"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
-			"negative conditional didn't work");
+	test_output(q{
+			select * from test1
+			where a = {a_val}				{?a_val}
+		}, 
+		"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
+		"positive conditional didn't work"
+	);
+	test_output(q{
+			select * from test1
+			where a = {a_val}
+			and b = {BEGINNING_OF_TIME}		{!a_val}
+		}, 
+		"con:$date_constants{$rdbms}->{'begin'}:1.01\ncon:$date_constants{$rdbms}->{'end'}:1.01\n",
+		"negative conditional didn't work"
+	);
 }
 
 sub test_load_append_replace

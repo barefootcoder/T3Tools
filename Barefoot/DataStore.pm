@@ -592,8 +592,8 @@ sub _transform_query
 			# it avoids the use of $& (which causes severe performance penalties), _and_ it's faster for this
 			# operation anyways, because using $& would involve a s//, which is going to be slower than using
 			# substr() as an lvalue
-			substr($query, $-[0], $+[0] - $-[0]) = '?';
-			push @vars, $value;
+			substr($query, $-[0], $+[0] - $-[0]) = $this->_check_for_variable(PLACEHOLDER => $value, $temp_vars);
+			push @vars, $this->_check_for_variable(BIND_VAL => $value, $temp_vars);
 		}
 		elsif ($2)														# ? (standard placeholder)
 		{
