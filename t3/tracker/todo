@@ -316,6 +316,7 @@ sub complete_todo
 	if (get_yn("Are you definitely ready to mark this task completed?"))
 	{
 		$todo->{'completed'} = time();
+		$todo->{'posted'} = 0;											# have to mark it unposted or it won't do anything
 		save_todos($todos, $parminfo->{'user'});
 	}
 }
