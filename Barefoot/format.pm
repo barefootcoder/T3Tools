@@ -203,14 +203,14 @@ sub swrite
 			}
 			elsif ( / ^ $DATE_FMT $ /x )
 			{
-				# substitute the various pieces with specs understood
-				# by Date::Format, these are stored in the %date_fmt hash
+				# substitute the various pieces with specs understood by Date::Format
+				# these are stored in the %date_fmt hash
 				my $format = $_;
 				$format =~ s/($DATE_FMT_PART)/$date_fmt{$1}/eg;
 				debuggit(3 => "translated", $_, "into", $format);
 
-				# now put a generic format in the format string and
-				# the results of Date::Format in the variable list
+				# now put a generic format in the format string and the results of Date::Format in the
+				# variable list
 				$_ = '@' . '>' x (length($_) - 1);
 				$vars[$pos] = time2str($format, $vars[$pos]);
 
