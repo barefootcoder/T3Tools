@@ -30,12 +30,12 @@
 #
 # This is cleaner, more precise, and adds a few niceties: it automatically puts the space in between the
 # string and the value, automatically adds the newline, and will replace $val with '<<undef>>' if it's not
-# defined (thus avoiding spurious "uninitialized" errors, plus it's easier to read and you can tell undef from
-# the empty string).  Your first argument must be the debug level (you can use comma instead of => if you
-# want, of course, but the => looks sorta nifty).  All remaining arguments are printed to STDERR.  Calls to
-# debuggit compile to nothing when DEBUG is zero, but they do remain if DEBUG is set to a positive but lower
-# value than you specify (though of course they produce no output in that case).  But in that case you're in
-# debug mode anyway so speed really isn't your primary goal.
+# defined (thus avoiding spurious "uninitialized" errors, plus it's easier to read and you can distinguish
+# undef from the empty string).  Your first argument must be the debug level (you can use comma instead of =>
+# if you want, of course, but the => looks sorta nifty).  All remaining arguments are printed to STDERR.
+# Calls to debuggit compile to nothing when DEBUG is zero, but they do remain if DEBUG is set to a positive
+# but lower value than you specify (though of course they produce no output in that case).  But in that case
+# you're in debug mode anyway so speed really isn't your primary goal.
 #
 # Additionally, if DEBUG is defined to any non-zero value, all further Barefoot modules will be drawn from
 # your personal VCtools working copy of the code.  Note that it uses vctools-config to figure out where that
