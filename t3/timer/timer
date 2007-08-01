@@ -41,7 +41,7 @@ use Barefoot::T3::Todo;
 use Barefoot::T3::valid qw< get_parameter >;
 use Barefoot::T3::Timer qw< calc_date calc_time test_connection >;
 use Barefoot::T3::CLI qw< cli_common_opts cli_get_command cli_fatal >;
-use Barefoot::T3::db_get qw< one_datum get_emp_id client_rounding proj_requirements get_logs >;
+use Barefoot::T3::db_get qw< one_datum get_emp_id default_client client_rounding proj_requirements get_logs >;
 
 
 #################################
@@ -464,7 +464,9 @@ if ($command eq 'AVERAGE')
 
 	my $emp_id = get_emp_id($mod->user);
 	debuggit(2 => "average: emp_id is", $emp_id);
-	my $logs = get_logs($emp_id);
+	my $client_id = default_client($emp_id);
+	debuggit(2 => "average: clietn_id is", $client_id);
+	my $logs = get_logs($emp_id, { CLIENT => $client_id });
 	debuggit(3 => "average: got", scalar(@$logs), "total logs back");
 
 	my $breakout = rc_param(AVERAGE => 'breakout') || '';

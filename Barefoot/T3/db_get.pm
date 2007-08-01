@@ -187,6 +187,8 @@ sub get_logs
 
 	my $start_date = '{BEGINNING_OF_TIME}';
 	my $end_date = '{END_OF_TIME}';
+	my $client_clause = '1 = 1';
+
 	if ($opts->{'DATE'})
 	{
 		if ($opts->{'DATE'} eq 'THIS_WEEK')
@@ -199,16 +201,22 @@ sub get_logs
 			die("get logs: don't know how to set date for $opts->{'DATE'}");
 		}
 	}
+	if ($opts->{'CLIENT'})
+	{
+		$client_clause = 'l.client_id = {client}';
+	}
 	debuggit(3 => "get_logs: start date", $start_date, "end date", $end_date);
 
-	my $data = &t3->load_data(q{
+	my $data = &t3->load_data(qq{
 		select l.client_id, l.proj_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
+		and $client_clause
 		and l.log_date between {start} and {end}
 		order by l.log_date
 	},
 		emp => $emp_id, start => $start_date, end => $end_date,
+		client => $opts->{'CLIENT'},
 	);
 	die("get logs query failed:", &t3->last_error()) unless $data;
 
