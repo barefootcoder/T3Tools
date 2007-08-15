@@ -213,11 +213,12 @@ sub db_post_timer
 
 		my $result = &t3->do(q{ insert into {@timer} values ???  },
 			{
-				wuser_id	=>	$wuser_id,
-				timer_name	=>	$tname,
-				client_id	=>	$timer->{client},
-				proj_id		=>	$timer->{project},
-				phase_id	=>	$timer->{phase},
+				wuser_id		=>	$wuser_id,
+				timer_name		=>	$tname,
+				client_id		=>	$timer->{'client'},
+				proj_id			=>	$timer->{'project'},
+				phase_id		=>	$timer->{'phase'},
+				tracking_code	=>	$timer->{'tracking'},
 			},
 		);
 		print STDERR &t3->last_error() and return false unless $result and $result->rows_affected() == 1;
@@ -403,7 +404,7 @@ sub _insert_time_log
 sub fields : lvalue
 {
 	my ($this, $object) = @_;
-	@{$object}{ qw<name time client project phase posted todo_link> };
+	@{$object}{ qw<name time client project phase posted todo_link tracking> };
 }
 
 
@@ -515,7 +516,7 @@ sub start																# start a timer
 	{
 		$timers->{$timersent}->{name} = $timersent;
 
-		foreach my $attrib ( qw<client project phase todo_link> )
+		foreach my $attrib ( qw<client project phase tracking todo_link> )
 		{
 			$timers->{$timersent}->{$attrib} = $opts->{$attrib} || "";
 		}
@@ -669,7 +670,7 @@ sub rename																# new name for a timer
 
 	# change other parameters
 	# (not checking these against database)
-	foreach (qw< client project phase >)
+	foreach (qw< client project phase tracking >)
 	{
 		$timers->{$newname}->{$_} = $opts->{$_} if $opts->{$_};
 	}
@@ -738,7 +739,7 @@ sub copy_info															# copy a timer
 	$timers->{$dest}->{time} = '';
 
 	# allow command-line overrides
-	foreach (qw< client project phase >)
+	foreach (qw< client project phase tracking >)
 	{
 		$timers->{$dest}->{$_} = $opts->{$_} if $opts->{$_};
 	}

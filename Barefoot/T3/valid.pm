@@ -36,32 +36,37 @@ use Barefoot::T3::base;
 use Barefoot::T3::db_get qw< get_emp_id default_client phase_list queue_list >;
 
 
+our %display_name =
+(
+	tracking	=>	'client tracking code',
+);
+
 our %db_default =
 (
-	employee				=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{'user'}) },
-	client					=>	sub
-								{
-									$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
-									default_client($_[0]->{employee});
-								},
-	project					=>	sub
-								{
-									$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
-									"";
-								},
-	phase					=>	sub { "" },
-	'client tracking code'	=>	sub { "" },
-	queue					=>	sub { "" },
+	employee	=>	sub { $_[0]->{employee} = get_emp_id($_[0]->{'user'}) },
+	client		=>	sub
+					{
+						$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
+						default_client($_[0]->{employee});
+					},
+	project		=>	sub
+					{
+						$_[0]->{employee} = get_emp_id($_[0]->{'user'}) unless exists $_[0]->{employee};
+						"";
+					},
+	phase		=>	sub { "" },
+	tracking	=>	sub { "" },
+	queue		=>	sub { "" },
 );
 
 our %valid_function =
 (
-	employee				=>	sub { valid_employees() },
-	client					=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
-	project					=>	sub { valid_projects($_[0]->{employee}, $_[0]->{client}, $_[0]->{date}) },
-	phase					=>	sub { phase_list() },
-	'client tracking code'	=>	sub { valid_trackings($_[0]->{client}) },
-	queue					=>	sub { queue_list() },
+	employee	=>	sub { valid_employees() },
+	client		=>	sub { valid_clients($_[0]->{employee}, $_[0]->{date}) },
+	project		=>	sub { valid_projects($_[0]->{employee}, $_[0]->{client}, $_[0]->{date}) },
+	phase		=>	sub { phase_list() },
+	tracking	=>	sub { valid_trackings($_[0]->{client}) },
+	queue		=>	sub { queue_list() },
 );
 
 
@@ -132,7 +137,8 @@ sub get_parameter
 		# make a block so redo will work
 		PARM:
 		{
-			$parm = input("Which $parmname is this for? (? for list)", $default);
+			my $parm_prompt = exists $display_name{$parmname} ? $display_name{$parmname} : $parmname;
+			$parm = input("Which $parm_prompt is this for? (? for list)", $default);
 			$parm = uc($parm);											# codes are all UC
 			$parm = string::trim($parm);								# no spaces
 

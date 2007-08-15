@@ -10,7 +10,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2006 Barefoot Software, Copyright (c) 2006 ThinkGeek
+# Copyright (c) 2006-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
 #
 ###########################################################################
 
@@ -41,6 +41,7 @@ sub cli_common_opts
 	$parminfo->{'client'} = uc($opts->{'C'});
 	$parminfo->{'project'} = uc($opts->{'P'});
 	$parminfo->{'phase'} = uc($opts->{'H'});
+	$parminfo->{'tracking'} = uc($opts->{'T'});
 }
 
 

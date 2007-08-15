@@ -121,8 +121,7 @@ sub proj_requirements
 	# print STDERR "client: $client, proj: $proj\n";
 
 	my $res = &t3->do(q{
-		select pt.requires_phase, pt.requires_tracking,
-				pt.requires_comments
+		select pt.requires_phase, pt.requires_tracking, pt.requires_comments
 		from {~timer}.project p, {~timer}.project_type pt
 		where p.client_id = {client}
 		and p.proj_id = {proj}

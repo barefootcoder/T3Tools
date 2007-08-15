@@ -34,7 +34,7 @@ use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
 use Barefoot::date epoch => '2003-12-29';
-use Barefoot::input qw< get_yn input input_text >;
+use Barefoot::input qw< get_yn input input_text $COLS >;
 
 use Barefoot::T3::base;
 use Barefoot::T3::Todo;
@@ -48,6 +48,8 @@ use Barefoot::T3::db_get qw< one_datum get_emp_id default_client client_rounding
 # CONSTANTS
 #################################
 
+
+use constant WIDESCREEN => ($COLS >= 100);
 
 use constant RC_FILE => "$~{$ENV{'USER'}}/.t3rc";
 my $RC = read_rc();
@@ -64,7 +66,9 @@ END
 #################################
 
 
-use constant Elapsed =>			'@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
+use constant Elapsed =>			WIDESCREEN
+? '@<< @<<<<<<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<<  @<<<<<<<<<<<  at @> hrs @> mins (@>>>>>>>>>) @<<<'
+: '@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
 
 use constant Totals_Header =>	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
@@ -129,7 +133,7 @@ if (-t STDOUT or @ARGV)
 	usage() if @ARGV == 0;
 
 	my $opt = {};
-	getopts('sedlcpriAbLtafhu:C:P:H:@:', $opt) or usage();
+	getopts('sedlcpriAbLtafhu:C:P:H:T:@:', $opt) or usage();
 	cli_common_opts($parminfo, $opt);
 	$parminfo->{'halftime'} = defined $opt->{'h'};
 	$parminfo->{'parse_fmt'} = $opt->{'@'};
@@ -228,14 +232,17 @@ if ($command eq 'START')					# start a timer
 			get_timer_parameter("client");
 			get_timer_parameter("project");
 
-			my ($phase_needed) = proj_requirements($parminfo->{'client'}, $parminfo->{'project'}, calc_date(time));
+			my ($phase_needed, $tracking_needed)
+					= proj_requirements($parminfo->{'client'}, $parminfo->{'project'}, calc_date(time));
 			get_timer_parameter("phase") if $phase_needed;
+			get_timer_parameter("tracking") if $tracking_needed;
 		}
 		else
 		{
 			$parminfo->{'client'} = 0;
 			$parminfo->{'project'} = 0;
 			$parminfo->{'phase'} = 0;
+			$parminfo->{'tracking'} = 0;
 		}
 	}
 }
@@ -747,7 +754,7 @@ sub usage
 	error(0,
 		"incorrect usage; usage is:\n",
 		"    timer -{s|p|d|c|r|i|e|l|L|b|t|a} [-fh] [-u user] [-C clientcode] [-P projcode] [-H phasecode] " .
-						"[timername [newtimername]]\n",
+						"[-T trackingcode] [timername [newtimername]]\n",
 		"       -s:   start a timer\n",
 		"       -p:   pause all timers\n",
 		"       -d:   done with a timer\n",
@@ -767,7 +774,9 @@ sub usage
 		"       -C:   client number to use (default is user-specific)\n",
 		"       -P:   project code to use (no default)\n",
 		"       -H:   phase code to use (no default)\n",
+		"       -T:   tracking code to use (no default)\n",
 		"    clientcode, projcode, and phasecode must be a valid 3-character code (will be forced to uppercase)\n",
+		"    trackingcode is freeform and will not be case adjusted\n",
 		"    timername is ignored for -p, -e, -l, -L, and -t\n",
 		"    timername for other functions defaults to the running timer, if any\n",
 		"    newtimername is ignored for all but -r and -i\n",
@@ -858,14 +867,14 @@ sub get_timer_parameter
 	# objinfo would be the specified timer, which we get here
 	my $objinfo = $timers->{$parminfo->{'timer'}};
 
-	# this is somewhat complicated.  we need to figure out what the proper thing (client, project, or phase)
-	# should be, and then use it as the default.  now, we have three possible places to get this info from:
-	# the default for this user (from the database; get_parameter knows how to retrieve that), the thing
-	# already set (for a pre-existing timer; this comes from objinfo), or the thing specified on the command
-	# line (if specified at all; this comes from parminfo).  for most cases, the priority is: command line,
-	# pre-existing, default.  for the start command, however, a pre-existing parameter can't be changed if it
-	# exists, so we use it and exit.	also, if -f (force) was specified (that flag is in parminfo), we can
-	# quit right there.
+	# this is somewhat complicated.  we need to figure out what the proper thing (client, project, phase, or
+	# tracking code) should be, and then use it as the default.  now, we have three possible places to get
+	# this info from: the default for this user (from the database; get_parameter knows how to retrieve that),
+	# the thing already set (for a pre-existing timer; this comes from objinfo), or the thing specified on the
+	# command line (if specified at all; this comes from parminfo).  for most cases, the priority is: command
+	# line, pre-existing, default.  for the start command, however, a pre-existing parameter can't be changed
+	# if it exists, so we use it and exit.	also, if -f (force) was specified (that flag is in parminfo), we
+	# can quit right there.
 
 	# got it? here we go ...
 
@@ -910,6 +919,7 @@ sub print_elapsed
 
 		writeln(Elapsed, $curtimer_marker, $tname, $timer->{'client'},
 				$timer->{'project'}, $timer->{'phase'} ? ",$timer->{'phase'}" : "",
+				WIDESCREEN ? ($timer->{'tracking'} ? "[$timer->{'tracking'}]" : '') : (),
 				$hours, $minutes, $date,
 				$timer->{'time'} =~ m{/\d+-$} ? "HALF-TIMING" : "");
 	}
