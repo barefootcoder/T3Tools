@@ -29,7 +29,7 @@ use File::HomeDir;
 use Config::General;
 use Time::ParseDate;
 
-use Barefoot(DEBUG => 1);
+use Barefoot;
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
