@@ -1108,7 +1108,7 @@ sub gather_log_info
 	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
 	$parminfo->{'phase'} = $phase;
 
-	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("client tracking code") : (undef, "");
+	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("tracking") : (undef, "");
 	$parminfo->{tracking} = $tracking;
 
 	# Get comments if necessary
