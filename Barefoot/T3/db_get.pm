@@ -212,7 +212,7 @@ sub get_logs
 	}
 
 	my $data = &t3->load_data(qq{
-		select l.client_id, l.proj_id, l.log_date, l.hours
+		select l.client_id, l.proj_id, l.phase_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
 		and $client_clause

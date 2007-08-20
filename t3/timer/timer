@@ -67,12 +67,16 @@ END
 
 
 use constant Elapsed =>			WIDESCREEN
-? '@<< @<<<<<<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<<  @<<<<<<<<<<<  at @> hrs @> mins (@>>>>>>>>>) @<<<'
-: '@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
+	? '@<< @<<<<<<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<<  @<<<<<<<<<<<  at @> hrs @> mins (@>>>>>>>>>) @<<<'
+	: '@<< @<<<<<<<<<<<<<<<<<  for @<<,@<<@<<<<< at @> hrs @> mins (@>>>>>>>>>) @<<<';
 
 
-use constant Totals_Header =>	'@<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<           total: @##.## hours';
-use constant Totals =>			'    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
+use constant Totals_Header =>	WIDESCREEN
+	? '@<<<<<<<<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<    total: @##.## hours'
+	: '@<<<<<<<<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<    total: @##.## hours';
+use constant Totals =>			WIDESCREEN
+	? '    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<                 total: @##.## hours'
+	: '    @<< @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       total: @##.## hours';
 
 
 use constant Totals_Weekly =>	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<          total: @##.## hours     @<<<<<<<<<<<';
@@ -414,6 +418,7 @@ if ($command eq 'TOTAL')					# total timers by client
 	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
+	my $client;
 	foreach ($mod->values($timers))
 	{
 		next if exists $ignore_timers{$_->{name}};
@@ -421,8 +426,9 @@ if ($command eq 'TOTAL')					# total timers by client
 				"when looking for tracking code", $tracking_to_total);
 		next if $tracking_to_total and $_->{'tracking'} ne $tracking_to_total;
 
-		my $client = $_->{'client'} || '???';
+		$client = $_->{'client'} || '???';
 		my $proj = $_->{'project'} || '???';
+		my $phase = $_->{'phase'} || '???';
 		my $tracking = $_->{'tracking'} || '???';
 		debuggit(3 => "TOTALling timer", $_->{'name'}, "got client/proj/tracking", $client, $proj, $tracking);
 
@@ -430,7 +436,8 @@ if ($command eq 'TOTAL')					# total timers by client
 		$hrs = $min_time if calc_time($_->{'time'}) > 0 and $hrs < $min_time;
 		if ($tracking_to_total)											# just total for this tracking code
 		{
-			$totals->{$client}->{$tracking} += $hrs;
+			$totals->{$tracking}->{$phase} += $hrs;
+			$totals->{$tracking}->{':TOTAL'} += $hrs;
 		}
 		else															# total by client/proj for "this week"
 		{
@@ -446,7 +453,8 @@ if ($command eq 'TOTAL')					# total timers by client
 		my $hrs = $_->{'hours'};
 		if ($tracking_to_total)
 		{
-			$totals->{$_->{'client_id'}}->{$tracking_to_total} += $hrs;
+			$totals->{$tracking_to_total}->{$_->{'phase_id'}} += $hrs;
+			$totals->{$tracking_to_total}->{':TOTAL'} += $hrs;
 		}
 		else
 		{
@@ -455,39 +463,41 @@ if ($command eq 'TOTAL')					# total timers by client
 		}
 	}
 
-	my (%clients, %subcats);
-	foreach my $client (keys %$totals)
+	my (%cats, %subcats);
+	foreach my $category (keys %$totals)
 	{
-		$clients{$client} = eval { one_datum("select name from {~timer}.client where client_id = '$client'") } || '???';
-		foreach my $thing (keys %{$totals->{$client}})
+		my $query = $tracking_to_total
+				? 'select name from {@client_tracking} ' . "where client_id = '$client' and tracking_code = '$category'"
+				: "select name from {~timer}.client where client_id = '$category'";
+		$cats{$category} = eval { one_datum($query) } || '???';
+		foreach my $thing (keys %{$totals->{$category}})
 		{
 			if ($tracking_to_total)
 			{
-				my $query = 'select name from {@client_tracking} '
-						. "where client_id = '$client' and tracking_code = '$thing'";
-				$subcats{$client}->{$thing} = eval { one_datum($query) } || '???';
+				$query = 'select name from {@phase} ' . "where phase_id = '$thing'";
+				$subcats{$category}->{$thing} = eval { one_datum($query) } || '???';
 			}
 			else
 			{
-				my $query = 'select name from {@project} ' . "where client_id = '$client' and proj_id = '$thing'";
-				$subcats{$client}->{$thing} = eval { one_datum($query) } || '???';
+				$query = 'select name from {@project} ' . "where client_id = '$category' and proj_id = '$thing'";
+				$subcats{$category}->{$thing} = eval { one_datum($query) } || '???';
 			}
 		}
 	}
 
-	foreach my $client (sort keys %$totals)
+	foreach my $category (sort keys %$totals)
 	{
-		my $total_hrs = delete $totals->{$client}->{':TOTAL'};
+		my $total_hrs = delete $totals->{$category}->{':TOTAL'};
 		if ($total_hrs)
 		{
 			print "-" x length(Totals_Header), "\n";
-			writeln(Totals_Header, $client, $clients{$client}, $total_hrs);
+			writeln(Totals_Header, $category, $cats{$category}, $total_hrs);
 		}
 
-		foreach my $thing (sort keys %{$totals->{$client}})
+		foreach my $thing (sort keys %{$totals->{$category}})
 		{
-			writeln(Totals, $thing, $subcats{$client}->{$thing}, $totals->{$client}->{$thing})
-					if $totals->{$client}->{$thing};
+			writeln(Totals, $thing, $subcats{$category}->{$thing}, $totals->{$category}->{$thing})
+					if $totals->{$category}->{$thing};
 		}
 	}
 
