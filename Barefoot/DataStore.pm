@@ -63,7 +63,8 @@ my $QUERY_SUB = qr/^\{.+\}$/;
 }
 
 
-our $data_store_dir = DEBUG ? "." : "/etc/data_store";
+#our $data_store_dir = DEBUG ? "." : "/etc/data_store";
+our $data_store_dir = "/etc/data_store";
 
 our $base_types =
 {
@@ -238,7 +239,7 @@ sub _login
 	if (exists $this->{'config'}->{'connect_string'})
 	{
 		my $server = $this->{'config'}->{'server'};
-		debuggit(3 => "attempting to get password for server", $server, "user", $this->{'user'});
+		debuggit(4 => "attempting to get password for server", $server, "user", $this->{'user'});
 
 		debuggit(4 => "environment for dbpasswd: user", $ENV{'USER'}, "home", $ENV{'HOME'}, "path", $ENV{'PATH'});
 		my $passwd;
@@ -266,11 +267,11 @@ sub _login
 		{
 			foreach my $command (@{$this->{'initial_commands'}})
 			{
-				debuggit(1 => "now trying to perform command: $command");
+				debuggit(4 => "now trying to perform command: $command");
 				my $res = $this->do($command);
-				debuggit(1 => "results has", $res->{'rows'}, "rows");
-				debuggit(1 => "last error was", $this->{'last_err'});
-				debuggit(1 => "statement handle isa", ref $res->{'sth'});
+				debuggit(4 => "results has", $res->{'rows'}, "rows");
+				debuggit(4 => "last error was", $this->{'last_err'});
+				debuggit(4 => "statement handle isa", ref $res->{'sth'});
 				croak("initial command ($command) failed for data store $this->{'name'}") unless defined $res;
 			}
 		}
@@ -283,7 +284,7 @@ sub _set_date_types
 	my $this = shift;
 
 	my $date_handling = $this->{'config'}->{'date_handling'} || 'native';
-	debuggit(3 => "DataStore: setting date types to", $date_handling);
+	debuggit(4 => "DataStore: setting date types to", $date_handling);
 
 	# note that we don't need to do anything here for native date handling
 	if ($date_handling eq 'string')
@@ -327,7 +328,7 @@ sub _set_date_handling
 
 	my $rdbms = $this->{'config'}->{'rdbms'};
 	my $date_handling = $this->{'config'}->{'date_handling'} || 'native';
-	debuggit(3 => "DataStore: setting date handling to", $date_handling);
+	debuggit(4 => "DataStore: setting date handling to", $date_handling);
 
 	if ($date_handling eq 'native')
 	{
@@ -617,7 +618,7 @@ sub _transform_query
 			my $values = join(',', map { $this->_check_for_variable(PLACEHOLDER => $hash->{$_}, $temp_vars) }
 					sort keys %$hash);
 			substr($query, $-[0], $+[0] - $-[0]) = '(' . join(', ', sort keys %$hash) . ') values (' .  $values . ')';
-			debuggit(3 => 'values :', $values);
+			debuggit(4 => 'values :', $values);
 
 			foreach $hash (@ns_placeholders)
 			{
@@ -730,7 +731,7 @@ sub _transform_query
 					$calculation =~ s/$spec/\${\$_[0]}->{'vars'}->{$varname}/g;
 				}
 
-				debuggit(2 => "going to evaluate calc func:", "sub { $calculation }");
+				debuggit(4 => "going to evaluate calc func:", "sub { $calculation }");
 				my $calc_function = eval "sub { $calculation }";
 				croak("illegal syntax in calculated column: $field_spec ($@)") if $@;
 				$calc_funcs->{$calc_col} = $calc_function;
@@ -825,7 +826,7 @@ sub open
 	my ($data_store_name, $user_name) = @_;
 
 	my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-	debuggit(3 => "file name is", $ds_filename);
+	debuggit(4 => "file name is", $ds_filename);
 	croak("data store $data_store_name not found") unless -e $ds_filename;
 
 	my $this = {};
@@ -911,7 +912,7 @@ sub commit_configs
 
 		my $data_store_name = $this->{'config'}->{'name'};
 		my $ds_filename = "$data_store_dir/$data_store_name.dstore";
-		debuggit(3 => "DataStore::commit_configs: saving to file", $ds_filename);
+		debuggit(4 => "DataStore::commit_configs: saving to file", $ds_filename);
 
 		croak("can't save data store specification") unless store($this->{'config'}, $ds_filename);
 	}
@@ -1152,7 +1153,7 @@ sub create_table
 		$colinfo->{$name} = $info;
 	}
 	$column_list .= ")";
-	debuggit(3 => "final column list is", $column_list);
+	debuggit(4 => "final column list is", $column_list);
 
 	my $table = $schema ? "{~$schema}.$table_name" : $table_name;
 	if ($opts->{'OVERWRITE'})
@@ -1185,7 +1186,7 @@ sub column_type
 	my $schema = $opts->{'SCHEMA'} || '';
 
 	my $colinfo = $this->{'datadict'}->{$schema}->{$table};
-	debuggit(3 => 'DataStore::column_type: colinfo', Dumper($colinfo));
+	debuggit(4 => 'DataStore::column_type: colinfo', Dumper($colinfo));
 
 	if ($colinfo)
 	{

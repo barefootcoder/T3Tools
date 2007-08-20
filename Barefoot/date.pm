@@ -144,10 +144,10 @@ sub now
 sub incDays
 {
 	my ($date, $inc) = @_;
-	debuggit(3 => "incDays: args are", $date, $inc);
+	debuggit(4 => "incDays: args are", $date, $inc);
 
 	my @incdate = Add_Delta_Days((Localtime(_cvt_date_if_necessary($date)))[0,1,2], $inc);
-	debuggit(3 => "return from AddDelta is", @incdate, "and then converts to", Mktime(@incdate, 0,0,0));
+	debuggit(4 => "return from AddDelta is", @incdate, "and then converts to", Mktime(@incdate, 0,0,0));
 	return mdy(Mktime(@incdate, 0,0,0));
 }
 
@@ -213,9 +213,9 @@ sub period_num
 {
 	my ($date, $period_len, $epoch) = @_;
 	$epoch = $Options{'epoch'} unless defined $epoch;
-	debuggit(3 => "period_num: using epoch", $epoch);
+	debuggit(4 => "period_num: using epoch", $epoch);
 
-	debuggit(3 => "period_num: ", int(dayDiff($epoch, $date) / $period_len));
+	debuggit(4 => "period_num: ", int(dayDiff($epoch, $date) / $period_len));
 	return int(dayDiff($epoch, $date) / $period_len);
 }
 
@@ -224,11 +224,11 @@ sub period_name
 {
 	my ($period_num, $period_len, $epoch) = @_;
 	$epoch = $Options{'epoch'} unless defined $epoch;
-	debuggit(3 => "period_num: using epoch", $epoch);
+	debuggit(4 => "period_num: using epoch", $epoch);
 
 	my $start = incDays($epoch, $period_num * $period_len);
 	my $end = incDays($start, $period_len - 1);
-	debuggit(3 => "period_name: start is", $start, "/ end is", $end);
+	debuggit(4 => "period_name: start is", $start, "/ end is", $end);
 
 	return "$start - $end";
 }
@@ -277,7 +277,7 @@ sub request_change_to_def_option
 
 	croak("cannot change default for unknown option $opt in date module") unless exists $Options{$opt};
 	$Options{$opt} = $newval unless $Options{'overriden'}->{$opt};
-	debuggit(3 => "request_change_to_def_option:", $opt, "to", $newval,
+	debuggit(4 => "request_change_to_def_option:", $opt, "to", $newval,
 			$Options{'overriden'}->{$opt} ? 'unchanged' : 'changed');
 }
 

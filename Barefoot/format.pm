@@ -207,7 +207,7 @@ sub swrite
 				# these are stored in the %date_fmt hash
 				my $format = $_;
 				$format =~ s/($DATE_FMT_PART)/$date_fmt{$1}/eg;
-				debuggit(3 => "translated", $_, "into", $format);
+				debuggit(4 => "translated", $_, "into", $format);
 
 				# now put a generic format in the format string and the results of Date::Format in the
 				# variable list
@@ -220,10 +220,10 @@ sub swrite
 		}
 
 		my $template = join('', @pieces);
-		debuggit(3 => "template is [[", $template, "]]");
+		debuggit(4 => "template is [[", $template, "]]");
 		if ($pos > $startpos)
 		{
-			debuggit(3 => "formline with vars from", $startpos, "to", $pos - 1);
+			debuggit(4 => "formline with vars from", $startpos, "to", $pos - 1);
 			formline($template, @vars[$startpos..$pos-1]);
 		}
 		else
