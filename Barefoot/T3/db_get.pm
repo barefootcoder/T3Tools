@@ -187,6 +187,7 @@ sub get_logs
 	my $start_date = '{BEGINNING_OF_TIME}';
 	my $end_date = '{END_OF_TIME}';
 	my $client_clause = '1 = 1';
+	my $tracking_clause = '1 = 1';
 
 	if ($opts->{'DATE'})
 	{
@@ -200,22 +201,28 @@ sub get_logs
 			die("get logs: don't know how to set date for $opts->{'DATE'}");
 		}
 	}
+	debuggit(3 => "get_logs: start date", $start_date, "end date", $end_date);
 	if ($opts->{'CLIENT'})
 	{
 		$client_clause = 'l.client_id = {client}';
 	}
-	debuggit(3 => "get_logs: start date", $start_date, "end date", $end_date);
+	if ($opts->{'TRACKING'})
+	{
+		$tracking_clause = 'l.tracking_code = {tracking}';
+	}
 
 	my $data = &t3->load_data(qq{
 		select l.client_id, l.proj_id, l.log_date, l.hours
 		from {~timer}.time_log l
 		where l.emp_id = {emp}
 		and $client_clause
+		and $tracking_clause
 		and l.log_date between {start} and {end}
 		order by l.log_date
 	},
 		emp => $emp_id, start => $start_date, end => $end_date,
 		client => $opts->{'CLIENT'},
+		tracking => $opts->{'TRACKING'},
 	);
 	die("get logs query failed:", &t3->last_error()) unless $data;
 

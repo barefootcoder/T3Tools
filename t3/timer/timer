@@ -29,7 +29,7 @@ use File::HomeDir;
 use Config::General;
 use Time::ParseDate;
 
-use Barefoot;
+use Barefoot(DEBUG => 1);
 use Barefoot::range;
 use Barefoot::format;
 use Barefoot::exception;
@@ -406,54 +406,88 @@ if ($command eq 'TOTAL')					# total timers by client
 		exit;
 	}
 
+	# setup variables, needed regardless of type of total required
 	my $totals = {};
+	my $emp_id = get_emp_id($mod->user);
+	my $tracking_to_total = $ARGV[0];									# 1st arg for this is a tracking code (or nothing)
+	debuggit(2 => "for TOTAL, tracking is", $tracking_to_total);
 	my $min_time = rc_param(TOTAL => 'mintime') || 0;
 	my %ignore_timers = map { $_ => 1 } rc_list(TOTAL => 'ignore');
 
 	foreach ($mod->values($timers))
 	{
 		next if exists $ignore_timers{$_->{name}};
+		debuggit(4 => "checking timer", $_->{'name'}, "and found tracking code", $_->{'tracking'},
+				"when looking for tracking code", $tracking_to_total);
+		next if $tracking_to_total and $_->{'tracking'} ne $tracking_to_total;
 
 		my $client = $_->{'client'} || '???';
 		my $proj = $_->{'project'} || '???';
+		my $tracking = $_->{'tracking'} || '???';
+		debuggit(3 => "TOTALling timer", $_->{'name'}, "got client/proj/tracking", $client, $proj, $tracking);
 
 		my $hrs = rounded_time($client, $_->{'time'});
 		$hrs = $min_time if calc_time($_->{'time'}) > 0 and $hrs < $min_time;
-		$totals->{$client}->{$proj} += $hrs;
-		$totals->{$client}->{':TOTAL'} += $hrs;
+		if ($tracking_to_total)											# just total for this tracking code
+		{
+			$totals->{$client}->{$tracking} += $hrs;
+		}
+		else															# total by client/proj for "this week"
+		{
+			$totals->{$client}->{$proj} += $hrs;
+			$totals->{$client}->{':TOTAL'} += $hrs;
+		}
 	}
 
-	my $emp_id = get_emp_id($mod->user);
-	my $logs = get_logs($emp_id, { DATE => 'THIS_WEEK' });
+	my $logs = get_logs($emp_id, $tracking_to_total ? { TRACKING => $tracking_to_total } : { DATE => 'THIS_WEEK' });
 	debuggit(2 => "found", scalar(@$logs), "logs in the DB to total");
 	foreach (@$logs)
 	{
 		my $hrs = $_->{'hours'};
-		$totals->{$_->{'client_id'}}->{$_->{'proj_id'}} += $hrs;
-		$totals->{$_->{'client_id'}}->{':TOTAL'} += $hrs;
+		if ($tracking_to_total)
+		{
+			$totals->{$_->{'client_id'}}->{$tracking_to_total} += $hrs;
+		}
+		else
+		{
+			$totals->{$_->{'client_id'}}->{$_->{'proj_id'}} += $hrs;
+			$totals->{$_->{'client_id'}}->{':TOTAL'} += $hrs;
+		}
 	}
 
-	my (%clients, %projects);
+	my (%clients, %subcats);
 	foreach my $client (keys %$totals)
 	{
 		$clients{$client} = eval { one_datum("select name from {~timer}.client where client_id = '$client'") } || '???';
-		foreach my $proj (keys %{$totals->{$client}})
+		foreach my $thing (keys %{$totals->{$client}})
 		{
-			my $proj_query = "select name from {~timer}.project where client_id = '$client' and proj_id = '$proj'";
-			$projects{$client}->{$proj} = eval { one_datum($proj_query) } || '???';
+			if ($tracking_to_total)
+			{
+				my $query = 'select name from {@client_tracking} '
+						. "where client_id = '$client' and tracking_code = '$thing'";
+				$subcats{$client}->{$thing} = eval { one_datum($query) } || '???';
+			}
+			else
+			{
+				my $query = 'select name from {@project} ' . "where client_id = '$client' and proj_id = '$thing'";
+				$subcats{$client}->{$thing} = eval { one_datum($query) } || '???';
+			}
 		}
 	}
 
 	foreach my $client (sort keys %$totals)
 	{
 		my $total_hrs = delete $totals->{$client}->{':TOTAL'};
-		next unless $total_hrs;
-		print "-" x length(Totals_Header), "\n";
-		writeln(Totals_Header, $client, $clients{$client}, $total_hrs);
-
-		foreach my $proj (sort keys %{$totals->{$client}})
+		if ($total_hrs)
 		{
-			writeln(Totals, $proj, $projects{$client}->{$proj}, $totals->{$client}->{$proj}) if $totals->{$client}->{$proj};
+			print "-" x length(Totals_Header), "\n";
+			writeln(Totals_Header, $client, $clients{$client}, $total_hrs);
+		}
+
+		foreach my $thing (sort keys %{$totals->{$client}})
+		{
+			writeln(Totals, $thing, $subcats{$client}->{$thing}, $totals->{$client}->{$thing})
+					if $totals->{$client}->{$thing};
 		}
 	}
 
@@ -777,7 +811,8 @@ sub usage
 		"       -T:   tracking code to use (no default)\n",
 		"    clientcode, projcode, and phasecode must be a valid 3-character code (will be forced to uppercase)\n",
 		"    trackingcode is freeform and will not be case adjusted\n",
-		"    timername is ignored for -p, -e, -l, -L, and -t\n",
+		"    timername is ignored for -p, -e, -l, and -L\n",
+		"    timername is treated as a tracking code to total up (total for all time) for -t\n",
 		"    timername for other functions defaults to the running timer, if any\n",
 		"    newtimername is ignored for all but -r and -i\n",
 	);
