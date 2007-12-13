@@ -571,7 +571,7 @@ if ($command eq 'LOG')					# log time directly to the DB
 		exit;
 	}
 
-	gather_log_info();
+	gather_log_info($parminfo);
 }
 
 if ($command eq 'DONE')					# done with a timer
@@ -594,7 +594,7 @@ if ($command eq 'DONE')					# done with a timer
 		error(1, "no such timer as $giventimer");
 	}
 
-	print_and_gather($giventimer);
+	print_and_gather($parminfo, $giventimer);
 }
 
 if ($command eq 'LOGALL')
@@ -702,12 +702,10 @@ END
 			eval
 			{
 				local $SIG{INT} = sub { die("user interrupt") };
-				$parminfo->{'timer'} = $timer;
-				$parminfo->{'client'} = undef;
-				$parminfo->{'project'} = undef;
-				$parminfo->{'phase'} = undef;
-				print_and_gather($timer);
-				$mod->timer_command('DONE', $parminfo, $timers);
+				my $info = { %$parminfo };
+				$info->{'timer'} = $timer;
+				print_and_gather($info, $timer);
+				$mod->timer_command('DONE', $info, $timers);
 			};
 
 			if (exists $timers->{$timer})			# logging out failed for some reason
@@ -1034,7 +1032,7 @@ sub rounded_time
 
 sub print_and_gather
 {
-	my ($giventimer) = @_;
+	my ($info, $giventimer) = @_;
 
 	my $thistimer = $timers->{$giventimer};
 	my ($hours, $minutes) = get_timer_hrsmins($thistimer);
@@ -1043,23 +1041,23 @@ sub print_and_gather
 	print "\ntimer: $giventimer\n";
 	print "total time is $hours hrs $minutes mins on $date for $client\n";
 	print "please remember this in case there is a problem!\n\n";
-	if (!$parminfo->{'noconfirm'})
+	if (!$info->{'noconfirm'})
 	{
 		print "press return to continue ...\n";
 		<STDIN>;
 	}
 
-	gather_log_info($giventimer);
+	gather_log_info($info, $giventimer);
 }
 
 
 sub gather_log_info
 {
-	my ($log_timer) = @_;
+	my ($info, $log_timer) = @_;
 
 	# For logging timers, we MUST ask for codes; no 'force' allowed.  But
 	# the 'noconfirm' option can still turn off the annoying confirmations.
-	$parminfo->{'force'} = false;
+	$info->{'force'} = false;
 
 	# a shortcut
 	my $timer = defined $log_timer ? $timers->{$log_timer} : undef;
@@ -1085,7 +1083,7 @@ sub gather_log_info
 	# $mod->user may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
 
-	$parminfo->{'date'} = my $date = input(
+	$info->{'date'} = my $date = input(
 			"Date:",
 			$timer ? calc_date($timer->{'time'}) : date::today(),
 			{
@@ -1107,7 +1105,7 @@ sub gather_log_info
 				unless $hours == range::round($hours, range::ROUND_OFF, $to_nearest);
 		print "  {Hours must be greater than zero}\n" and redo HOURS unless $hours > 0;
 	}
-	$parminfo->{hours} = $hours;
+	$info->{'hours'} = $hours;
 
 	# Get project info
 	my ($project, $project_name) = get_timer_parameter("project");
@@ -1116,13 +1114,13 @@ sub gather_log_info
 
 	# Get phase information
 	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
-	$parminfo->{'phase'} = $phase;
+	$info->{'phase'} = $phase;
 
 	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("tracking") : (undef, "");
-	$parminfo->{tracking} = $tracking;
+	$info->{tracking} = $tracking;
 
 	# Get comments if necessary
-	$parminfo->{comments} = $comments_needed ? get_comment($log_timer, $parminfo) : undef;
+	$info->{'comments'} = $comments_needed ? get_comment($log_timer, $info) : undef;
 
 	print "working.....\n";
 
@@ -1134,14 +1132,14 @@ sub gather_log_info
 			$phase,		$phase_name,				$hours,
 							$tracking, $tracking_name
 	);
-	writeln(Log_Comments, $parminfo->{comments});
+	writeln(Log_Comments, $info->{'comments'});
 
 	unless (get_yn("\n\nis everything okay?"))
 	{
 		die("\n  {Try to log this timer out again later.}\n");
 	}
 
-	debuggit(4 => "parms after gather_log_info:", Dumper($parminfo));
+	debuggit(4 => "parms after gather_log_info:", Dumper($info));
 }
 
 
