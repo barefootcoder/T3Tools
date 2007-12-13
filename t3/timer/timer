@@ -233,13 +233,13 @@ if ($command eq 'START')					# start a timer
 		if (test_connection())
 		{
 			debuggit(5 => "given timer doesn't exist, getting new values");
-			get_timer_parameter("client");
-			get_timer_parameter("project");
+			get_timer_parameter("client", $parminfo);
+			get_timer_parameter("project", $parminfo);
 
 			my ($phase_needed, $tracking_needed)
 					= proj_requirements($parminfo->{'client'}, $parminfo->{'project'}, calc_date(time));
-			get_timer_parameter("phase") if $phase_needed;
-			get_timer_parameter("tracking") if $tracking_needed;
+			get_timer_parameter("phase", $parminfo) if $phase_needed;
+			get_timer_parameter("tracking", $parminfo) if $tracking_needed;
 		}
 		else
 		{
@@ -642,7 +642,7 @@ END
 		exit;
 	}
 
-	unless ($timers->{T3::CURRENT_TIMER} eq $log_timername)
+	unless ($timers->{T3::CURRENT_TIMER} and $timers->{T3::CURRENT_TIMER} eq $log_timername)
 	{
 		# HACK! these are hardcoded for now; should be changed to pull from a config file or something
 		local $parminfo->{'timer'} = $log_timername;
@@ -904,20 +904,20 @@ sub get_giventimer
 
 sub get_timer_parameter
 {
-	my ($parmname) = @_;
+	my ($parmname, $info) = @_;
 	debuggit(4 => "get_timer_parameter: wantarray is", wantarray);
 
 	# objinfo would be the specified timer, which we get here
-	my $objinfo = $timers->{$parminfo->{'timer'}};
+	my $objinfo = $timers->{$info->{'timer'}};
 
 	# this is somewhat complicated.  we need to figure out what the proper thing (client, project, phase, or
 	# tracking code) should be, and then use it as the default.  now, we have three possible places to get
 	# this info from: the default for this user (from the database; get_parameter knows how to retrieve that),
 	# the thing already set (for a pre-existing timer; this comes from objinfo), or the thing specified on the
-	# command line (if specified at all; this comes from parminfo).  for most cases, the priority is: command
-	# line, pre-existing, default.  for the start command, however, a pre-existing parameter can't be changed
-	# if it exists, so we use it and exit.	also, if -f (force) was specified (that flag is in parminfo), we
-	# can quit right there.
+	# command line (if specified at all; this comes from info, which is usually $parminfo).  for most cases,
+	# the priority is: command line, pre-existing, default.  for the start command, however, a pre-existing
+	# parameter can't be changed if it exists, so we use it and exit.	also, if -f (force) was specified
+	# (that flag is in info), we can quit right there.
 
 	# got it? here we go ...
 
@@ -925,7 +925,7 @@ sub get_timer_parameter
 	# this will keep people from being able to change parameters if the command is "start"
 	$opts->{'RESTRICT_CHANGES'} = true if $command eq 'START';
 
-	return get_parameter($parmname, $parminfo, $objinfo, $opts);
+	return get_parameter($parmname, $info, $objinfo, $opts);
 }
 
 
@@ -1078,7 +1078,7 @@ sub gather_log_info
 	# based on this, there is not a whole lot you can do differently in
 	# the order chosen below, so DON'T MUCK WITH IT!
 
-	my ($emp_id, $emp_fullname) = get_timer_parameter("employee");
+	my ($emp_id, $emp_fullname) = get_timer_parameter("employee", $info);
 
 	# $mod->user may not match emp_id at this point; that's ok.
 	# It lets us track the actual person who submitted the command.
@@ -1094,7 +1094,7 @@ sub gather_log_info
 
 
 	# Get client info
-	my ($client, $client_name) = get_timer_parameter("client");
+	my ($client, $client_name) = get_timer_parameter("client", $info);
 
 	my $hours;
 	HOURS: {
@@ -1108,15 +1108,15 @@ sub gather_log_info
 	$info->{'hours'} = $hours;
 
 	# Get project info
-	my ($project, $project_name) = get_timer_parameter("project");
+	my ($project, $project_name) = get_timer_parameter("project", $info);
 
 	my ($phase_needed, $tracking_needed, $comments_needed) = proj_requirements($client, $project, $date);
 
 	# Get phase information
-	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase") : (undef, "");
+	my ($phase, $phase_name) = $phase_needed ? get_timer_parameter("phase", $info) : (undef, "");
 	$info->{'phase'} = $phase;
 
-	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("tracking") : (undef, "");
+	my ($tracking, $tracking_name) = $tracking_needed ?  get_timer_parameter("tracking", $info) : (undef, "");
 	$info->{tracking} = $tracking;
 
 	# Get comments if necessary

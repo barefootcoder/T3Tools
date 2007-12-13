@@ -198,7 +198,7 @@ sub get_parameter
 	}
 
 	debuggit(4 => Dumper($valid_parms));
-	debuggit(3 => wantarray ?  "will return ($parm, $valid_parms->{$parm})" : "will return", $parm);
+	debuggit(3 => wantarray ?  ("will return (", $parm, ", ", $valid_parms->{$parm}, ")") : ("will return", $parm));
 
 	# if force was specified, you'll get ($parm, undef)
 	# if ALLOW_NULL was specified and the user chooses NULL, you'll get (undef, undef)
