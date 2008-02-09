@@ -19,7 +19,7 @@ use Barefoot::DataStore;
 my $user = "root";
 my $dstore = "t3test";
 my $admin_users = "buddy";
-my $all_users = "buddy,jacob";
+my $all_users = "$admin_users";
 
 my $opt = {};
 getopts("s:U:vh", $opt);
@@ -130,7 +130,7 @@ create_table("client_tracking",
 	[
 		[ "client_id",		"internal_id",		"NOT NULL" ],
 		[ "tracking_code",	"external_id",		"NOT NULL" ],
-		[ "name",			"description",		"NOT NULL" ],
+		[ "name",			"varchar(100)",		"NOT NULL" ],
 	],
 	[
 		{
@@ -878,6 +878,7 @@ create_table("timer",
 		[ "client_id",		"internal_id",		"NOT NULL" ],
 		[ "proj_id",		"internal_id",		"NULL" ],
 		[ "phase_id",		"internal_id",		"NULL" ],
+		[ "tracking_code",	"external_id",		"NULL" ],
 	],
 	[
 		{
