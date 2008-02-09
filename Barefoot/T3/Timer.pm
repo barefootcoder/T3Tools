@@ -756,4 +756,5 @@ sub copy_info															# copy a timer
 # Return a true value:
 ###########################
 
+no Moose;
 1;

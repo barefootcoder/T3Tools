@@ -492,4 +492,5 @@ sub text_fields
 # Return a true value:
 ###########################
 
+no Moose;
 1;
