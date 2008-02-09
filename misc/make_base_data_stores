@@ -9,17 +9,8 @@ use Barefoot::DataStore;
 
 print STDERR "You probably have to run this script as root.\n";
 
-my $server = "kimahri";
+my $server = "sedna";
 my $sa = DataStore->create("${server}_sa",
-		rdbms				=>	'mysql',
-		connect_string		=>	"DBI:mysql:host=$server",
-		server				=>	$server,
-		user				=>	"root",
-);
-undef $sa;
-
-$server = "cid";
-$sa = DataStore->create("${server}_sa",
 		rdbms				=>	'mysql',
 		connect_string		=>	"DBI:mysql:host=$server",
 		server				=>	$server,
