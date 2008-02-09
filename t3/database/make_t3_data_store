@@ -22,7 +22,7 @@ use Barefoot::DataStore;
 use Barefoot::input qw<get_yn>;
 
 
-my $server = "cid";
+my $server = "sedna";
 my $user = "root";
 my $destdb = "t3test";
 my $dstore = "t3test";
@@ -141,10 +141,10 @@ if ($db_created)
 	system("/usr/bin/sudo /bin/touch $ddict");
 	system("/usr/bin/sudo /bin/chgrp dev $ddict");
 	system("/usr/bin/sudo /bin/chmod 664 $ddict");
-	system("./make_t3_tables");
-	system("./make_timer_tables");
-	system("./make_tracker_tables");
-	system("./make_reporting_tables");
+	system("./make_t3_tables -s $dstore");
+	system("./make_timer_tables -s $dstore");
+	system("./make_tracker_tables -s $dstore");
+	system("./make_reporting_tables -s $dstore");
 }
 
 if ($ds_created)
@@ -152,7 +152,7 @@ if ($ds_created)
 	# create all aliases
 	exit 1 unless get_yn("Recreate all aliases?");
 
-	system("./build_t3_aliases");
+	system("./build_t3_aliases -s $dstore");
 }
 
 system("/usr/bin/sudo /bin/chmod 644 $dsfile");
