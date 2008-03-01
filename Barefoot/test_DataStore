@@ -80,7 +80,7 @@ catch { /must specify RDBMS/ }
 or die("create didn't require RDBMS");
 
 # test creating a new data store
-my $newds = DataStore->create("new", user => "nobody", rdbms => "mysql");
+my $newds = DataStore->create("new", user => "nobody", rdbms => $rdbms);
 die("didn't get a blank data store") unless $newds;
 die("not blessed ref (DataStore)") unless $newds->isa("DataStore");
 
@@ -175,7 +175,7 @@ my %rdbms_query =
 					from sysobjects
 					where name = 'sysobjects'
 				},
-	mysql	=>	qq{
+	mysql	=>	q{
 					select user, host
 					from mysql.user
 					where user = 'root'
