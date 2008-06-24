@@ -28,14 +28,30 @@
 #
 #		debuggit(3 => "value is", $val);
 #
-# This is cleaner, more precise, and adds a few niceties: it automatically puts the space in between the
-# string and the value, automatically adds the newline, and will replace $val with '<<undef>>' if it's not
-# defined (thus avoiding spurious "uninitialized" errors, plus it's easier to read and you can distinguish
-# undef from the empty string).  Your first argument must be the debug level (you can use comma instead of =>
-# if you want, of course, but the => looks sorta nifty).  All remaining arguments are printed to STDERR.
-# Calls to debuggit compile to nothing when DEBUG is zero, but they do remain if DEBUG is set to a positive
-# but lower value than you specify (though of course they produce no output in that case).  But in that case
-# you're in debug mode anyway so speed really isn't your primary goal.
+# This is cleaner, more precise, and adds a few niceties (see below for a complete list).  Your first argument
+# must be the debug level (you can use comma instead of => if you want, of course, but the => looks sorta
+# nifty).  All remaining arguments are printed to STDERR.  Calls to debuggit compile to nothing when DEBUG is
+# zero, but they do remain if DEBUG is set to a positive but lower value than you specify (though of course
+# they produce no output in that case).  But in that case you're in debug mode anyway so speed really isn't
+# your primary goal.
+#
+# The following transformations are applied to your list of arguments to debuggit():
+#
+#		1) spaces are inserted between args
+#		2) a newline is appended
+#		3) undef's are replaced with <<undef>>
+#		4) strings with leading and/or trailing spaces are surrounded with << >>
+#
+# Thus:
+#
+#		my $val1 = 6;
+#		my $val2;
+#		my $val3 = ' XX  ';
+#		debuggit(3 => "value1", $val1, "value2", $val2, "value3", $val3);
+#
+# produces (assuming your current debug level is 3 or higher, of course):
+#
+#		value1 6 value2 <<undef>> value3 << XX  >>
 #
 # Additionally, if DEBUG is defined to any non-zero value, all further Barefoot modules will be drawn from
 # your personal VCtools working copy of the code.  Note that it uses vctools-config to figure out where that
@@ -136,12 +152,14 @@ sub _set_debuggit_func
 
 	if ($debug_value)
 	{
-		eval qq{
-			sub ${caller_package}::debuggit
+		eval "sub ${caller_package}::debuggit" .
+		q{
 			{
-				print STDERR join(' ', map { defined \$_ ? \$_ : '<<undef>>' } \@_), "\\n" if DEBUG >= shift;
+				print STDERR join(' ', map { !defined $_ ? '<<undef>>' : /^\s+/ || /\s+$/ ? "<<$_>>" : $_ } @_), "\n"
+						if DEBUG >= shift;
 			}
 		};
+		die("cannot create debuggit subroutine: $@") if $@;
 	}
 	else
 	{
