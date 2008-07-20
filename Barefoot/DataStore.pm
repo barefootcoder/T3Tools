@@ -26,7 +26,8 @@ package DataStore;
 use strict;
 use warnings;
 
-use version; our $VERSION = qv('2.0.1');
+use version;
+our $VERSION = qv('2.0.1');
 
 use DBI;
 use Carp;
@@ -63,8 +64,8 @@ my $QUERY_SUB = qr/^\{.+\}$/;
 }
 
 
-#our $data_store_dir = DEBUG ? "." : "/etc/data_store";
-our $data_store_dir = "/etc/data_store";
+our $data_store_dir = DEBUG ? "." : "/etc/data_store";
+#our $data_store_dir = "/etc/data_store";
 
 our $base_types =
 {
@@ -252,14 +253,15 @@ sub _login
 		# connect to database via DBI
 		# note that some attributes to connect are RDBMS-specific
 		# this is okay, as they will be ignored by RDBMSes they don't apply to
-		debuggit(4 => "connecting via:", $this->{'config'}->{'connect_string'});
+		debuggit(4 => "connecting via:", $this->{'config'}->{'connect_string'}, "with user/pass", $this->{'user'}, $passwd);
 		$this->{'dbh'} = DBI->connect($this->{'config'}->{'connect_string'}, $this->{'user'}, $passwd,
 			{
 				PrintError => 0,
 				# Sybase specific attributes
 				syb_failed_db_fatal => 1,
 				syb_show_sql => 1,
-			});
+			}
+		);
 		croak("can't connect to data store as user $this->{'user'}: $DBI::errstr") unless $this->{'dbh'};
 		debuggit(5 => "successfully connected");
 
