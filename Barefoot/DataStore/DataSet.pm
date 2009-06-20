@@ -108,7 +108,7 @@ sub new
 	{
 		# need to use "if" style instead of "=>" style call to debuggit(), else join will be called for every
 		# row, even if debugging is turned off
-		debuggit("row in DataSet: ", join(':', @$row)) if DEBUG >= 4;
+		debuggit("row in DataSet:", join(':', @$row)) if DEBUG >= 4;
 
 		# *must* make a copy of $row because fetchrow_arrayref() returns
 		# the same reference every time (see DBI manpage)
