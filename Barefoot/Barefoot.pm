@@ -77,7 +77,7 @@
 #
 # All the code herein is released under the Artistic License
 #		( http://www.perl.com/language/misc/Artistic.html )
-# Copyright (c) 2006-2007 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
+# Copyright (c) 2006-2009 Barefoot Software, Copyright (c) 2006-2007 ThinkGeek
 # based on ideas originally set forth in the following modules:
 #		Barefoot::debug, originally written 2000, (c) Barefoot Software
 #		Barefoot::base, originally written 2001, (c) Barefoot Software
@@ -93,6 +93,7 @@ package Barefoot;
 use strict;
 use warnings;
 
+use Carp;
 use FileHandle;
 
 use base qw<Exporter>;
@@ -220,9 +221,12 @@ sub import
 	my $caller_package = caller;
 	# print STDERR "my calling package is $caller_package\n";
 
-	$opts{DEBUG} = _set_up_debug_value($caller_package, $opts{DEBUG});
+	my $Debuggit_loaded = defined eval { Debuggit::DEBUG(); };
+	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
 
-	_set_debuggit_func($caller_package, $opts{DEBUG});
+	$opts{DEBUG} = _set_up_debug_value($caller_package, $opts{DEBUG}) unless $Debuggit_loaded;
+
+	_set_debuggit_func($caller_package, $opts{DEBUG}) unless $Debuggit_loaded;
 
 	# prepend testing dirs into @INC path if we're actually in DEBUG mode
 	# print STDERR "just before prepending, value is $debug_value\n";

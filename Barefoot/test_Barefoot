@@ -35,6 +35,10 @@ chdir '/';
 my $subtest_out = `$dir/test_Barefoot2 2>&1`;
 die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output <<undef>> << surrounded >>\n";
 
+$subtest_out = `$dir/test_Barefoot3 2>&1`;
+die("Debuggit conflict: debuggit ($subtest_out)") if $subtest_out =~ /debuggit redefined/;
+die("Debuggit conflict: DEBUG ($subtest_out)") if $subtest_out =~ /DEBUG already defined/;
+
 package test4;
 BEGIN
 {

@@ -1,0 +1,9 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+
+use Debuggit(DEBUG => 1);
+use Barefoot(DEBUG => 3);
+
+print "DEBUG value is ", DEBUG, "\n";
