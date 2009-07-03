@@ -29,6 +29,9 @@ use warnings;
 use version;
 our $VERSION = qv('2.0.1');
 
+use Debuggit;
+#local $Debuggit::formatter = sub { return (caller(2))[3] . ':bmoogle: ' . Debuggit::default_formatter(@_) };
+
 use DBI;
 use Carp;
 use Storable;
@@ -65,7 +68,7 @@ my $QUERY_SUB = qr/^\{.+\}$/;
 
 
 our $data_store_dir = DEBUG ? "." : "/etc/data_store";
-#our $data_store_dir = "/etc/data_store";
+debuggit(4 => 'DataStore load: data store dir set to', $data_store_dir);
 
 our $base_types =
 {
@@ -542,7 +545,7 @@ sub _transform_query
 	# now put the quoted strings back (note that it's okay to have a _variable_ inside a quoted string, so we
 	# don't do anything in particular to avoid those)
 	$query =~ s/{Q(\d+)}/${$quoted_strings[$1]}/g;
-	
+
 	# sort out parameters according to whether they're the query (first param), hash or array placeholder
 	# (a.k.a. "non-scalar placeholder") values (any hashrefs or arrayrefs), or variables (everything else)
 	my (@ns_placeholders, @var_stuff);
@@ -872,7 +875,7 @@ sub create
 
 	# RDBMS has to be present
 	croak("must specify RDBMS to data store") unless exists $attribs{'rdbms'};
-	
+
 	# user has to be present, and should be moved out of config section
 	croak("must specify user to data store") unless exists $attribs{'user'};
 	$this->{'user'} = $attribs{'user'};
@@ -891,6 +894,22 @@ sub create
 	bless $this, $class;
 	$this->_login();
 
+	return $this;
+}
+
+
+sub derive
+{
+	my $class = shift;
+	my ($dbh, %attribs) = @_;
+
+	# RDBMS has to be present
+	croak("must specify RDBMS to data store") unless exists $attribs{'rdbms'};
+
+	my $this = {};
+	$this->{'dbh'} = $dbh;
+
+	bless $this, $class;
 	return $this;
 }
 
@@ -1130,6 +1149,7 @@ sub replace_table
 sub create_table
 {
 	my ($this, $table_name, $columns, $opts) = @_;
+	debuggit(4 => 'DataStore::create_table: table', $table_name, 'columns', DUMP => $columns, 'opts', DUMP => $opts);
 	$opts ||= {};
 	$opts->{'DATADICT'} ||= '';
 
