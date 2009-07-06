@@ -21,6 +21,8 @@ package Barefoot::T3::CLI;
 use strict;
 use warnings;
 
+use Debuggit;
+
 use Barefoot;
 
 use base qw<Exporter>;
