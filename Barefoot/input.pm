@@ -66,6 +66,8 @@ package Barefoot::input;
 use strict;
 use warnings;
 
+use Debuggit;
+
 use Term::Size;
 use Data::Dumper;
 use Perl6::Slurp;
