@@ -21,6 +21,8 @@ package date;
 use strict;
 use warnings;
 
+use Debuggit;
+
 use Carp;
 use Date::Parse;
 use Date::Format;
@@ -247,6 +249,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Debuggit;
 
 use Barefoot;
 
