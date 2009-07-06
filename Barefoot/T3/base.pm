@@ -210,7 +210,7 @@ sub t3_create_pipe
 
 package T3::Module;
 
-use Mouse;
+use Moose;
 
 use Debuggit;
 
