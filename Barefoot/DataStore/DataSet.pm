@@ -21,6 +21,8 @@ package DataStore::DataSet::Builder;
 use strict;
 use warnings;
 
+use Debuggit;
+
 use Barefoot;
 
 
@@ -82,7 +84,7 @@ use strict;
 use warnings;
 
 use Carp;
-use Data::Dumper;
+use Debuggit;
 
 use Barefoot;
 use Barefoot::DataStore::DataRow;
@@ -281,7 +283,7 @@ sub group
 			# put a blank row in the dataset, then save it in the hash
 			$dst = $group_data_hash->{$group_by_vals} = $group_data->add_row();
 			die("not a DataRow in new group create") unless $dst->isa('DataStore::DataRow');
-			print Data::Dumper->Dump( [$$dst->{impl}], qw<dst> ) if DEBUG >= 4;
+			debuggit(4 => 'dst:', DUMP => $$dst->{impl});
 
 			$dst->{$_} = $src->{$_} foreach @group_by_cols;
 			$dst->{$_} = $src->{$_} foreach @constant_cols;
@@ -294,7 +296,7 @@ sub group
 
 		$process->($src, $dst) if defined $process;
 	}
-	debuggit(4 => Data::Dumper->Dump( [$group_data], [ qw<group_data> ] ));
+	debuggit(4 => 'group_data:', DUMP => $group_data);
 
 	# now sort group_data into a new dataset (new_data)
 	my $new_data = [];
