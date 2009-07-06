@@ -25,6 +25,8 @@ use base qw<Exporter>;
 use vars qw<@EXPORT_OK>;
 @EXPORT_OK = qw< calc_time calc_date test_connection >;
 
+use Debuggit;
+
 use Date::Parse;
 use Data::Dumper;
 use Date::Format;
@@ -293,6 +295,8 @@ sub db_delete_timer
 package T3::Module::Timer;
 
 use Moose;
+
+use Debuggit;
 
 use Storable qw< dclone >;
 
@@ -756,5 +760,4 @@ sub copy_info															# copy a timer
 # Return a true value:
 ###########################
 
-no Moose;
 1;
