@@ -29,6 +29,8 @@ package T3;
 use strict;
 use warnings;
 
+use Debuggit;
+
 use Barefoot;
 
 
@@ -119,6 +121,8 @@ our @EXPORT = (
 	qw< t3_pipename t3_create_pipe >,
 );
 
+use Debuggit;
+
 use Data::Dumper;
 use POSIX qw<mkfifo>;
 
@@ -206,7 +210,9 @@ sub t3_create_pipe
 
 package T3::Module;
 
-use Moose;
+use Mouse;
+
+use Debuggit;
 
 use Carp;
 use Date::Format;
@@ -217,7 +223,7 @@ use Barefoot::exception;
 
 
 # public attributes
-has user => (isa => 'Str', is => 'ro', required => 1, default => sub { $_[0]->cur_user() });
+has user => (isa => 'Str', is => 'ro', default => sub { $_[0]->cur_user() });
 
 # private attributes
 has _basefile => (is => 'rw', default => '');
@@ -492,5 +498,4 @@ sub text_fields
 # Return a true value:
 ###########################
 
-no Moose;
 1;
