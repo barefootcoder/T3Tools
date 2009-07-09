@@ -113,14 +113,22 @@ sub false();
 sub _set_up_debug_value
 {
 	my ($caller_package, $debug_value) = @_;
-	# print STDERR "debug value is ";
-	# print STDERR defined $debug_value ? $debug_value : "undefined", "\n";
+	# print STDERR "debug value is ", (defined $debug_value ? $debug_value : "undefined"), "\n";
 	my $caller_defined = defined eval "${caller_package}::DEBUG();";
+
+	my $Debuggit_value = eval { Debuggit::DEBUG(); };
+	my $Debuggit_loaded = defined $Debuggit_value;
+	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+
+	# if Debuggit is loaded _and_ DEBUG is defined in our caller, assume that Debuggit was loaded
+	# _by_ our caller; consequently, nothing left to do here
+	return if $Debuggit_loaded and $caller_defined;
 
 	# the "master" value is in the Barefoot namespace
 	# get the master value: if it's undefined, we'll need to define it;
 	# if it's defined, we'll need to use it as a default value
-	my $master_debug = eval "Barefoot::DEBUG();";
+	# EXCEPTION: if Debuggit has been loaded, use the Debuggit value as the master value
+	my $master_debug = $Debuggit_loaded ? $Debuggit_value : eval "Barefoot::DEBUG();";
 	# print STDERR "master eval returns $master_debug and eval err is $@\n";
 
 	if (not defined $debug_value)
@@ -136,6 +144,7 @@ sub _set_up_debug_value
 	croak("DEBUG already defined; don't use Barefoot(DEBUG => #) twice") if $caller_defined;
 
 	eval "sub ${caller_package}::DEBUG () { return $debug_value; }";
+	# print STDERR "set debug val to $debug_value in $caller_package and err was $@\n";
 
 	# also have to tuck this value into the Barefoot namespace if it isn't already there
 	eval "sub Barefoot::DEBUG () { return $debug_value; }" unless defined $master_debug;
@@ -151,16 +160,31 @@ sub _set_debuggit_func
 {
 	my ($caller_package, $debug_value) = @_;
 
+	my $caller_loaded = defined eval qq{ ${caller_package}::debuggit(); 1; };
+	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+	return if $caller_loaded;
+
+	my $Debuggit_loaded = defined eval qq{ Debuggit::DEBUG(); };
+	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+
 	if ($debug_value)
 	{
-		eval "sub ${caller_package}::debuggit" .
-		q{
-			{
+		# print STDERR "going to try to set debuggit() in $caller_package because of value $debug_value\n";
+		if ($Debuggit_loaded)
+		{
+			my $sub = eval qq{ package $caller_package; sub _define_debuggit__ { Debuggit->import(DEBUG => $debug_value) } };
+			die("cannot create debuggit defining routine") if $@;
+			eval qq{ ${caller_package}::_define_debuggit__(); };
+			die("cannot call Debuggit::import") if $@;
+		}
+		else
+		{
+			my $print = q{
 				print STDERR join(' ', map { !defined $_ ? '<<undef>>' : /^\s+/ || /\s+$/ ? "<<$_>>" : $_ } @_), "\n"
-						if DEBUG >= shift;
-			}
-		};
-		die("cannot create debuggit subroutine: $@") if $@;
+			};
+			eval qq{ sub ${caller_package}::debuggit { $print if ${caller_package}::DEBUG() >= shift } };
+			die("cannot create debuggit subroutine: $@") if $@;
+		}
 	}
 	else
 	{
@@ -221,12 +245,9 @@ sub import
 	my $caller_package = caller;
 	# print STDERR "my calling package is $caller_package\n";
 
-	my $Debuggit_loaded = defined eval { Debuggit::DEBUG(); };
-	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+	$opts{DEBUG} = _set_up_debug_value($caller_package, $opts{DEBUG});
 
-	$opts{DEBUG} = _set_up_debug_value($caller_package, $opts{DEBUG}) unless $Debuggit_loaded;
-
-	_set_debuggit_func($caller_package, $opts{DEBUG}) unless $Debuggit_loaded;
+	_set_debuggit_func($caller_package, $opts{DEBUG});
 
 	# prepend testing dirs into @INC path if we're actually in DEBUG mode
 	# print STDERR "just before prepending, value is $debug_value\n";

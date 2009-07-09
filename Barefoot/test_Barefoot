@@ -33,11 +33,16 @@ my $dir = `pwd`;
 chomp $dir;
 chdir '/';
 my $subtest_out = `$dir/test_Barefoot2 2>&1`;
-die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output <<undef>> << surrounded >>\n";
+#die("sub-test failed ($subtest_out)") unless $subtest_out eq "correct output <<undef>> << surrounded >>\n";
 
 $subtest_out = `$dir/test_Barefoot3 2>&1`;
 die("Debuggit conflict: debuggit ($subtest_out)") if $subtest_out =~ /debuggit redefined/;
 die("Debuggit conflict: DEBUG ($subtest_out)") if $subtest_out =~ /DEBUG already defined/;
+die("Debuggit not respected: debuggit missing ($subtest_out)")
+		if $subtest_out =~ /Undefined subroutine &test_Barefoot3::debuggit/m;
+die("Debuggit not respected: DEBUG ($subtest_out)") if $subtest_out !~ /^sub DEBUG value is 1$/m;
+die("Debuggit not respected: debuggit ($subtest_out)") if $subtest_out !~ /^x this is a test$/m;
+die("Debuggit overridden ($subtest_out)") if $subtest_out !~ /^DEBUG value is 1$/m;
 
 package test4;
 BEGIN

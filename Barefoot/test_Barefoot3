@@ -7,3 +7,5 @@ use Debuggit(DEBUG => 1);
 use Barefoot(DEBUG => 3);
 
 print "DEBUG value is ", DEBUG, "\n";
+
+use test_Barefoot3;
