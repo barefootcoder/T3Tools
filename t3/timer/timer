@@ -80,7 +80,8 @@ use constant Totals =>			WIDESCREEN
 
 
 use constant Totals_Weekly =>	'@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<          total: @##.## hours     @<<<<<<<<<<<';
-use constant Average_Weekly =>	'AVERAGE WEEKLY TIME:                           @##.## hours';
+use constant Average_Weekly =>	'AVERAGE WEEKLY TIME (total):                   @##.## hours';
+use constant Average_Window =>	'AVERAGE WEEKLY TIME (last @## weeks):          @##.## hours';
 
 
 use constant Log =>
@@ -515,12 +516,15 @@ if ($command eq 'AVERAGE')
 
 	my $emp_id = get_emp_id($mod->user);
 	debuggit(2 => "average: emp_id is", $emp_id);
+
 	my $client_id = default_client($emp_id);
-	debuggit(2 => "average: clietn_id is", $client_id);
+	debuggit(2 => "average: client_id is", $client_id);
+
 	my $logs = get_logs($emp_id, { CLIENT => $client_id });
 	debuggit(3 => "average: got", scalar(@$logs), "total logs back");
 
 	my $breakout = rc_param(AVERAGE => 'breakout') || '';
+	my $window = rc_param(AVERAGE => 'window') || 0;
 
 	my (%weeks, %breakout);
 	foreach (@$logs)
@@ -535,10 +539,14 @@ if ($command eq 'AVERAGE')
 		}
 	}
 
+	my $count = 0;
 	my $alltime = 0;
+	my $windowtime = 0;
 	my $last_date = undef;
 	foreach (sort keys %weeks)
 	{
+		++$count;
+
 		my ($start, $end) = split(' - ');
 		if ($last_date)
 		{
@@ -552,11 +560,19 @@ if ($command eq 'AVERAGE')
 
 		my $breakout_total = $breakout{$_} ? sprintf("$breakout: %5.2f", $breakout{$_}) : '';
 
-		writeln(Totals_Weekly, $_, $weeks{$_}, $breakout_total);
+		if (not $window or $count > scalar(keys %weeks) - $window)
+		{
+			writeln(Totals_Weekly, $_, $weeks{$_}, $breakout_total);
+			$windowtime += $weeks{$_};
+		}
 		$alltime += $weeks{$_};
 	}
 
 	print "=" x length(Totals_Weekly), "\n";
+	if ($window and scalar(keys %weeks) > $window)
+	{
+		writeln(Average_Window, $window, range::round($windowtime / $window, range::ROUND_OFF, .25));
+	}
 	writeln(Average_Weekly, range::round($alltime / scalar(keys %weeks), range::ROUND_OFF, .25));
 
 	# all done
