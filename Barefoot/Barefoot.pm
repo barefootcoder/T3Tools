@@ -115,6 +115,7 @@ sub _set_up_debug_value
 	my ($caller_package, $debug_value) = @_;
 	# print STDERR "debug value is ", (defined $debug_value ? $debug_value : "undefined"), "\n";
 	my $caller_defined = defined eval "${caller_package}::DEBUG();";
+	# print STDERR "caller defined is $caller_defined\n";
 
 	my $Debuggit_value = eval { Debuggit::DEBUG(); };
 	my $Debuggit_loaded = defined $Debuggit_value;
@@ -122,7 +123,9 @@ sub _set_up_debug_value
 
 	# if Debuggit is loaded _and_ DEBUG is defined in our caller, assume that Debuggit was loaded
 	# _by_ our caller; consequently, nothing left to do here
-	return if $Debuggit_loaded and $caller_defined;
+	# pass original debug value back for purposes of doing non-DEBUG related stuff (i.e. redirecting
+	# local modules to testing)
+	return $debug_value if $Debuggit_loaded and $caller_defined;
 
 	# the "master" value is in the Barefoot namespace
 	# get the master value: if it's undefined, we'll need to define it;
@@ -166,25 +169,23 @@ sub _set_debuggit_func
 
 	my $Debuggit_loaded = defined eval qq{ Debuggit::DEBUG(); };
 	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+	if ($Debuggit_loaded)
+	{
+		my $sub = eval qq{ package $caller_package; sub _define_debuggit__ { Debuggit->import(DEBUG => $debug_value) } };
+		die("cannot create debuggit defining routine") if $@;
+		eval qq{ ${caller_package}::_define_debuggit__(); };
+		die("cannot call Debuggit::import") if $@;
+		return;
+	}
 
 	if ($debug_value)
 	{
 		# print STDERR "going to try to set debuggit() in $caller_package because of value $debug_value\n";
-		if ($Debuggit_loaded)
-		{
-			my $sub = eval qq{ package $caller_package; sub _define_debuggit__ { Debuggit->import(DEBUG => $debug_value) } };
-			die("cannot create debuggit defining routine") if $@;
-			eval qq{ ${caller_package}::_define_debuggit__(); };
-			die("cannot call Debuggit::import") if $@;
-		}
-		else
-		{
-			my $print = q{
-				print STDERR join(' ', map { !defined $_ ? '<<undef>>' : /^\s+/ || /\s+$/ ? "<<$_>>" : $_ } @_), "\n"
-			};
-			eval qq{ sub ${caller_package}::debuggit { $print if ${caller_package}::DEBUG() >= shift } };
-			die("cannot create debuggit subroutine: $@") if $@;
-		}
+		my $print = q{
+			print STDERR join(' ', map { !defined $_ ? '<<undef>>' : /^\s+/ || /\s+$/ ? "<<$_>>" : $_ } @_), "\n"
+		};
+		eval qq{ sub ${caller_package}::debuggit { $print if ${caller_package}::DEBUG() >= shift } };
+		die("cannot create debuggit subroutine: $@") if $@;
 	}
 	else
 	{
@@ -203,6 +204,8 @@ sub _redirect_modules_to_testing
 	chomp $working_dir;
 	die("can't determine VCtools working dir") unless $working_dir;
 	my $lib_testing_dir = "$working_dir/T3/Barefoot";
+
+=comment
 
 	unshift @INC, sub
 	{
@@ -224,6 +227,11 @@ sub _redirect_modules_to_testing
 		}
 		return undef;
 	};
+
+=cut
+
+	$lib_testing_dir = "$working_dir/T3";
+	unshift @INC, $lib_testing_dir;
 
 	$already_prepended = 1;
 }
@@ -250,7 +258,7 @@ sub import
 	_set_debuggit_func($caller_package, $opts{DEBUG});
 
 	# prepend testing dirs into @INC path if we're actually in DEBUG mode
-	# print STDERR "just before prepending, value is $debug_value\n";
+	# print STDERR "just before prepending, value is $opts{DEBUG}\n";
 	_redirect_modules_to_testing() if $opts{DEBUG};
 }
 
