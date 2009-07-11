@@ -163,8 +163,8 @@ sub _set_debuggit_func
 {
 	my ($caller_package, $debug_value) = @_;
 
-	my $caller_loaded = defined eval qq{ ${caller_package}::debuggit(); 1; };
-	# print STDERR "Debuggit loaded is $Debuggit_loaded\n";
+	my $caller_loaded = $caller_package->can('debuggit');
+	# print STDERR "caller loaded is $caller_loaded\n";
 	return if $caller_loaded;
 
 	my $Debuggit_loaded = defined eval qq{ Debuggit::DEBUG(); };
