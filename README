@@ -1,0 +1,25 @@
+DO NOT USE THIS CODE.
+
+It is:
+
+*) old, and potentially crappy.
+*) utterly unmaintained.
+*) strictly for illustrative and/or historical purposes.
+*) somewhat restrictively licensed.
+
+That having been said, if you absolutely *must* steal it and do something with it, please refer to
+the LICENSE file.
+
+
+This is the code that composed the various incarnations of T3Tools.  It originally existed in CVS,
+was converted to Subversion, and now it's been converted to git (primarily to make it easier to
+steal bits of it for other projects).  The very first version of timer was written way back in 1992,
+although the repo only goes back to 1998.  Most of T3Tools was in Perl, but there was a native
+Windows Talker client written in C++ (thanks to Jay Vilhena of Oaesys, who was contracting for us at
+the time).  It went through several different databases, including dBASE III+ (!!), Sybase, and
+MySQL.
+
+For more info on what T3Tools was supposed to be (or supposed to have been), contact us by raising
+an issue here on Github, the new home for T3Tools.  In the meantime, have fun poking around.
+
+But don't use this code.

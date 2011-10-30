@@ -1,0 +1,46 @@
+T3Tools by Barefoot Software is licensed under a Creative Commons
+Attribution-NonCommercial-ShareAlike 3.0 Unported License.[1]
+Based on a work at github.com.[2]
+
+[1] http://creativecommons.org/licenses/by-nc-sa/3.0/
+[2] https://github.com/barefootcoder/T3Tools
+
+
+FAQ (Frequently Anticipated Questions)
+
+Q)  Are you aware that Creative Commons specifically discourages use of their licenses for software?
+A)  Yes.
+
+Q)  So why did you use it then?
+A)  This license says what I wanted to say.  None of the standard open-source licenses that I looked
+    at did.  So I either had to create my own license, or use one that was not recommended.  This
+    seemed like the lesser of two evils.  If I were to find a different license that did maintain
+    the spirit of what I wanted to say, I would probably switch to that.
+
+Q)  What _is_ the spirit of what you want to say?
+A)  I don't want the code used for commercial projects.  That's the big thing.
+
+Q)  Well, as far as I'm concerned, that means this isn't open source software!
+A)  I'm okay with that.
+
+Q)  You can't put up non-open-source software on a free GitHub account!
+A)  Well, first of all I didn't agree with your opinion above.  But, anyway: that isn't my
+    understanding of the GitHub policy.  If I'm wrong, then I'll have to revisit this.
+
+Q)  It's almost like you don't _want_ me to use your code!
+A)  You're right: "want" is far too strong a word about how I feel about you using my code.  I
+    certainly don't _mind_ you using it.  But it's not like I'm losing sleep if you don't.  Heck,
+    didn't you read the README file?
+
+Q)  What if I really want to use your code in my commercial product?
+A)  Well, first of all, I think you're insane.  But contact me and we'll work out a separate
+    licensing agreement.
+
+Q)  Why would anyone want to pay for this code?  It's not very good!
+A)  Yes, I mentioned that in the README file.  You really should have read that first.  That's what
+    it's there for, you know.
+
+Q)  So why even bring it up at all?!?
+A)  Hey, if you happen to be insane _and_ rich, and have a burning desire to pay me for my crappy
+    code, what am I gonna do? say no?  Don't be silly.
+
